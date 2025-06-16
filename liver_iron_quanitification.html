@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap.min.css" integrity="sha512-dTfge/zgoMYpP7QbHy4gWMEGsbsdZeCXz7irItjcC3sPUFtf0kuFbDz/ixG7ArTxmDjLXDmezHubeNikyKGVyQ==" crossorigin="anonymous">
+
+<title>Liver Iron Quantification</title>
+
+<style>
+h1 {text-align: center; font-size: 2em;}
+p {text-align: center; font-size: 2em;}
+div {text-align: center; font-size: 2em;}
+#message { color: red; white-space: pre-line; }
+label { display: block; margin-top: 0.5em; }
+</style>
+</head>
+<body>
+<h1>Liver Iron Calculator</h1>
+<div>
+ <label>R2* Value 1: <input type="number" id="val1" step="any"></label>
+ <label>R2* Value 2: <input type="number" id="val2" step="any"></label>
+ <label>R2* Value 3: <input type="number" id="val3" step="any"></label>
+ <label>R2* Value 4: <input type="number" id="val4" step="any"></label>
+ <label>Magnetic Field Strength (1.5 or 3.0):
+     <select id="bmag">
+         <option value="1.5">1.5</option>
+         <option value="3.0">3.0</option>
+     </select>
+ </label>
+ <button onclick="calculate()">Calculate</button>
+</div>
+<p id="message"></p>
+<div id="output"></div>
+
+<script>
+function quant(meanVal, Bmag) {
+    // Formula.
+    if (Bmag === 1.5) {
+         return 0.027*meanVal - 0.26;
+    }
+    if (Bmag === 3.0) {
+         return 0.015*meanVal - 0.32;
+    }
+}
+
+function calculate() {
+    const vals = [
+        parseFloat(document.getElementById('val1').value),
+        parseFloat(document.getElementById('val2').value),
+        parseFloat(document.getElementById('val3').value),
+        parseFloat(document.getElementById('val4').value)
+    ];
+    const Bmag = parseFloat(document.getElementById('bmag').value);
+    const validVals = vals.filter(v => !isNaN(v));
+
+    let msg = "";
+    if (validVals.length < 4) {
+        msg += "One or more R2* values are missing. Using available values.\n";
+    }
+    if (isNaN(Bmag) || (Bmag !== 1.5 && Bmag !== 3.0)) {
+        msg += "Magnetic field strength must be 1.5 or 3.0.";
+    }
+
+    if (validVals.length === 0 || isNaN(Bmag) || (Bmag !== 1.5 && Bmag !== 3.0)) {
+        document.getElementById('message').textContent = msg;
+        document.getElementById('output').innerHTML = '';
+        return;
+    }
+
+    const meanVal = validVals.reduce((a, b) => a + b, 0) / validVals.length;
+    const minVal = Math.min(...validVals);
+    const maxVal = Math.max(...validVals);
+    const result = quant(meanVal, Bmag);
+
+    let category = '';
+    if (result <= 1.8) {
+        category = 'normal';
+    } else if (result <= 3.2) {
+        category = 'mild';
+    } else if (result <= 7.0) {
+        category = 'moderate';
+    } else if (result <= 15.0) {
+        category = 'severe';
+    } else {
+        category = 'extreme';
+    }
+
+    document.getElementById('message').textContent = msg;
+    document.getElementById('output').innerHTML =
+        `<p>Mean R2* is ${meanVal.toFixed(1)} (range of averages ${minVal.toFixed(1)}-${maxVal.toFixed(1)}).</p>` +
+        `<p>Liver iron content (mg Fe/g dry liver) is ${result.toFixed(2)}.</p>` +
+        `<p>Liver iron content is ${category}.</p>` +
+        '<p><a href="#" onclick="location.reload()">Click here to calculate again</a></p>';
+}
+</script>
+</body>
+</html>
