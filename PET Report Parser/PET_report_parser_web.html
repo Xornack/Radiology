@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>PET Report Parser (Web)</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 2em; }
+        textarea { width: 100%; height: 200px; }
+        #output { width: 100%; height: 120px; margin-top: 1em; }
+        button { margin: 0.5em 0.5em 0.5em 0; }
+    </style>
+</head>
+<body>
+    <h2>PET Report Parser (Web Version)</h2>
+    <label for="input">Paste PET Report Text Below:</label><br>
+    <textarea id="input"></textarea><br>
+    <button id="processBtn">Process</button>
+    <button id="copyBtn">Copy Output</button>
+    <button id="saveBtn">Save to File</button>
+    <div>
+        <label for="output">Output:</label><br>
+        <textarea id="output" readonly></textarea>
+    </div>
+    <script>
+// --- PET Parser and Formatter in JS ---
+function roundHalfUp(num, decimals = 1) {
+    if (num === '' || isNaN(num)) return '';
+    const factor = Math.pow(10, decimals);
+    return (Math.round(num * factor + Number.EPSILON) / factor).toFixed(decimals);
+}
+
+function parsePetReport(text) {
+    const findings = {};
+    let currentFinding = null;
+    let currentDate = null;
+    const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+    const findingPattern = /^Finding (\d+)/;
+    const maxPattern = /^Max: ([\d.]+) SUVbw/;
+    const slicePattern = /^Slice with Max: (\d+) #/;
+    const recistLongPattern = /^RECIST Long: ([\d.]+) cm/;
+    const recistShortPattern = /^RECIST Short: ([\d.]+) cm/;
+    const meanPattern = /^Mean: /;
+    const nameCollisionPattern = /Name collision prevented result/;
+    const lines = text.split(/\r?\n/);
+    for (let line of lines) {
+        line = line.trim();
+        if (!line) continue;
+        let m;
+        if ((m = findingPattern.exec(line))) {
+            currentFinding = m[1];
+            if (!findings[currentFinding]) findings[currentFinding] = {};
+            continue;
+        }
+        if ((m = datePattern.exec(line))) {
+            currentDate = m[0];
+            continue;
+        }
+        if (nameCollisionPattern.test(line)) continue;
+        if (meanPattern.test(line)) continue;
+        if (currentFinding) {
+            // Use date as key if present, else use 'nodate'
+            const key = currentDate || 'nodate';
+            findings[currentFinding][key] = findings[currentFinding][key] || {};
+            if ((m = maxPattern.exec(line))) {
+                findings[currentFinding][key]['max'] = parseFloat(m[1]);
+            } else if ((m = slicePattern.exec(line))) {
+                findings[currentFinding][key]['slice'] = parseInt(m[1]);
+            } else if ((m = recistLongPattern.exec(line))) {
+                findings[currentFinding][key]['long'] = parseFloat(m[1]);
+            } else if ((m = recistShortPattern.exec(line))) {
+                findings[currentFinding][key]['short'] = parseFloat(m[1]);
+            }
+        }
+    }
+    return findings;
+}
+
+function formatPetOutput(findings) {
+    const output = [];
+    for (const finding in findings) {
+        const dateDict = findings[finding];
+        const keys = Object.keys(dateDict);
+        // Separate date keys and 'nodate'
+        const dateKeys = keys.filter(k => /^\d{4}-\d{2}-\d{2}$/.test(k));
+        const hasNodate = keys.includes('nodate');
+        if (dateKeys.length >= 2) {
+            // Use only date keys for comparison
+            const dates = dateKeys.sort().reverse();
+            const latest = dates[0], prior = dates[1];
+            const latestData = dateDict[latest], priorData = dateDict[prior];
+            if ('long' in latestData && 'short' in latestData && 'long' in priorData && 'short' in priorData) {
+                const longLatest = roundHalfUp(latestData['long']);
+                const shortLatest = roundHalfUp(latestData['short']);
+                const longPrior = roundHalfUp(priorData['long']);
+                const shortPrior = roundHalfUp(priorData['short']);
+                const maxLatest = ('max' in latestData && latestData['max'] !== '') ? roundHalfUp(latestData['max']) : '';
+                const maxPrior = ('max' in priorData && priorData['max'] !== '') ? roundHalfUp(priorData['max']) : '';
+                output.push(`Finding ${finding}. ${longLatest} x ${shortLatest} cm. (axial image ) from ${longPrior} x ${shortPrior} cm. Max SUV ${maxLatest} from ${maxPrior}.`);
+            } else if ('max' in latestData && 'slice' in latestData && 'max' in priorData && 'slice' in priorData) {
+                const maxLatest = roundHalfUp(latestData['max']);
+                const maxPrior = roundHalfUp(priorData['max']);
+                output.push(`Finding ${finding} (axial image ${latestData['slice']}). Max SUV ${maxLatest} from ${maxPrior}.`);
+            }
+        } else if (dateKeys.length === 1) {
+            // Only one date key, single time point
+            const onlyData = dateDict[dateKeys[0]];
+            if ('long' in onlyData && 'short' in onlyData) {
+                const long = roundHalfUp(onlyData['long']);
+                const short = roundHalfUp(onlyData['short']);
+                output.push(`Finding ${finding}. ${long} x ${short} cm. (axial image ).`);
+            } else if ('max' in onlyData && 'slice' in onlyData) {
+                const max = roundHalfUp(onlyData['max']);
+                output.push(`Finding ${finding} (axial image ${onlyData['slice']}). Max SUV ${max}.`);
+            }
+        } else if (hasNodate) {
+            // Only 'nodate' present
+            const onlyData = dateDict['nodate'];
+            if ('long' in onlyData && 'short' in onlyData) {
+                const long = roundHalfUp(onlyData['long']);
+                const short = roundHalfUp(onlyData['short']);
+                output.push(`Finding ${finding}. ${long} x ${short} cm. (axial image ).`);
+            } else if ('max' in onlyData && 'slice' in onlyData) {
+                const max = roundHalfUp(onlyData['max']);
+                output.push(`Finding ${finding} (axial image ${onlyData['slice']}). Max SUV ${max}.`);
+            }
+        }
+    }
+    return output;
+}
+
+function processInput() {
+    console.log('Process button clicked'); // Debugging
+    const input = document.getElementById('input').value;
+    const findings = parsePetReport(input);
+    const outputLines = formatPetOutput(findings);
+    document.getElementById('output').value = outputLines.join('\n');
+}
+
+function copyOutput() {
+    const output = document.getElementById('output').value;
+    navigator.clipboard.writeText(output);
+}
+
+function saveOutput() {
+    const output = document.getElementById('output').value;
+    const blob = new Blob([output], {type: 'text/plain'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'pet_report_output.txt';
+    a.click();
+}
+
+// Attach event listeners after DOM is loaded
+window.onload = function() {
+    document.getElementById('processBtn').addEventListener('click', processInput);
+    document.getElementById('copyBtn').addEventListener('click', copyOutput);
+    document.getElementById('saveBtn').addEventListener('click', saveOutput);
+    document.getElementById('output').value = 'Script loaded. Ready.';
+};
+    </script>
+</body>
+</html>
