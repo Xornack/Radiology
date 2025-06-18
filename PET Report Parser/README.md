@@ -40,7 +40,7 @@ Slice with Max: 38 #
 
 **Output:**
 ```
-Finding 1. 3.1 x 2.6 cm. (axial image ) from 2.8 x 2.2 cm. Max SUV 8.2 from 6.5.
+Finding 1. 3.1 x 2.6 cm (axial image ) from 2.8 x 2.2 cm. Max SUV 8.2 from 6.5.
 ```
 
 ## Customization
