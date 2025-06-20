@@ -5,6 +5,11 @@ I also included some questions copilot asked me but I didn't include in my first
 # Idea
 Found in idea.md. Make this as specific and vivid as possible. If it includes specifications, that is good, as you will have to answer specification questions anyway. Here's an example of what the code agent might ask.
 
+1. Specify the preferred programming language and interface (CLI, GUI, web).
+2. Clarify input and output methods (paste, file, terminal, GUI).
+3. State any restrictions on dependencies or required libraries.
+4. Indicate if automated tests are required --> this is actually specified below, and the answer is always yes.
+5. Note if the tool should be cross-platform or Linux-only...etc.
 
 # Specifications
 ## Objective
