@@ -66,7 +66,7 @@ and list them as an "Open Questions" snippet so they can be added to the file if
 
 If this leads to some important open questions, go back to Step 3: Open Questions
 
-Add any section or text to specifications.md that might help a developer execute the idea.
+Add any section or text to specification.md that might help a developer execute the idea.
 
 # Implementation with Test-Driven Development
 
