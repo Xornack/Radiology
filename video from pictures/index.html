@@ -119,6 +119,193 @@
             background-color: #6c757d;
             cursor: not-allowed;
         }
+        
+        /* Phase 2: Video Creation Styles */
+        .video-summary {
+            margin-top: 15px;
+            padding: 15px;
+            background-color: #e8f5e8;
+            border-radius: 5px;
+            border-left: 4px solid #28a745;
+        }
+        
+        .video-summary h4 {
+            margin-top: 0;
+            color: #155724;
+        }
+        
+        .video-progress {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #fff3cd;
+            border-radius: 4px;
+            border-left: 4px solid #ffc107;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background-color: #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-top: 5px;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background-color: #007bff;
+            transition: width 0.3s ease;
+            border-radius: 10px;
+        }
+        
+        .test-video-btn {
+            background-color: #17a2b8;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        
+        .test-video-btn:hover {
+            background-color: #138496;
+        }
+        
+        /* Enhanced Progress Tracking Styles (Step 2.3) */
+        .enhanced-progress-container {
+            margin: 20px 0;
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+            display: none;
+        }
+        
+        .progress-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .progress-title {
+            font-weight: bold;
+            color: #495057;
+        }
+        
+        .eta-display {
+            font-size: 14px;
+            color: #6c757d;
+            background-color: #e9ecef;
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+        
+        .step-progress {
+            margin-bottom: 15px;
+        }
+        
+        .step-indicator {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .step-number {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 12px;
+            margin-right: 10px;
+        }
+        
+        .step-number.completed {
+            background-color: #28a745;
+            color: white;
+        }
+        
+        .step-number.active {
+            background-color: #007bff;
+            color: white;
+        }
+        
+        .step-number.pending {
+            background-color: #e9ecef;
+            color: #6c757d;
+        }
+        
+        .step-name {
+            flex-grow: 1;
+            margin-right: 10px;
+        }
+        
+        .step-status {
+            font-size: 12px;
+            color: #6c757d;
+        }
+        
+        .current-item {
+            font-size: 14px;
+            color: #495057;
+            margin-bottom: 10px;
+            font-style: italic;
+        }
+        
+        .statistics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .stat-item {
+            text-align: center;
+            padding: 10px;
+            background-color: white;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+        }
+        
+        .stat-value {
+            font-weight: bold;
+            font-size: 18px;
+            color: #007bff;
+        }
+        
+        .stat-label {
+            font-size: 12px;
+            color: #6c757d;
+            margin-top: 2px;
+        }
+        
+        .confidence-indicator {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        
+        .confidence-high {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        
+        .confidence-medium {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        
+        .confidence-low {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
     </style>
 </head>
 <body>
@@ -348,9 +535,367 @@
             statusEl.style.display = 'block';
         }
 
-        // Placeholder functions for future implementation
-        function processImages() {
-            showStatus('info', 'Video processing will be implemented in the next phase.');
+        // Phase 2: Video Creation Implementation (Updated for Step 2.2)
+        async function processImages() {
+            if (!selectedFiles || selectedFiles.length === 0) {
+                showStatus('error', 'No images selected. Please select a folder first.');
+                return;
+            }
+
+            try {
+                showStatus('info', 'Starting advanced video creation process...');
+                
+                // Create image-to-video converter instance
+                const converter = new ImageToVideoConverter();
+                
+                // Set up progress tracking with enhanced UI (Step 2.3)
+                converter.setCallbacks(
+                    (progress) => {
+                        // Handle both basic and enhanced progress updates
+                        if (progress.enhanced) {
+                            updateEnhancedProgress(progress);
+                        } else {
+                            showStatus('info', `${progress.message}${progress.percentage ? ` (${progress.percentage}%)` : ''}`);
+                            if (progress.percentage !== null) {
+                                updateProgressBar(progress.percentage);
+                            }
+                        }
+                        
+                        // Update enhanced progress for all progress types
+                        updateEnhancedProgress(progress);
+                    },
+                    (error) => {
+                        console.error('Conversion error:', error);
+                        showStatus('error', `Conversion failed: ${error.error}`);
+                        hideProgressBar();
+                    },
+                    (result) => {
+                        console.log('Conversion completed:', result);
+                        hideProgressBar();
+                        displayAdvancedVideoSummary(result);
+                    }
+                );
+                
+                // Configure video settings (get from UI settings in Phase 4)
+                const videoSettings = {
+                    frameRate: 15,
+                    quality: 'medium',
+                    resolution: 'original',
+                    codec: 'libx264',
+                    format: 'mp4'
+                };
+                
+                converter.updateSettings(videoSettings);
+                
+                showStatus('info', `Processing ${selectedFiles.length} images for video creation...`);
+                
+                // Set up enhanced progress tracking (Step 2.3)
+                setupEnhancedProgressTracking();
+                
+                // Convert images to video
+                const result = await converter.convertImagesToVideo(selectedFiles);
+                
+                if (result.success) {
+                    showStatus('success', `Video created successfully! ${result.filename}`);
+                    
+                    // Download the video
+                    downloadVideo(result.videoBlob, result.filename);
+                    
+                    // Display comprehensive results
+                    displayAdvancedVideoSummary(result);
+                    
+                } else {
+                    throw new Error('Video creation failed');
+                }
+                
+            } catch (error) {
+                console.error('Video processing error:', error);
+                showStatus('error', `Video creation failed: ${error.message}`);
+                hideProgressBar();
+            }
+        }
+        
+        // Update progress bar display
+        function updateProgressBar(percentage) {
+            let progressContainer = document.getElementById('progressContainer');
+            let progressFill = document.getElementById('progressFill');
+            
+            if (!progressContainer) {
+                // Create progress bar if it doesn't exist
+                progressContainer = document.createElement('div');
+                progressContainer.id = 'progressContainer';
+                progressContainer.className = 'progress-container';
+                progressContainer.innerHTML = `
+                    <h4>Video Creation Progress:</h4>
+                    <div class="progress-bar">
+                        <div id="progressFill" class="progress-fill" style="width: 0%;">0%</div>
+                    </div>
+                `;
+                document.getElementById('status').parentNode.insertBefore(progressContainer, document.getElementById('status').nextSibling);
+                progressFill = document.getElementById('progressFill');
+            }
+            
+            progressContainer.style.display = 'block';
+            progressFill.style.width = `${percentage}%`;
+            progressFill.textContent = `${percentage}%`;
+        }
+        
+        // Hide progress bar
+        function hideProgressBar() {
+            const progressContainer = document.getElementById('progressContainer');
+            if (progressContainer) {
+                progressContainer.style.display = 'none';
+            }
+            
+            const enhancedProgressContainer = document.getElementById('enhancedProgressContainer');
+            if (enhancedProgressContainer) {
+                enhancedProgressContainer.style.display = 'none';
+            }
+        }
+        
+        // Enhanced Progress Tracking Functions (Step 2.3)
+        function setupEnhancedProgressTracking() {
+            // Create enhanced progress container if it doesn't exist
+            let enhancedContainer = document.getElementById('enhancedProgressContainer');
+            if (!enhancedContainer) {
+                enhancedContainer = document.createElement('div');
+                enhancedContainer.id = 'enhancedProgressContainer';
+                enhancedContainer.className = 'enhanced-progress-container';
+                enhancedContainer.innerHTML = createEnhancedProgressHTML();
+                
+                const statusElement = document.getElementById('status');
+                statusElement.parentNode.insertBefore(enhancedContainer, statusElement.nextSibling);
+            }
+            
+            enhancedContainer.style.display = 'block';
+        }
+        
+        function createEnhancedProgressHTML() {
+            return `
+                <div class="progress-header">
+                    <div class="progress-title">Video Creation Progress</div>
+                    <div id="etaDisplay" class="eta-display">Calculating ETA...</div>
+                </div>
+                
+                <div class="step-progress">
+                    <div id="stepIndicators"></div>
+                    <div id="currentItem" class="current-item"></div>
+                    
+                    <div class="progress-bar">
+                        <div id="enhancedProgressFill" class="progress-fill" style="width: 0%;"></div>
+                    </div>
+                </div>
+                
+                <div id="statisticsGrid" class="statistics-grid">
+                    <div class="stat-item">
+                        <div id="elapsedTime" class="stat-value">0s</div>
+                        <div class="stat-label">Elapsed</div>
+                    </div>
+                    <div class="stat-item">
+                        <div id="itemsPerSecond" class="stat-value">0</div>
+                        <div class="stat-label">Items/sec</div>
+                    </div>
+                    <div class="stat-item">
+                        <div id="completedSteps" class="stat-value">0/0</div>
+                        <div class="stat-label">Steps</div>
+                    </div>
+                    <div class="stat-item">
+                        <div id="confidence" class="stat-value">
+                            <span class="confidence-indicator confidence-low">Low</span>
+                        </div>
+                        <div class="stat-label">ETA Confidence</div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        function updateEnhancedProgress(progressData) {
+            if (progressData.step === 'step-progress') {
+                updateStepIndicators(progressData.stepInfo);
+            } else if (progressData.step === 'eta-update') {
+                updateETADisplay(progressData.eta);
+            } else if (progressData.step === 'statistics-update') {
+                updateStatisticsDisplay(progressData.statistics);
+            } else if (progressData.overall !== undefined) {
+                updateOverallProgress(progressData);
+            }
+        }
+        
+        function updateStepIndicators(stepInfo) {
+            const stepIndicators = document.getElementById('stepIndicators');
+            if (!stepIndicators) return;
+            
+            const steps = [
+                { id: 'validation', name: 'Image Validation' },
+                { id: 'processing', name: 'Image Processing' },
+                { id: 'encoder-init', name: 'Encoder Setup' },
+                { id: 'encoding', name: 'Video Encoding' },
+                { id: 'finalization', name: 'Finalization' }
+            ];
+            
+            let html = '';
+            steps.forEach((step, index) => {
+                let status = 'pending';
+                if (index < stepInfo.completedSteps) {
+                    status = 'completed';
+                } else if (stepInfo.currentStep === step.id) {
+                    status = 'active';
+                }
+                
+                html += `
+                    <div class="step-indicator">
+                        <div class="step-number ${status}">${index + 1}</div>
+                        <div class="step-name">${step.name}</div>
+                        <div class="step-status">${status}</div>
+                    </div>
+                `;
+            });
+            
+            stepIndicators.innerHTML = html;
+            
+            // Update completed steps counter
+            const completedStepsElement = document.getElementById('completedSteps');
+            if (completedStepsElement) {
+                completedStepsElement.textContent = `${stepInfo.completedSteps}/${stepInfo.totalSteps}`;
+            }
+        }
+        
+        function updateETADisplay(eta) {
+            const etaDisplay = document.getElementById('etaDisplay');
+            if (etaDisplay) {
+                etaDisplay.textContent = `ETA: ${eta.formatted}`;
+            }
+            
+            const confidenceElement = document.getElementById('confidence');
+            if (confidenceElement) {
+                confidenceElement.innerHTML = `
+                    <span class="confidence-indicator confidence-${eta.confidence}">${eta.confidence}</span>
+                `;
+            }
+        }
+        
+        function updateStatisticsDisplay(statistics) {
+            // Update elapsed time
+            const elapsedTimeElement = document.getElementById('elapsedTime');
+            if (elapsedTimeElement) {
+                elapsedTimeElement.textContent = statistics.timing.totalElapsedFormatted;
+            }
+            
+            // Update items per second
+            const itemsPerSecondElement = document.getElementById('itemsPerSecond');
+            if (itemsPerSecondElement) {
+                const rate = statistics.performance.overallItemsPerSecond.toFixed(1);
+                itemsPerSecondElement.textContent = rate;
+            }
+        }
+        
+        function updateOverallProgress(progressData) {
+            const progressFill = document.getElementById('enhancedProgressFill');
+            if (progressFill) {
+                const percentage = Math.round(progressData.overall || 0);
+                progressFill.style.width = `${percentage}%`;
+                progressFill.textContent = `${percentage}%`;
+            }
+            
+            const currentItemElement = document.getElementById('currentItem');
+            if (currentItemElement && progressData.currentItem) {
+                currentItemElement.textContent = `Processing: ${progressData.currentItem}`;
+            }
+        }
+        
+        // Download video file
+        function downloadVideo(blob, filename) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.style.display = 'none';
+            
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            
+            // Clean up URL object
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }
+        
+        // Display advanced video creation summary (Step 2.2 enhancement)
+        function displayAdvancedVideoSummary(result) {
+            const summaryDiv = document.getElementById('status');
+            const existingSummary = document.querySelector('.video-summary-advanced');
+            
+            // Remove existing summary if present
+            if (existingSummary) {
+                existingSummary.remove();
+            }
+            
+            const summaryElement = document.createElement('div');
+            summaryElement.className = 'video-summary-advanced';
+            summaryElement.innerHTML = `
+                <div style="margin-top: 20px; padding: 20px; background-color: #e8f5e8; border-radius: 8px; border-left: 4px solid #28a745;">
+                    <h4>✅ Video Creation Completed Successfully</h4>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 15px;">
+                        <div>
+                            <h5>📁 File Information</h5>
+                            <p><strong>Filename:</strong> ${result.filename}</p>
+                            <p><strong>Size:</strong> ${result.metadata.videoSize ? (result.metadata.videoSize / 1024 / 1024).toFixed(2) + ' MB' : 'N/A'}</p>
+                            <p><strong>Created:</strong> ${new Date(result.metadata.createdAt).toLocaleString()}</p>
+                        </div>
+                        
+                        <div>
+                            <h5>🎬 Video Properties</h5>
+                            <p><strong>Duration:</strong> ${result.metadata.duration.formatted}</p>
+                            <p><strong>Dimensions:</strong> ${result.metadata.dimensions.width}x${result.metadata.dimensions.height}</p>
+                            <p><strong>Aspect Ratio:</strong> ${result.metadata.dimensions.aspectRatio}</p>
+                        </div>
+                        
+                        <div>
+                            <h5>⚙️ Encoding Settings</h5>
+                            <p><strong>Frame Rate:</strong> ${result.metadata.settings.frameRate} FPS</p>
+                            <p><strong>Quality:</strong> ${result.metadata.settings.quality}</p>
+                            <p><strong>Codec:</strong> ${result.metadata.settings.codec}</p>
+                        </div>
+                        
+                        <div>
+                            <h5>📊 Processing Statistics</h5>
+                            <p><strong>Input Images:</strong> ${result.metadata.inputImageCount}</p>
+                            <p><strong>Processed:</strong> ${result.metadata.processedImageCount}</p>
+                            <p><strong>Compression:</strong> ${result.statistics.compressionRatio.percentage}% reduction</p>
+                            <p><strong>Processing Time:</strong> ${(result.statistics.totalProcessingTime / 1000).toFixed(1)}s</p>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-top: 15px; text-align: center;">
+                        <button class="btn test-video-btn" onclick="testAdvancedVideoPlayback('${result.filename}')">▶️ Test Video Playback</button>
+                        <button class="btn" onclick="showVideoMetadata(${JSON.stringify(result.metadata).replace(/"/g, '&quot;')})">📋 View Full Metadata</button>
+                    </div>
+                </div>
+            `;
+            
+            summaryDiv.parentNode.insertBefore(summaryElement, summaryDiv.nextSibling);
+            hideProgressBar();
+        }
+        
+        // Test video playback (enhanced for Phase 3)
+        function testAdvancedVideoPlayback(filename) {
+            showStatus('info', `Video testing features will be implemented in Phase 3. Generated file: ${filename}`);
+        }
+        
+        // Show detailed metadata
+        function showVideoMetadata(metadata) {
+            const metadataWindow = window.open('', '_blank', 'width=600,height=400');
+            metadataWindow.document.write(`
+                <html>
+                <head><title>Video Metadata - ${metadata.createdAt}</title></head>
+                <body style="font-family: Arial, sans-serif; padding: 20px;">
+                    <h2>Video Creation Metadata</h2>
+                    <pre style="background-color: #f8f9fa; padding: 15px; border-radius: 4px; overflow: auto;">
+${JSON.stringify(metadata, null, 2)}
+                    </pre>
+                </body>
+                </html>
+            `);
         }
 
         function showSettings() {
@@ -386,5 +931,11 @@
             displaySortingInfo: (analysis) => displaySortingInfo(analysis)
         };
     </script>
+    
+    <!-- Phase 2: Video Generation Engine -->
+    <script src="progressTracker.js"></script>
+    <script src="errorHandler.js"></script>
+    <script src="videoEncoder.js"></script>
+    <script src="imageToVideoConverter.js"></script>
 </body>
 </html>
