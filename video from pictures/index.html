@@ -598,8 +598,12 @@
                 if (result.success) {
                     showStatus('success', `Video created successfully! ${result.filename}`);
                     
-                    // Download the video
-                    downloadVideo(result.videoBlob, result.filename);
+                    // Store video data for additional operations (Step 3.1)
+                    currentVideoBlob = result.videoBlob;
+                    currentVideoFilename = result.filename;
+                    
+                    // Download the video with enhanced save functionality
+                    await downloadVideo(result.videoBlob, result.filename);
                     
                     // Display comprehensive results
                     displayAdvancedVideoSummary(result);
@@ -803,20 +807,257 @@
             }
         }
         
-        // Download video file
-        function downloadVideo(blob, filename) {
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            a.style.display = 'none';
+        // Enhanced video saving functionality (Step 3.1)
+        let fileSaver = null;
+        
+        // Initialize file saver
+        function initializeFileSaver() {
+            if (!fileSaver) {
+                fileSaver = new FileSaver();
+                console.log('FileSaver initialized:', fileSaver.getBrowserCapabilities());
+            }
+            return fileSaver;
+        }
+        
+        // Enhanced video download/save function (Step 3.1)
+        async function downloadVideo(blob, filename) {
+            const saver = initializeFileSaver();
             
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
+            try {
+                // Show save status
+                showStatus('info', 'Saving video file...');
+                
+                // Save the video with enhanced options
+                const result = await saver.saveVideo(blob, filename, {
+                    generateUniqueNames: true,
+                    confirmOverwrite: true
+                });
+                
+                if (result.success) {
+                    showStatus('success', 
+                        `Video saved successfully! ` +
+                        `File: ${result.filename} (${(result.size / 1024 / 1024).toFixed(2)} MB) ` +
+                        `via ${result.method}${result.location ? ` to ${result.location}` : ''}`
+                    );
+                    
+                    // Display save result details
+                    displaySaveResult(result);
+                    
+                    return result;
+                } else {
+                    if (result.cancelled) {
+                        showStatus('info', 'Save operation was cancelled by user');
+                    } else {
+                        throw new Error(result.error || 'Save operation failed');
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to save video:', error);
+                showStatus('error', `Failed to save video: ${error.message}`);
+                
+                // Fall back to basic download if enhanced save fails
+                try {
+                    console.log('Falling back to basic download method...');
+                    return await basicVideoDownload(blob, filename);
+                } catch (fallbackError) {
+                    console.error('Fallback download also failed:', fallbackError);
+                    showStatus('error', `All save methods failed: ${fallbackError.message}`);
+                    return { success: false, error: fallbackError.message };
+                }
+            }
+        }
+        
+        // Basic video download (fallback method)
+        async function basicVideoDownload(blob, filename) {
+            try {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                a.style.display = 'none';
+                
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                
+                // Clean up URL object
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+                
+                showStatus('success', `Video downloaded using fallback method: ${filename}`);
+                
+                return {
+                    success: true,
+                    method: 'fallback-download',
+                    filename: filename,
+                    location: 'Browser downloads folder',
+                    size: blob.size
+                };
+            } catch (error) {
+                throw new Error(`Fallback download failed: ${error.message}`);
+            }
+        }
+        
+        // Display detailed save result (Step 3.1)
+        function displaySaveResult(saveResult) {
+            const existingSaveResult = document.querySelector('.save-result-details');
+            if (existingSaveResult) {
+                existingSaveResult.remove();
+            }
             
-            // Clean up URL object
-            setTimeout(() => URL.revokeObjectURL(url), 1000);
+            const saveResultElement = document.createElement('div');
+            saveResultElement.className = 'save-result-details';
+            saveResultElement.innerHTML = `
+                <div style="margin-top: 15px; padding: 15px; background-color: #e8f5e8; border-radius: 8px; border-left: 4px solid #28a745;">
+                    <h4>💾 File Save Details</h4>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 10px;">
+                        <div>
+                            <strong>📁 File Information:</strong><br>
+                            <small>Name: ${saveResult.filename}</small><br>
+                            <small>Size: ${(saveResult.size / 1024 / 1024).toFixed(2)} MB</small><br>
+                            <small>Saved: ${new Date(saveResult.timestamp).toLocaleString()}</small>
+                        </div>
+                        
+                        <div>
+                            <strong>🔧 Save Method:</strong><br>
+                            <small>Method: ${saveResult.method}</small><br>
+                            <small>Location: ${saveResult.location || 'Default location'}</small><br>
+                            ${saveResult.note ? `<small>Note: ${saveResult.note}</small>` : ''}
+                        </div>
+                    </div>
+                    
+                    <div style="margin-top: 15px; text-align: center;">
+                        <button class="btn" onclick="showSaveOptions()">⚙️ Save Options</button>
+                        <button class="btn" onclick="saveWithDifferentMethod('${saveResult.filename}')">💾 Save Copy</button>
+                        <button class="btn test-video-btn" onclick="testVideoFile()">▶️ Test Saved Video</button>
+                    </div>
+                </div>
+            `;
+            
+            const statusElement = document.getElementById('statusMessage');
+            statusElement.parentNode.insertBefore(saveResultElement, statusElement.nextSibling);
+        }
+        
+        // Show save options dialog (Step 3.1)
+        function showSaveOptions() {
+            const saver = initializeFileSaver();
+            const capabilities = saver.validateSaveCapabilities();
+            const currentSettings = saver.settings;
+            
+            const optionsDialog = document.createElement('div');
+            optionsDialog.id = 'saveOptionsDialog';
+            optionsDialog.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background-color: rgba(0, 0, 0, 0.5);
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                z-index: 10000;
+            `;
+            
+            const dialogContent = document.createElement('div');
+            dialogContent.style.cssText = `
+                background-color: white;
+                padding: 30px;
+                border-radius: 8px;
+                max-width: 600px;
+                width: 90%;
+                max-height: 80vh;
+                overflow-y: auto;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            `;
+            
+            dialogContent.innerHTML = `
+                <h3>Save Options & Capabilities</h3>
+                
+                <div style="margin: 20px 0;">
+                    <h4>Available Save Methods:</h4>
+                    ${capabilities.available.map(method => `
+                        <div style="margin: 10px 0; padding: 10px; border: 1px solid ${method.recommended ? '#28a745' : '#6c757d'}; border-radius: 4px;">
+                            <strong>${method.method}</strong> ${method.recommended ? '✅' : '📁'}
+                            <br><small>${method.description}</small>
+                        </div>
+                    `).join('')}
+                </div>
+                
+                <div style="margin: 20px 0;">
+                    <h4>Current Settings:</h4>
+                    <label style="display: block; margin: 10px 0;">
+                        <input type="checkbox" id="generateUniqueNames" ${currentSettings.generateUniqueNames ? 'checked' : ''}> 
+                        Generate unique filenames with timestamps
+                    </label>
+                    <label style="display: block; margin: 10px 0;">
+                        <input type="checkbox" id="confirmOverwrite" ${currentSettings.confirmOverwrite ? 'checked' : ''}> 
+                        Confirm before overwriting existing files
+                    </label>
+                    <label style="display: block; margin: 10px 0;">
+                        <input type="checkbox" id="autoSave" ${currentSettings.autoSave ? 'checked' : ''}> 
+                        Auto-save without prompting (when possible)
+                    </label>
+                </div>
+                
+                <div style="text-align: center; margin-top: 20px;">
+                    <button onclick="applySaveOptions()" style="padding: 8px 16px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; margin: 5px;">Apply Settings</button>
+                    <button onclick="closeSaveOptions()" style="padding: 8px 16px; background-color: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; margin: 5px;">Close</button>
+                </div>
+            `;
+            
+            optionsDialog.appendChild(dialogContent);
+            document.body.appendChild(optionsDialog);
+            
+            // Add global functions for dialog interaction
+            window.applySaveOptions = () => {
+                const newSettings = {
+                    generateUniqueNames: document.getElementById('generateUniqueNames').checked,
+                    confirmOverwrite: document.getElementById('confirmOverwrite').checked,
+                    autoSave: document.getElementById('autoSave').checked
+                };
+                
+                saver.updateSettings(newSettings);
+                showStatus('success', 'Save options updated successfully');
+                document.body.removeChild(optionsDialog);
+                delete window.applySaveOptions;
+                delete window.closeSaveOptions;
+            };
+            
+            window.closeSaveOptions = () => {
+                document.body.removeChild(optionsDialog);
+                delete window.applySaveOptions;
+                delete window.closeSaveOptions;
+            };
+        }
+        
+        // Save with different method (Step 3.1)
+        async function saveWithDifferentMethod(filename) {
+            if (!currentVideoBlob) {
+                showStatus('error', 'No video data available. Please create a video first.');
+                return;
+            }
+            
+            const saver = initializeFileSaver();
+            
+            try {
+                showStatus('info', 'Saving additional copy with different method...');
+                
+                // Let user choose save method
+                const result = await saver.saveWithMethodChoice(currentVideoBlob, filename || currentVideoFilename);
+                
+                if (result && result.success) {
+                    showStatus('success', `Additional copy saved: ${result.filename} via ${result.method}`);
+                    displaySaveResult(result);
+                } else if (result && result.cancelled) {
+                    showStatus('info', 'Save operation was cancelled by user');
+                } else {
+                    showStatus('error', 'Failed to save additional copy');
+                }
+            } catch (error) {
+                console.error('Failed to save with different method:', error);
+                showStatus('error', `Failed to save copy: ${error.message}`);
+            }
         }
         
         // Display advanced video creation summary (Step 2.2 enhancement)
@@ -877,9 +1118,24 @@
             hideProgressBar();
         }
         
-        // Test video playback (enhanced for Phase 3)
-        function testAdvancedVideoPlayback(filename) {
-            showStatus('info', `Video testing features will be implemented in Phase 3. Generated file: ${filename}`);
+        // Test video file functionality (Step 3.2 preview)
+        function testVideoFile() {
+            showStatus('info', 'Video testing functionality will be implemented in Step 3.2. This includes automatic playback validation, format verification, and quality assessment.');
+        }
+        
+        // Store current video blob for additional operations (Step 3.1 enhancement)
+        let currentVideoBlob = null;
+        let currentVideoFilename = null;
+        
+        // Enhanced video creation completion handler
+        function handleVideoCreationSuccess(result) {
+            // Store video data for additional operations
+            currentVideoBlob = result.videoBlob;
+            currentVideoFilename = result.filename;
+            
+            console.log('Video creation completed:', result);
+            hideProgressBar();
+            displayAdvancedVideoSummary(result);
         }
         
         // Show detailed metadata
@@ -937,5 +1193,8 @@ ${JSON.stringify(metadata, null, 2)}
     <script src="errorHandler.js"></script>
     <script src="videoEncoder.js"></script>
     <script src="imageToVideoConverter.js"></script>
+    
+    <!-- Phase 3: Output and Validation -->
+    <script src="fileSaver.js"></script>
 </body>
 </html>
