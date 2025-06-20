@@ -79,6 +79,7 @@ Refer to the "Implementation Steps" in specification.md.
 3. When a step is successfully implemented and verified with tests:
    - Mark the step as completed in `specification.md`
    - Report the test results and any observations
+   - If there is a verifiable output (string, int, float...etc), ask if the output looks correct and check if it is    correctly formatted and the type is correct.
 
 4. If all steps are completed, respond that no more steps remain.
 
