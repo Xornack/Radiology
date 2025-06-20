@@ -14,7 +14,7 @@ The specification should be saved in specification.md and include the following 
 - Overview: A concise summary of the idea or feature.
 - Goals: The main objectives.
 - Requirements: Detailed functional and non-functional requirements.
-- Assumptions: All assumptions made while drafting the spec (to be validated or refined later).
+- Assumptions: All assumptions made while drafting the specifications (to be validated or refined later).
 - Open Questions: Points needing further clarification or decisions.
 - Step-by-Step Plan: A high-level roadmap of implementation steps.
 
