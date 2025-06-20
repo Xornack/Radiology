@@ -1,0 +1,86 @@
+# Dependencies for Video from Pictures Application
+
+## Browser-based Implementation (Primary)
+### Core Dependencies
+- HTML5 File System Access API (or File Input API as fallback)
+- JavaScript ES6+ support
+- Canvas API support
+- Web Workers (for background processing)
+
+### External Libraries
+- FFmpeg.js (WebAssembly-based video encoding)
+  - Alternative: MediaRecorder API (limited codec support)
+  - Alternative: WebCodecs API (if browser support sufficient)
+
+### Browser Requirements
+- Chrome 86+ (for File System Access API)
+- Firefox 90+ (with File Input API fallback)
+- Edge 86+ (Chromium-based)
+- Safari 14+ (limited support, may require fallbacks)
+
+## Python Implementation (Fallback Option 1)
+### Core Dependencies
+```
+PyQt6>=6.2.0
+opencv-python>=4.5.0
+ffmpeg-python>=0.2.0
+Pillow>=8.0.0
+numpy>=1.21.0
+```
+
+### System Requirements
+- Python 3.8+
+- FFmpeg executable installed on system
+- Qt6 libraries
+
+## C++ Implementation (Fallback Option 2)
+### Core Dependencies
+- Qt6 or Qt5 framework
+- OpenCV 4.5+
+- FFmpeg development libraries
+- C++17 compatible compiler
+
+### System Requirements
+- Windows 10+ / Linux / macOS
+- CMake 3.16+ (for building)
+- FFmpeg runtime libraries
+
+## Development Dependencies
+### For Testing
+- Jest (JavaScript testing)
+- Puppeteer (browser automation testing)
+- Sample medical image datasets (DICOM to JPEG converted)
+
+### For Building/Packaging
+- Webpack (JavaScript bundling)
+- Electron (if desktop packaging needed)
+- PyInstaller (for Python executable packaging)
+
+## Runtime Environment Requirements
+### Browser Environment
+- Local file system access permissions
+- Sufficient memory for image processing (recommend 4GB+ RAM)
+- Modern browser with WebAssembly support
+
+### Restricted IT Environment Considerations
+- No executable installation privileges required (browser-based)
+- Offline operation after initial load
+- No registry modifications needed
+- Portable deployment option
+
+## Optional Enhancements
+- Web Workers for multi-threaded processing
+- IndexedDB for temporary storage
+- Service Worker for offline caching
+- WebGL for hardware-accelerated processing
+
+## File Size Considerations
+### JavaScript Bundle
+- Core application: ~500KB
+- FFmpeg.js library: ~20-30MB
+- Total initial download: ~30MB
+
+### Memory Usage
+- Per image processing: 10-50MB (depending on image size)
+- Video encoding buffer: 100-500MB (depending on output length)
+- Recommended minimum RAM: 4GB
