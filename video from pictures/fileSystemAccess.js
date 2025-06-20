@@ -418,6 +418,177 @@ class FileSystemManager {
             throw new Error(`Batch validation failed: ${error.message}`);
         }
     }
+
+    // ========== FILE SORTING METHODS - STEP 1.4 ==========
+    
+    /**
+     * Sort files using natural/numerical ordering for medical image sequences
+     * Implements TR007 requirement for natural sorting algorithm
+     * @param {File[]} files - Array of files to sort
+     * @param {string} sortMethod - 'natural' (default) or 'dateModified'
+     * @return {File[]} - Sorted array of files
+     */
+    sortFiles(files, sortMethod = 'natural') {
+        if (!Array.isArray(files) || files.length === 0) {
+            return files;
+        }
+
+        console.log(`Sorting ${files.length} files using ${sortMethod} method`);
+        
+        switch (sortMethod) {
+            case 'natural':
+                return this.sortFilesNatural(files);
+            case 'dateModified':
+                return this.sortFilesByDate(files);
+            default:
+                console.warn(`Unknown sort method: ${sortMethod}, using natural sort`);
+                return this.sortFilesNatural(files);
+        }
+    }
+
+    /**
+     * Natural/numerical sorting algorithm for filenames
+     * Handles sequences like: img1.jpg, img2.jpg, img10.jpg, img20.jpg
+     * Supports medical imaging conventions: scan001.jpg, scan002.jpg, slice_001.jpg
+     */
+    sortFilesNatural(files) {
+        return [...files].sort((a, b) => {
+            return this.compareFilenamesNatural(a.name, b.name);
+        });
+    }
+
+    /**
+     * Compare two filenames using natural ordering
+     * Splits filenames into text and numeric parts for proper comparison
+     */
+    compareFilenamesNatural(filename1, filename2) {
+        // Convert to lowercase for case-insensitive comparison
+        const name1 = filename1.toLowerCase();
+        const name2 = filename2.toLowerCase();
+
+        // Split into chunks of text and numbers
+        const chunks1 = this.splitFilenameIntoChunks(name1);
+        const chunks2 = this.splitFilenameIntoChunks(name2);
+
+        const maxLength = Math.max(chunks1.length, chunks2.length);
+
+        for (let i = 0; i < maxLength; i++) {
+            const chunk1 = chunks1[i] || '';
+            const chunk2 = chunks2[i] || '';
+
+            // If both chunks are numbers, compare numerically
+            if (this.isNumericChunk(chunk1) && this.isNumericChunk(chunk2)) {
+                const num1 = parseInt(chunk1, 10);
+                const num2 = parseInt(chunk2, 10);
+                if (num1 !== num2) {
+                    return num1 - num2;
+                }
+            } else {
+                // String comparison
+                if (chunk1 !== chunk2) {
+                    return chunk1.localeCompare(chunk2);
+                }
+            }
+        }
+
+        return 0;
+    }
+
+    /**
+     * Split filename into alternating text and numeric chunks
+     * Example: "scan001_slice_02.jpg" -> ["scan", "001", "_slice_", "02", ".jpg"]
+     */
+    splitFilenameIntoChunks(filename) {
+        // Regular expression to split into text and numeric parts
+        return filename.match(/(\d+|\D+)/g) || [filename];
+    }
+
+    /**
+     * Check if a chunk represents a number
+     */
+    isNumericChunk(chunk) {
+        return /^\d+$/.test(chunk);
+    }
+
+    /**
+     * Sort files by modification date (fallback option)
+     * Implements TR008 requirement for date-based sorting fallback
+     */
+    sortFilesByDate(files) {
+        return [...files].sort((a, b) => {
+            const dateA = a.lastModified || 0;
+            const dateB = b.lastModified || 0;
+            return dateA - dateB;
+        });
+    }
+
+    /**
+     * Analyze filename patterns to determine best sorting method
+     * Returns recommendation for sorting method based on filename analysis
+     */
+    analyzeSortingPattern(files) {
+        if (!Array.isArray(files) || files.length === 0) {
+            return { recommended: 'natural', confidence: 0, reason: 'No files to analyze' };
+        }
+
+        let numericPatternCount = 0;
+        let sequentialPatternCount = 0;
+        const sampleSize = Math.min(10, files.length); // Analyze sample for performance
+
+        for (let i = 0; i < sampleSize; i++) {
+            const filename = files[i].name.toLowerCase();
+            
+            // Check for numeric patterns (digits in filename)
+            if (/\d+/.test(filename)) {
+                numericPatternCount++;
+            }
+
+            // Check for sequential patterns if we have enough files
+            if (i > 0) {
+                const prevFilename = files[i-1].name.toLowerCase();
+                const chunks1 = this.splitFilenameIntoChunks(prevFilename);
+                const chunks2 = this.splitFilenameIntoChunks(filename);
+                
+                // Look for incrementing numbers
+                for (let j = 0; j < Math.min(chunks1.length, chunks2.length); j++) {
+                    if (this.isNumericChunk(chunks1[j]) && this.isNumericChunk(chunks2[j])) {
+                        const num1 = parseInt(chunks1[j], 10);
+                        const num2 = parseInt(chunks2[j], 10);
+                        if (num2 === num1 + 1) {
+                            sequentialPatternCount++;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        const numericRatio = numericPatternCount / sampleSize;
+        const sequentialRatio = sequentialPatternCount / Math.max(1, sampleSize - 1);
+
+        // Determine recommendation
+        if (numericRatio >= 0.7) {
+            return {
+                recommended: 'natural',
+                confidence: Math.min(0.9, numericRatio + sequentialRatio * 0.3),
+                reason: `High numeric pattern detected (${Math.round(numericRatio * 100)}% of files)`
+            };
+        } else if (numericRatio >= 0.3) {
+            return {
+                recommended: 'natural',
+                confidence: 0.6,
+                reason: `Moderate numeric pattern detected (${Math.round(numericRatio * 100)}% of files)`
+            };
+        } else {
+            return {
+                recommended: 'dateModified',
+                confidence: 0.5,
+                reason: `Low numeric pattern detected, date sorting may be more appropriate`
+            };
+        }
+    }
+
+    // ========== END FILE SORTING METHODS ==========
 }
 
 // Create global instance
@@ -434,6 +605,23 @@ window.fileSystemModule.getBestAvailableAPI = function() {
 
 window.fileSystemModule.handleAPIError = function(error) {
     return this.handleAPIError(error);
+};
+
+// Step 1.4: Expose file sorting methods
+window.fileSystemModule.sortFiles = function(files, sortMethod) {
+    return this.sortFiles(files, sortMethod);
+};
+
+window.fileSystemModule.sortFilesNatural = function(files) {
+    return this.sortFilesNatural(files);
+};
+
+window.fileSystemModule.sortFilesByDate = function(files) {
+    return this.sortFilesByDate(files);
+};
+
+window.fileSystemModule.analyzeSortingPattern = function(files) {
+    return this.analyzeSortingPattern(files);
 };
 
 console.log('File System Access Module loaded successfully');

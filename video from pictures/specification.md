@@ -96,7 +96,7 @@ A locally-running application that converts a sequence of JPEG medical images (C
 1. **Step 1.1**: ✅ **COMPLETED** - Create HTML interface with folder selection capability
 2. **Step 1.2**: ✅ **COMPLETED** - Implement JavaScript file system access using available browser APIs
 3. **Step 1.3**: ✅ **COMPLETED** - Add JPEG file detection and validation logic
-4. **Step 1.4**: Implement file sorting algorithm
+4. **Step 1.4**: ✅ **COMPLETED** - Implement file sorting algorithm
 
 ### Phase 2: Video Generation Engine
 1. **Step 2.1**: Research and integrate browser-based video encoding library (e.g., FFmpeg.js)

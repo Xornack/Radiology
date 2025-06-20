@@ -94,6 +94,31 @@
         .file-item:last-child {
             border-bottom: none;
         }
+        .sorting-info {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: #f9f9f9;
+            display: none;
+        }
+        .sort-btn {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px 2px;
+        }
+        .sort-btn:hover {
+            background-color: #0056b3;
+        }
+        .sort-btn:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
@@ -116,6 +141,9 @@
 
         <!-- File List -->
         <div id="fileList" class="file-list"></div>
+
+        <!-- Sorting Info -->
+        <div id="sortingInfo" class="sorting-info"></div>
 
         <!-- Action Buttons -->
         <div style="text-align: center; margin-top: 20px;">
@@ -162,22 +190,29 @@
             }
         }
         
-        // Handle successful folder selection result
+        // Handle successful folder selection result - Updated for Step 1.4
         function handleFolderSelectionResult(result) {
-            selectedFiles = result.files;
+            // Analyze and sort files using natural/numerical ordering
+            const sortingAnalysis = window.fileSystemModule.analyzeSortingPattern(result.files);
+            console.log('Sorting analysis:', sortingAnalysis);
+            
+            // Sort files using the recommended method
+            selectedFiles = window.fileSystemModule.sortFiles(result.files, sortingAnalysis.recommended);
             folderName = result.folderName;
             
             showStatus('success', 
-                `Found ${result.files.length} JPEG files in folder: ${result.folderName} (via ${result.method})`
+                `Found ${result.files.length} JPEG files in folder: ${result.folderName} (via ${result.method}). ` +
+                `Sorted using ${sortingAnalysis.recommended} method (${Math.round(sortingAnalysis.confidence * 100)}% confidence).`
             );
-            displayFileList(result.files);
+            displayFileList(selectedFiles);
+            displaySortingInfo(sortingAnalysis);
             document.getElementById('processBtn').disabled = false;
             
             // Log browser info for debugging
             console.log('Browser capabilities:', window.fileSystemModule.getBrowserInfo());
         }
 
-        // Handle folder input change - Updated for Step 1.2
+        // Handle folder input change - Updated for Step 1.2 and 1.4
         document.getElementById('folderInput').addEventListener('change', function(event) {
             try {
                 showStatus('info', 'Processing selected files...');
@@ -205,7 +240,7 @@
                 
             } catch (error) {
                 console.error('File input error:', error);
-                showStatus('error', `Failed to process selected files: ${error.message}`);
+                showStatus('error', `Failed to process files: ${error.message}`);
             }
         });
 
@@ -259,6 +294,52 @@
             fileList.style.display = 'block';
         }
 
+        // Display sorting information to user - Step 1.4
+        function displaySortingInfo(sortingAnalysis) {
+            const sortingInfo = document.getElementById('sortingInfo');
+            if (sortingInfo) {
+                sortingInfo.innerHTML = `
+                    <div class="sorting-info">
+                        <strong>Sorting:</strong> ${sortingAnalysis.recommended} 
+                        (${Math.round(sortingAnalysis.confidence * 100)}% confidence)
+                        <br><small>${sortingAnalysis.reason}</small>
+                        <br>
+                        <button onclick="changeSortingMethod('natural')" class="sort-btn" 
+                                ${sortingAnalysis.recommended === 'natural' ? 'disabled' : ''}>
+                            Natural/Numerical
+                        </button>
+                        <button onclick="changeSortingMethod('dateModified')" class="sort-btn"
+                                ${sortingAnalysis.recommended === 'dateModified' ? 'disabled' : ''}>
+                            By Date Modified
+                        </button>
+                    </div>
+                `;
+                sortingInfo.style.display = 'block';
+            }
+        }
+
+        // Change sorting method - Step 1.4
+        function changeSortingMethod(newMethod) {
+            if (selectedFiles.length === 0) {
+                showStatus('error', 'No files selected to sort');
+                return;
+            }
+
+            console.log(`Changing sorting method to: ${newMethod}`);
+            selectedFiles = window.fileSystemModule.sortFiles(selectedFiles, newMethod);
+            
+            showStatus('success', `Files re-sorted using ${newMethod} method`);
+            displayFileList(selectedFiles);
+            
+            // Update sorting info display
+            const sortingAnalysis = {
+                recommended: newMethod,
+                confidence: 1.0,
+                reason: `Manually selected ${newMethod} sorting`
+            };
+            displaySortingInfo(sortingAnalysis);
+        }
+
         // Show status message
         function showStatus(type, message) {
             const statusEl = document.getElementById('statusMessage');
@@ -276,7 +357,7 @@
             showStatus('info', 'Settings panel will be implemented in Phase 4.');
         }
 
-        // Test functions for validation - Updated for Step 1.2
+        // Test functions for validation - Updated for Step 1.2 and 1.4
         window.testInterface = {
             getSelectedFiles: () => selectedFiles,
             getFolderName: () => folderName,
@@ -295,7 +376,14 @@
             getBrowserCapabilities: () => window.fileSystemModule.getBrowserInfo(),
             validateJPEGFile: (file) => window.fileSystemModule.isValidJPEGFile(file),
             validateJPEGSignature: (file) => window.fileSystemModule.validateJPEGSignature(file),
-            validateFilesBatch: (files, options) => window.fileSystemModule.validateFilesBatch(files, options)
+            validateFilesBatch: (files, options) => window.fileSystemModule.validateFilesBatch(files, options),
+            // Step 1.4: Sorting functionality
+            sortFiles: (files, method) => window.fileSystemModule.sortFiles(files, method),
+            sortFilesNatural: (files) => window.fileSystemModule.sortFilesNatural(files),
+            sortFilesByDate: (files) => window.fileSystemModule.sortFilesByDate(files),
+            analyzeSortingPattern: (files) => window.fileSystemModule.analyzeSortingPattern(files),
+            changeSortingMethod: (method) => changeSortingMethod(method),
+            displaySortingInfo: (analysis) => displaySortingInfo(analysis)
         };
     </script>
 </body>
