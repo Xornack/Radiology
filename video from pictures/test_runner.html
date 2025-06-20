@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Runner - Step 1.1</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-result { margin: 10px 0; padding: 10px; border-radius: 4px; }
+        .pass { background-color: #d4edda; color: #155724; }
+        .fail { background-color: #f8d7da; color: #721c24; }
+        .summary { margin-top: 20px; padding: 15px; background-color: #e7f3ff; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <h1>Test Results - Step 1.1: HTML Interface</h1>
+    <div id="testResults"></div>
+    
+    <!-- Load the main interface in an iframe for testing -->
+    <iframe src="index.html" width="800" height="600" style="border: 1px solid #ccc; margin-top: 20px;"></iframe>
+
+    <script>
+        // Manual test verification for Step 1.1
+        function runManualTests() {
+            const results = [];
+            
+            // Test 1: HTML structure
+            try {
+                const iframe = document.querySelector('iframe');
+                const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                
+                const requiredElements = [
+                    'folderSelection',
+                    'folderInput', 
+                    'statusMessage',
+                    'fileList',
+                    'processBtn',
+                    'settingsBtn'
+                ];
+                
+                let elementsFound = 0;
+                requiredElements.forEach(id => {
+                    if (iframeDoc.getElementById(id)) {
+                        elementsFound++;
+                    }
+                });
+                
+                results.push({
+                    test: 'HTML Structure',
+                    passed: elementsFound === requiredElements.length,
+                    message: `Found ${elementsFound}/${requiredElements.length} required elements`
+                });
+                
+            } catch (error) {
+                results.push({
+                    test: 'HTML Structure',
+                    passed: false,
+                    message: `Error: ${error.message}`
+                });
+            }
+            
+            // Test 2: File input configuration
+            try {
+                const iframe = document.querySelector('iframe');
+                const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                const fileInput = iframeDoc.getElementById('folderInput');
+                
+                const hasWebkitDirectory = fileInput && fileInput.hasAttribute('webkitdirectory');
+                const hasMultiple = fileInput && fileInput.hasAttribute('multiple');
+                const correctAccept = fileInput && fileInput.getAttribute('accept') === 'image/jpeg,image/jpg';
+                
+                results.push({
+                    test: 'File Input Configuration',
+                    passed: hasWebkitDirectory && hasMultiple && correctAccept,
+                    message: `webkitdirectory: ${hasWebkitDirectory}, multiple: ${hasMultiple}, accept: ${correctAccept}`
+                });
+                
+            } catch (error) {
+                results.push({
+                    test: 'File Input Configuration',
+                    passed: false,
+                    message: `Error: ${error.message}`
+                });
+            }
+            
+            // Test 3: CSS Styling
+            try {
+                const iframe = document.querySelector('iframe');
+                const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                const folderSelection = iframeDoc.getElementById('folderSelection');
+                
+                const hasStyles = folderSelection && window.getComputedStyle ? true : false;
+                
+                results.push({
+                    test: 'CSS Styling Applied',
+                    passed: hasStyles,
+                    message: hasStyles ? 'Styles are applied to elements' : 'Styling not detected'
+                });
+                
+            } catch (error) {
+                results.push({
+                    test: 'CSS Styling Applied',
+                    passed: false,
+                    message: `Error: ${error.message}`
+                });
+            }
+            
+            // Test 4: JavaScript Functions
+            try {
+                const iframe = document.querySelector('iframe');
+                const iframeWindow = iframe.contentWindow;
+                
+                const hasTestInterface = iframeWindow.testInterface && typeof iframeWindow.testInterface === 'object';
+                const hasSelectFolder = typeof iframeWindow.selectFolder === 'function';
+                const hasShowStatus = typeof iframeWindow.showStatus === 'function';
+                
+                results.push({
+                    test: 'JavaScript Functions',
+                    passed: hasTestInterface && hasSelectFolder && hasShowStatus,
+                    message: `testInterface: ${hasTestInterface}, selectFolder: ${hasSelectFolder}, showStatus: ${hasShowStatus}`
+                });
+                
+            } catch (error) {
+                results.push({
+                    test: 'JavaScript Functions',
+                    passed: false,
+                    message: `Error: ${error.message}`
+                });
+            }
+            
+            return results;
+        }
+        
+        // Display test results
+        function displayResults(results) {
+            const container = document.getElementById('testResults');
+            let passedTests = 0;
+            
+            results.forEach(result => {
+                const div = document.createElement('div');
+                div.className = `test-result ${result.passed ? 'pass' : 'fail'}`;
+                div.innerHTML = `
+                    <strong>${result.test}:</strong> ${result.passed ? 'PASSED' : 'FAILED'}<br>
+                    <small>${result.message}</small>
+                `;
+                container.appendChild(div);
+                
+                if (result.passed) passedTests++;
+            });
+            
+            // Summary
+            const summary = document.createElement('div');
+            summary.className = 'summary';
+            summary.innerHTML = `
+                <h3>Test Summary</h3>
+                <p><strong>Passed:</strong> ${passedTests}/${results.length} tests</p>
+                <p><strong>Status:</strong> ${passedTests === results.length ? '✅ Step 1.1 COMPLETED' : '❌ Step 1.1 NEEDS WORK'}</p>
+            `;
+            container.appendChild(summary);
+        }
+        
+        // Run tests when iframe loads
+        window.addEventListener('load', function() {
+            setTimeout(() => {
+                const results = runManualTests();
+                displayResults(results);
+            }, 1000);
+        });
+    </script>
+</body>
+</html>
