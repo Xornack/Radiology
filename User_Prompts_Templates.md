@@ -3,7 +3,8 @@ https://medium.com/@christoph_27312/how-to-code-with-ai-5ef022ebfd4d
 I also included some questions copilot asked me but I didn't include in my first iteration of instructions.
 
 # Idea
-Found in idea.md.
+Found in idea.md. Make this as specific and vivid as possible. If it includes specifications, that is good, as you will have to answer specification questions anyway. Here's an example of what the code agent might ask.
+
 
 # Specifications
 ## Objective
