@@ -41,13 +41,13 @@ GOALS:
 # Sample pasted input
 Finding 3
 
-    2022-12-12
+    yyyy-mm-dd
         Finding 3 - SUV Sphere (Name Collision)
             : Name collision prevented result
         Finding 3 - 2D Measure
             RECIST Long: 1.38 cm
             RECIST Short: 1.13 cm
-    2025-06-13
+    yyyy-mm-dd
         Finding 3 - SUV Sphere (Name Collision)
             : Name collision prevented result
         Finding 3 - 2D Measure
@@ -58,7 +58,7 @@ Finding 3
 
 Finding 4
 
-    2022-12-12
+    yyyy-mm-dd
         Finding 4 - SUV Sphere
             Max: 2.29 SUVbw
             Mean: 1.7 SUVbw
@@ -73,7 +73,7 @@ Finding 4
         Finding 4 - 2D Measure 2
             RECIST Long: 
             RECIST Short: 
-    2025-06-13
+    yyyy-mm-dd
         Finding 4 - SUV Sphere
             Max: 
             Mean: 
