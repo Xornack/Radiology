@@ -21,7 +21,8 @@ The specification should be saved in specification.md and include the following 
 ## Instructions
 Incorporate any background or context specific to the project. Append or refine assumptions as needed.
 Keep the structure modular, so any section can be easily updated by subsequent prompts.
-Once the spec is generated, allow for iterative refinements in each section.
+Once the spec is generated, allow for iterative refinements in each section. Create any folder or file as seems appropriate.
+Create dependancies.txt for a list of the dependancies.
 
 ## Request
 Generate an initial draft of specification.md based on the above structure.
@@ -84,3 +85,5 @@ Refer to the "Implementation Steps" in specification.md.
 4. If all steps are completed, respond that no more steps remain.
 
 After each implementation, run the tests and report results to confirm functionality works as expected.
+
+If the program is functioning as expected, create a README.txt using best practices to explain the program.
