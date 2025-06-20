@@ -3,7 +3,6 @@ https://medium.com/@christoph_27312/how-to-code-with-ai-5ef022ebfd4d
 I also included some questions copilot asked me but I didn't include in my first iteration of instructions.
 
 # Idea
-## Idea
 Found in idea.md.
 
 # Specifications
