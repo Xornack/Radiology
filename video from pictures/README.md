@@ -57,7 +57,7 @@ video from pictures/
 ## 🛠 **Technical Details**
 
 - **Video Encoding**: Canvas + MediaRecorder APIs (no FFmpeg.js)
-- **File Formats**: Input: JPEG images, Output: WebM/MP4 video
+- **File Formats**: Input: JPEG images, Output: WebM video
 - **Processing**: Client-side only, memory-based
 - **Security**: CSP headers, XSS protection, input validation
 
