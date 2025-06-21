@@ -1118,9 +1118,302 @@
             hideProgressBar();
         }
         
-        // Test video file functionality (Step 3.2 preview)
-        function testVideoFile() {
-            showStatus('info', 'Video testing functionality will be implemented in Step 3.2. This includes automatic playback validation, format verification, and quality assessment.');
+        // Test video file functionality (Step 3.2 implementation)
+        async function testVideoFile() {
+            if (!currentVideoBlob) {
+                showStatus('error', 'No video data available. Please create a video first.');
+                return;
+            }
+            
+            try {
+                showStatus('info', 'Starting comprehensive video validation...');
+                
+                // Initialize video tester
+                const tester = new VideoTester();
+                const reporter = new VideoReporter();
+                
+                // Set up progress callbacks
+                tester.setCallbacks(
+                    (start) => {
+                        showStatus('info', `Video testing started: ${start.message}`);
+                        showVideoTestProgress('Testing video quality and playback...', 0);
+                    },
+                    (progress) => {
+                        showVideoTestProgress(progress.message, progress.percentage);
+                    },
+                    async (results) => {
+                        hideVideoTestProgress();
+                        
+                        // Generate comprehensive report
+                        const report = reporter.generateTestReport(results, currentVideoBlob);
+                        
+                        if (results.success) {
+                            showStatus('success', `Video validation completed successfully! All tests passed.`);
+                            displayVideoTestResults(results, report);
+                        } else {
+                            showStatus('warning', `Video validation completed with issues. Check test results for details.`);
+                            displayVideoTestResults(results, report);
+                        }
+                    },
+                    (error) => {
+                        hideVideoTestProgress();
+                        showStatus('error', `Video testing failed: ${error.error}`);
+                        console.error('Video testing error:', error);
+                    }
+                );
+                
+                // Run comprehensive test
+                await tester.testVideo(currentVideoBlob, currentVideoFilename);
+                
+            } catch (error) {
+                console.error('Video testing error:', error);
+                showStatus('error', `Video testing failed: ${error.message}`);
+                hideVideoTestProgress();
+            }
+        }
+        
+        // Show video test progress
+        function showVideoTestProgress(message, percentage) {
+            let progressContainer = document.getElementById('videoTestProgress');
+            
+            if (!progressContainer) {
+                progressContainer = document.createElement('div');
+                progressContainer.id = 'videoTestProgress';
+                progressContainer.className = 'video-progress';
+                progressContainer.innerHTML = `
+                    <h4>🔬 Video Testing Progress</h4>
+                    <div id="videoTestMessage" class="progress-message"></div>
+                    <div class="progress-bar">
+                        <div id="videoTestProgressFill" class="progress-fill" style="width: 0%;"></div>
+                    </div>
+                `;
+                
+                const statusElement = document.getElementById('statusMessage');
+                statusElement.parentNode.insertBefore(progressContainer, statusElement.nextSibling);
+            }
+            
+            progressContainer.style.display = 'block';
+            document.getElementById('videoTestMessage').textContent = message;
+            
+            if (percentage !== undefined) {
+                const progressFill = document.getElementById('videoTestProgressFill');
+                progressFill.style.width = `${percentage}%`;
+                progressFill.textContent = `${percentage}%`;
+            }
+        }
+        
+        // Hide video test progress
+        function hideVideoTestProgress() {
+            const progressContainer = document.getElementById('videoTestProgress');
+            if (progressContainer) {
+                progressContainer.style.display = 'none';
+            }
+        }
+        
+        // Display video test results
+        function displayVideoTestResults(testResults, report) {
+            const existingResults = document.querySelector('.video-test-results');
+            if (existingResults) {
+                existingResults.remove();
+            }
+            
+            const resultsElement = document.createElement('div');
+            resultsElement.className = 'video-test-results';
+            
+            const summary = report.summary;
+            const statusColor = summary.overall === 'PASSED' ? '#28a745' : '#dc3545';
+            const statusIcon = summary.overall === 'PASSED' ? '✅' : '❌';
+            
+            resultsElement.innerHTML = `
+                <div style="margin-top: 20px; padding: 20px; background-color: #f8f9fa; border-radius: 8px; border-left: 4px solid ${statusColor};">
+                    <h4>${statusIcon} Video Validation Results</h4>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 15px;">
+                        <div>
+                            <h5>📋 Test Summary</h5>
+                            <p><strong>Overall Status:</strong> <span style="color: ${statusColor};">${summary.overall}</span></p>
+                            <p><strong>Tests Passed:</strong> ${summary.testsPassed}/${summary.testsRun}</p>
+                            <p><strong>Duration:</strong> ${summary.testDuration}</p>
+                            <p><strong>Warnings:</strong> ${summary.warnings}</p>
+                        </div>
+                        
+                        <div>
+                            <h5>🎬 Video Quality</h5>
+                            <p><strong>Duration:</strong> ${summary.videoInfo?.duration || 'Unknown'}</p>
+                            <p><strong>Dimensions:</strong> ${summary.videoInfo?.dimensions || 'Unknown'}</p>
+                            <p><strong>File Size:</strong> ${summary.videoInfo?.fileSize || 'Unknown'}</p>
+                            <p><strong>Aspect Ratio:</strong> ${summary.videoInfo?.aspectRatio || 'Unknown'}</p>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-top: 15px;">
+                        <h5>🔬 Test Details</h5>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+                            ${Object.entries(testResults.tests).map(([testName, result]) => {
+                                const icon = result.status === 'passed' ? '✅' : result.status === 'failed' ? '❌' : '⚠️';
+                                return `
+                                    <div style="padding: 10px; border: 1px solid #dee2e6; border-radius: 4px; background-color: white;">
+                                        <strong>${icon} ${formatTestName(testName)}</strong>
+                                        <br><small style="color: #6c757d;">${result.status.toUpperCase()}</small>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                    
+                    ${testResults.warnings && testResults.warnings.length > 0 ? `
+                    <div style="margin-top: 15px;">
+                        <h5>⚠️ Warnings</h5>
+                        <ul style="margin: 0; padding-left: 20px;">
+                            ${testResults.warnings.map(warning => `<li style="color: #856404;">${warning}</li>`).join('')}
+                        </ul>
+                    </div>
+                    ` : ''}
+                    
+                    ${testResults.recommendations && testResults.recommendations.length > 0 ? `
+                    <div style="margin-top: 15px;">
+                        <h5>💡 Recommendations</h5>
+                        <ul style="margin: 0; padding-left: 20px;">
+                            ${testResults.recommendations.map(rec => `<li style="color: #004085;">${rec}</li>`).join('')}
+                        </ul>
+                    </div>
+                    ` : ''}
+                    
+                    <div style="margin-top: 20px; text-align: center;">
+                        <button class="btn" onclick="runQuickVideoTest()">🔄 Quick Re-test</button>
+                        <button class="btn" onclick="showDetailedTestReport(${JSON.stringify(report).replace(/"/g, '&quot;')})">📄 Detailed Report</button>
+                        <button class="btn" onclick="downloadTestReport(${JSON.stringify(report).replace(/"/g, '&quot;')})">💾 Save Report</button>
+                        <button class="btn test-video-btn" onclick="playTestVideo()">▶️ Play Video</button>
+                    </div>
+                </div>
+            `;
+            
+            const statusElement = document.getElementById('statusMessage');
+            statusElement.parentNode.insertBefore(resultsElement, statusElement.nextSibling);
+        }
+        
+        // Format test name for display
+        function formatTestName(testName) {
+            return testName
+                .replace(/([A-Z])/g, ' $1')
+                .replace(/^./, str => str.toUpperCase())
+                .trim();
+        }
+        
+        // Run quick video test
+        async function runQuickVideoTest() {
+            if (!currentVideoBlob) {
+                showStatus('error', 'No video data available.');
+                return;
+            }
+            
+            try {
+                showStatus('info', 'Running quick video validation...');
+                const tester = new VideoTester();
+                const reporter = new VideoReporter();
+                
+                showVideoTestProgress('Quick validation in progress...', 50);
+                
+                const results = await tester.quickTest(currentVideoBlob, currentVideoFilename);
+                const report = reporter.generateTestReport(results, currentVideoBlob);
+                
+                hideVideoTestProgress();
+                
+                if (results.success) {
+                    showStatus('success', 'Quick validation passed!');
+                } else {
+                    showStatus('warning', 'Quick validation found issues.');
+                }
+                
+                displayVideoTestResults(results, report);
+                
+            } catch (error) {
+                hideVideoTestProgress();
+                showStatus('error', `Quick test failed: ${error.message}`);
+            }
+        }
+        
+        // Show detailed test report
+        function showDetailedTestReport(report) {
+            const reportWindow = window.open('', '_blank', 'width=800,height=600,scrollbars=yes');
+            const reporter = new VideoReporter();
+            const htmlReport = reporter.exportAsHTML(report);
+            
+            reportWindow.document.write(htmlReport);
+            reportWindow.document.close();
+        }
+        
+        // Download test report
+        async function downloadTestReport(report) {
+            try {
+                const reporter = new VideoReporter();
+                const result = await reporter.saveReport(report, currentVideoFilename || 'video', 'html');
+                
+                if (result.success) {
+                    showStatus('success', `Test report saved: ${result.filename}`);
+                } else {
+                    showStatus('error', `Failed to save report: ${result.error}`);
+                }
+            } catch (error) {
+                showStatus('error', `Failed to save report: ${error.message}`);
+            }
+        }
+        
+        // Play test video in popup
+        function playTestVideo() {
+            if (!currentVideoBlob) {
+                showStatus('error', 'No video data available.');
+                return;
+            }
+            
+            try {
+                const videoUrl = URL.createObjectURL(currentVideoBlob);
+                const playerWindow = window.open('', '_blank', 'width=800,height=600');
+                
+                playerWindow.document.write(`
+                    <html>
+                    <head>
+                        <title>Video Playback Test - ${currentVideoFilename}</title>
+                        <style>
+                            body { margin: 0; padding: 20px; font-family: Arial, sans-serif; background-color: #f5f5f5; }
+                            .container { max-width: 800px; margin: 0 auto; text-align: center; }
+                            video { max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 8px; }
+                            .info { margin: 20px 0; padding: 15px; background-color: white; border-radius: 8px; }
+                        </style>
+                    </head>
+                    <body>
+                        <div class="container">
+                            <h2>Video Playback Test</h2>
+                            <div class="info">
+                                <p><strong>File:</strong> ${currentVideoFilename}</p>
+                                <p><strong>Size:</strong> ${(currentVideoBlob.size / 1024 / 1024).toFixed(2)} MB</p>
+                                <p>Use the video controls to test playback functionality.</p>
+                            </div>
+                            <video controls autoplay>
+                                <source src="${videoUrl}" type="video/mp4">
+                                Your browser does not support the video tag.
+                            </video>
+                            <div class="info">
+                                <p><small>This window can be closed when testing is complete.</small></p>
+                                <button onclick="window.close()" style="padding: 8px 16px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">Close</button>
+                            </div>
+                        </div>
+                    </body>
+                    </html>
+                `);
+                
+                playerWindow.document.close();
+                
+                // Clean up URL after window is closed
+                playerWindow.addEventListener('beforeunload', () => {
+                    URL.revokeObjectURL(videoUrl);
+                });
+                
+                showStatus('info', 'Video playback test opened in new window.');
+                
+            } catch (error) {
+                showStatus('error', `Failed to open video player: ${error.message}`);
+            }
         }
         
         // Store current video blob for additional operations (Step 3.1 enhancement)
@@ -1196,5 +1489,7 @@ ${JSON.stringify(metadata, null, 2)}
     
     <!-- Phase 3: Output and Validation -->
     <script src="fileSaver.js"></script>
+    <script src="videoTester.js"></script>
+    <script src="videoReporter.js"></script>
 </body>
 </html>

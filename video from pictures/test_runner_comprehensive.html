@@ -72,6 +72,7 @@
             <button class="btn" onclick="runStep11Tests()">Test Step 1.1</button>
             <button class="btn" onclick="runStep12Tests()">Test Step 1.2</button>
             <button class="btn" onclick="runStep13Tests()">Test Step 1.3</button>
+            <button class="btn" onclick="runStep32Only()">Test Step 3.2</button>
             <button class="btn" onclick="clearResults()">Clear Results</button>
         </div>
 
@@ -91,6 +92,7 @@
     <script src="test_step1_2.js"></script>
     <script src="test_step1_3.js"></script>
     <script src="test_step1_4.js"></script>
+    <script src="test_step3_2.js"></script>
 
     <script>
         let testResults = [];
@@ -104,6 +106,7 @@
                 await runStep11Tests();
                 await runStep12Tests();
                 await runStep13Tests();
+                await runStep32Tests();
                 
                 showOverallSummary();
             } catch (error) {
@@ -168,6 +171,59 @@
                 displayTestResults('Step 1.3', results);
             } catch (error) {
                 displayError('Step 1.3 Tests Failed', error);
+            }
+        }
+
+        async function runStep32Tests() {
+            displaySectionHeader('Step 3.2: Video Testing and Validation');
+            
+            try {
+                if (typeof Step3_2_Tests === 'undefined') {
+                    throw new Error('Step3_2_Tests not loaded');
+                }
+
+                const results = await Step3_2_Tests.runAllTests();
+                
+                const passed = results.filter(r => r.status === 'PASSED').length;
+                const failed = results.filter(r => r.status === 'FAILED').length;
+                const total = results.length;
+
+                testResults.push({
+                    step: '3.2',
+                    name: 'Video Testing and Validation',
+                    passed: passed,
+                    failed: failed,
+                    total: total,
+                    results: results
+                });
+
+                displayStepSummary('Step 3.2', passed, failed, total);
+
+                // Display individual test results
+                results.forEach(result => {
+                    const resultDiv = document.createElement('div');
+                    resultDiv.className = `test-result ${result.status === 'PASSED' ? 'pass' : 'fail'}`;
+                    resultDiv.innerHTML = `
+                        <strong>${result.name}:</strong> ${result.status}<br>
+                        ${result.duration ? `Duration: ${result.duration}ms<br>` : ''}
+                        ${result.error ? `Error: ${result.error}<br>` : ''}
+                        ${result.result ? `Result: ${JSON.stringify(result.result)}<br>` : ''}
+                    `;
+                    document.getElementById('testResults').appendChild(resultDiv);
+                });
+
+            } catch (error) {
+                console.error('Step 3.2 tests failed:', error);
+                displayError('Step 3.2 Test Execution Failed', error);
+                
+                testResults.push({
+                    step: '3.2',
+                    name: 'Video Testing and Validation',
+                    passed: 0,
+                    failed: 1,
+                    total: 1,
+                    error: error.message
+                });
             }
         }
 
@@ -267,7 +323,8 @@
                     File System Module: ${typeof window.fileSystemModule !== 'undefined' ? '✅ Loaded' : '❌ Not loaded'}<br>
                     Test Modules: Step 1.1 ${typeof TestStep1_1 !== 'undefined' ? '✅' : '❌'}, 
                                  Step 1.2 ${typeof TestStep1_2 !== 'undefined' ? '✅' : '❌'}, 
-                                 Step 1.3 ${typeof TestStep1_3 !== 'undefined' ? '✅' : '❌'}<br>
+                                 Step 1.3 ${typeof TestStep1_3 !== 'undefined' ? '✅' : '❌'},
+                                 Step 3.2 ${typeof Step3_2_Tests !== 'undefined' ? '✅' : '❌'}<br>
                     Application Frame: ${document.getElementById('appFrame') ? '✅ Loaded' : '❌ Not loaded'}<br><br>
                     Click "Run All Tests" to execute the complete test suite.
                 `;
