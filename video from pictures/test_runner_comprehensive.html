@@ -73,6 +73,7 @@
             <button class="btn" onclick="runStep12Tests()">Test Step 1.2</button>
             <button class="btn" onclick="runStep13Tests()">Test Step 1.3</button>
             <button class="btn" onclick="runStep32Only()">Test Step 3.2</button>
+            <button class="btn" onclick="runStep33Only()">Test Step 3.3</button>
             <button class="btn" onclick="clearResults()">Clear Results</button>
         </div>
 
@@ -87,12 +88,16 @@
     <!-- Load File System Access Module first -->
     <script src="fileSystemAccess.js"></script>
     
+    <!-- Load Required Modules for Step 3.3 -->
+    <script src="successFailureReporter.js"></script>
+    
     <!-- Load Test Modules -->
     <script src="test_step1_1.js"></script>
     <script src="test_step1_2.js"></script>
     <script src="test_step1_3.js"></script>
     <script src="test_step1_4.js"></script>
     <script src="test_step3_2.js"></script>
+    <script src="test_step3_3.js"></script>
 
     <script>
         let testResults = [];
@@ -107,6 +112,7 @@
                 await runStep12Tests();
                 await runStep13Tests();
                 await runStep32Tests();
+                await runStep33Tests();
                 
                 showOverallSummary();
             } catch (error) {
@@ -227,6 +233,71 @@
             }
         }
 
+        async function runStep33Tests() {
+            displaySectionHeader('Step 3.3: Success/Failure Reporting');
+            
+            try {
+                if (typeof Step3_3_Tests === 'undefined') {
+                    throw new Error('Step3_3_Tests not loaded');
+                }
+
+                const results = await Step3_3_Tests.runAllTests();
+                
+                const passed = results.passedTests;
+                const failed = results.failedTests;
+                const total = results.totalTests;
+
+                testResults.push({
+                    step: '3.3',
+                    name: 'Success/Failure Reporting',
+                    passed: passed,
+                    failed: failed,
+                    total: total,
+                    successRate: results.successRate,
+                    details: results.results
+                });
+
+                displayTestResults('Step 3.3: Success/Failure Reporting', results.results);
+
+            } catch (error) {
+                console.error('Step 3.3 test error:', error);
+                displayError('Step 3.3 test failed', error);
+                testResults.push({
+                    step: '3.3',
+                    name: 'Success/Failure Reporting',
+                    passed: 0,
+                    failed: 1,
+                    total: 1,
+                    error: error.message
+                });
+            }
+        }
+
+        // Individual test runners
+        async function runStep32Only() {
+            clearResults();
+            showLoading('Running Step 3.2 tests...');
+
+            try {
+                await runStep32Tests();
+                showOverallSummary();
+            } catch (error) {
+                displayError('Failed to run Step 3.2 tests', error);
+            }
+        }
+        
+        async function runStep33Only() {
+            clearResults();
+            showLoading('Running Step 3.3 tests...');
+
+            try {
+                await runStep33Tests();
+                showOverallSummary();
+            } catch (error) {
+                displayError('Failed to run Step 3.3 tests', error);
+            }
+        }
+
         // Display functions
         function displaySectionHeader(title) {
             const container = document.getElementById('testResults');
@@ -324,7 +395,8 @@
                     Test Modules: Step 1.1 ${typeof TestStep1_1 !== 'undefined' ? '✅' : '❌'}, 
                                  Step 1.2 ${typeof TestStep1_2 !== 'undefined' ? '✅' : '❌'}, 
                                  Step 1.3 ${typeof TestStep1_3 !== 'undefined' ? '✅' : '❌'},
-                                 Step 3.2 ${typeof Step3_2_Tests !== 'undefined' ? '✅' : '❌'}<br>
+                                 Step 3.2 ${typeof Step3_2_Tests !== 'undefined' ? '✅' : '❌'},
+                                 Step 3.3 ${typeof Step3_3_Tests !== 'undefined' ? '✅' : '❌'}<br>
                     Application Frame: ${document.getElementById('appFrame') ? '✅ Loaded' : '❌ Not loaded'}<br><br>
                     Click "Run All Tests" to execute the complete test suite.
                 `;

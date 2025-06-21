@@ -325,6 +325,12 @@
 
         <!-- Status Messages -->
         <div id="statusMessage" class="status"></div>
+        
+        <!-- Session Status (Step 3.3) -->
+        <div id="sessionStatus" class="session-status" style="display: none; background: #f8f9fa; padding: 10px; border-radius: 5px; margin: 10px 0; font-size: 14px; border-left: 4px solid #007bff;">
+            <strong>Session:</strong> 0 operations | <strong>Success Rate:</strong> 0%
+            <button class="btn" onclick="downloadSessionReport('html')" style="float: right; padding: 5px 10px; font-size: 12px;">📄 Download Report</button>
+        </div>
 
         <!-- File List -->
         <div id="fileList" class="file-list"></div>
@@ -345,10 +351,38 @@
         // Global variables for testing
         let selectedFiles = [];
         let folderName = '';
+        
+        // Initialize Success/Failure Reporter (Step 3.3)
+        let successFailureReporter = null;
+        
+        // Initialize reporter when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            successFailureReporter = new SuccessFailureReporter();
+            
+            // Set up callbacks for real-time UI updates
+            successFailureReporter.onReportGenerated = function(report) {
+                updateSuccessFailureUI(report);
+            };
+            
+            // Show session status panel
+            document.getElementById('sessionStatus').style.display = 'block';
+            updateSuccessFailureUI({ type: 'session', status: 'initialized' });
+            
+            console.log('Success/Failure Reporter initialized');
+        });
 
-        // Folder selection functionality - Updated for Step 1.2
+        // Folder selection functionality - Updated for Step 1.2 and Step 3.3
         async function selectFolder() {
+            let operationId = null;
+            
             try {
+                // Start operation tracking (Step 3.3)
+                if (successFailureReporter) {
+                    operationId = successFailureReporter.reportOperationStart('file_selection', {
+                        method: 'folder_browser'
+                    });
+                }
+                
                 showStatus('info', 'Selecting folder...');
                 
                 // Use the file system access module
@@ -360,6 +394,15 @@
                 }
                 
                 if (result.success) {
+                    // Report success (Step 3.3)
+                    if (successFailureReporter && operationId) {
+                        successFailureReporter.reportOperationSuccess(operationId, {
+                            method: result.method,
+                            folderName: result.folderName,
+                            fileCount: result.files.length
+                        });
+                    }
+                    
                     handleFolderSelectionResult(result);
                 } else {
                     throw new Error(result.error);
@@ -367,6 +410,17 @@
                 
             } catch (error) {
                 console.error('Folder selection error:', error);
+                
+                // Report failure (Step 3.3)
+                if (successFailureReporter && operationId) {
+                    successFailureReporter.reportOperationFailure(operationId, {
+                        category: 'file_access',
+                        severity: 'medium',
+                        message: error.message,
+                        stack: error.stack
+                    });
+                }
+                
                 showStatus('error', `Failed to select folder: ${error.message}`);
                 
                 // Fall back to file input if needed
@@ -534,16 +588,87 @@
             statusEl.textContent = message;
             statusEl.style.display = 'block';
         }
-
-        // Phase 2: Video Creation Implementation (Updated for Step 2.2)
+        
+        // Update UI with success/failure reporting information (Step 3.3)
+        function updateSuccessFailureUI(report) {
+            // Update session status indicator if it exists
+            const sessionStatus = document.getElementById('sessionStatus');
+            if (sessionStatus && successFailureReporter) {
+                const status = successFailureReporter.getCurrentSessionStatus();
+                sessionStatus.innerHTML = `
+                    <strong>Session:</strong> ${status.operationCount} operations | 
+                    <strong>Success Rate:</strong> ${status.successRate}%
+                `;
+            }
+            
+            // Handle different report types
+            switch (report.type) {
+                case 'operation':
+                    if (report.status === 'started') {
+                        console.log(`🔄 Started: ${report.operation.type}`);
+                    }
+                    break;
+                case 'success':
+                    console.log(`✅ Success: ${report.operation.type} completed`);
+                    break;
+                case 'error':
+                    console.log(`❌ Error: ${report.operation.type} failed`);
+                    break;
+                case 'warning':
+                    console.log(`⚠️ Warning: ${report.operation.type}`);
+                    break;
+            }
+        }
+        
+        // Generate and download comprehensive session report (Step 3.3)
+        function downloadSessionReport(format = 'html') {
+            if (!successFailureReporter) {
+                showStatus('error', 'Success/Failure Reporter not initialized');
+                return;
+            }
+            
+            try {
+                const exportData = successFailureReporter.exportReport(format);
+                if (exportData) {
+                    // Create download link
+                    const url = URL.createObjectURL(exportData.blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = exportData.filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    
+                    showStatus('success', `Session report downloaded: ${exportData.filename}`);
+                } else {
+                    showStatus('error', 'Failed to generate session report');
+                }
+            } catch (error) {
+                showStatus('error', `Report download failed: ${error.message}`);
+            }
+        }
+        
+        // Phase 2: Video Creation Implementation (Updated for Step 2.2 and Step 3.3)
         async function processImages() {
+            let operationId = null;
+            
             if (!selectedFiles || selectedFiles.length === 0) {
                 showStatus('error', 'No images selected. Please select a folder first.');
                 return;
             }
 
             try {
+                // Start operation tracking (Step 3.3)
+                if (successFailureReporter) {
+                    operationId = successFailureReporter.reportOperationStart('video_conversion', {
+                        inputFileCount: selectedFiles.length,
+                        folderName: folderName
+                    });
+                }
+                
                 showStatus('info', 'Starting advanced video creation process...');
+                const startTime = performance.now();
                 
                 // Create image-to-video converter instance
                 const converter = new ImageToVideoConverter();
@@ -566,11 +691,37 @@
                     },
                     (error) => {
                         console.error('Conversion error:', error);
+                        
+                        // Report failure (Step 3.3)
+                        if (successFailureReporter && operationId) {
+                            successFailureReporter.reportOperationFailure(operationId, {
+                                category: 'video_encoding',
+                                severity: 'high',
+                                message: error.error || error.message,
+                                stage: 'conversion'
+                            });
+                        }
+                        
                         showStatus('error', `Conversion failed: ${error.error}`);
                         hideProgressBar();
                     },
                     (result) => {
                         console.log('Conversion completed:', result);
+                        
+                        // Report success (Step 3.3)
+                        if (successFailureReporter && operationId) {
+                            const processingTime = performance.now() - startTime;
+                            successFailureReporter.reportOperationSuccess(operationId, {
+                                filename: result.filename,
+                                outputFileSize: result.metadata.videoSize,
+                                duration: result.metadata.duration,
+                                processedFiles: result.metadata.processedImageCount
+                            }, {
+                                processingTime: processingTime,
+                                compressionRatio: result.statistics.compressionRatio
+                            });
+                        }
+                        
                         hideProgressBar();
                         displayAdvancedVideoSummary(result);
                     }
@@ -1491,5 +1642,6 @@ ${JSON.stringify(metadata, null, 2)}
     <script src="fileSaver.js"></script>
     <script src="videoTester.js"></script>
     <script src="videoReporter.js"></script>
+    <script src="successFailureReporter.js"></script>
 </body>
 </html>
