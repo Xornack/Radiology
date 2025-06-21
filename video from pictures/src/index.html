@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <!-- Security headers for XSS protection -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self';">
+    <!-- Security headers for XSS protection - VS Code Simple Browser compatible -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self' vscode-webview:;">
     <meta http-equiv="X-Content-Type-Options" content="nosniff">
-    <meta http-equiv="X-Frame-Options" content="DENY">
+    <meta http-equiv="X-Frame-Options" content="SAMEORIGIN">
     <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
     <title>Video from Pictures - Test Interface</title>
     <style>
@@ -163,20 +163,6 @@
             border-radius: 10px;
         }
         
-        .test-video-btn {
-            background-color: #17a2b8;
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 4px;
-            cursor: pointer;
-            margin-top: 10px;
-        }
-        
-        .test-video-btn:hover {
-            background-color: #138496;
-        }
-        
         /* Enhanced Progress Tracking Styles (Step 2.3) */
         .enhanced-progress-container {
             margin: 20px 0;
@@ -317,7 +303,7 @@
     <div class="container">
         <div class="header">
             <h1>Video from Pictures</h1>
-            <p>Convert JPEG medical image sequences to MP4 videos</p>
+            <p>Convert JPEG medical image sequences to WebM videos</p>
         </div>
 
         <!-- Folder Selection Area -->
@@ -416,7 +402,30 @@
             } catch (error) {
                 console.error('Folder selection error:', error);
                 
-                // Report failure (Step 3.3)
+                // Check if the error is a user cancellation
+                const isCancellation = error.message && (
+                    error.message.includes('cancelled') || 
+                    error.message.includes('AbortError') ||
+                    error.message.includes('User cancelled')
+                );
+                
+                if (isCancellation) {
+                    // User cancelled - don't show error or fallback
+                    showStatus('info', 'Folder selection cancelled');
+                    
+                    // Report cancellation (Step 3.3)
+                    if (successFailureReporter && operationId) {
+                        successFailureReporter.reportOperationFailure(operationId, {
+                            category: 'user_action',
+                            severity: 'low',
+                            message: 'User cancelled folder selection',
+                            userCancelled: true
+                        });
+                    }
+                    return; // Exit without fallback
+                }
+                
+                // Report actual failure (Step 3.3)
                 if (successFailureReporter && operationId) {
                     successFailureReporter.reportOperationFailure(operationId, {
                         category: 'file_access',
@@ -428,7 +437,7 @@
                 
                 showStatus('error', `Failed to select folder: ${error.message}`);
                 
-                // Fall back to file input if needed
+                // Only fall back to file input for non-cancellation errors
                 if (window.fileSystemModule.apiSupport.fileInput) {
                     showStatus('info', 'Falling back to file input method...');
                     document.getElementById('folderInput').click();
@@ -787,8 +796,8 @@
                     frameRate: 15,
                     quality: 'medium',
                     resolution: 'original',
-                    codec: 'libx264',
-                    format: 'mp4'
+                    codec: 'vp8',
+                    format: 'webm'
                 };
                 
                 converter.updateSettings(videoSettings);
@@ -841,7 +850,13 @@
                         <div id="progressFill" class="progress-fill" style="width: 0%;">0%</div>
                     </div>
                 `;
-                document.getElementById('status').parentNode.insertBefore(progressContainer, document.getElementById('status').nextSibling);
+                const statusElement = document.getElementById('statusMessage');
+                if (statusElement && statusElement.parentNode) {
+                    statusElement.parentNode.insertBefore(progressContainer, statusElement.nextSibling);
+                } else {
+                    // Fallback: append to document body if statusMessage element not found
+                    document.body.appendChild(progressContainer);
+                }
                 progressFill = document.getElementById('progressFill');
             }
             
@@ -873,8 +888,13 @@
                 enhancedContainer.className = 'enhanced-progress-container';
                 enhancedContainer.innerHTML = createEnhancedProgressHTML();
                 
-                const statusElement = document.getElementById('status');
-                statusElement.parentNode.insertBefore(enhancedContainer, statusElement.nextSibling);
+                const statusElement = document.getElementById('statusMessage');
+                if (statusElement && statusElement.parentNode) {
+                    statusElement.parentNode.insertBefore(enhancedContainer, statusElement.nextSibling);
+                } else {
+                    // Fallback: append to document body if statusMessage element not found
+                    document.body.appendChild(enhancedContainer);
+                }
             }
             
             enhancedContainer.style.display = 'block';
@@ -1076,18 +1096,46 @@
         // Basic video download (fallback method)
         async function basicVideoDownload(blob, filename) {
             try {
+                console.log('basicVideoDownload called with:');
+                console.log('blob:', blob);
+                console.log('blob type:', typeof blob);
+                console.log('blob instanceof Blob:', blob instanceof Blob);
+                console.log('blob size:', blob ? blob.size : 'N/A');
+                console.log('blob type property:', blob ? blob.type : 'N/A');
+                console.log('filename:', filename);
+                
+                // Validate that blob is actually a Blob
+                if (!blob) {
+                    throw new Error('No blob provided');
+                }
+                
+                if (!(blob instanceof Blob)) {
+                    throw new Error(`Invalid blob type. Expected Blob, got ${typeof blob}`);
+                }
+                
+                if (blob.size === 0) {
+                    throw new Error('Blob is empty (size = 0)');
+                }
+                
+                console.log('Creating object URL for blob...');
                 const url = URL.createObjectURL(blob);
+                console.log('Object URL created:', url);
+                
                 const a = document.createElement('a');
                 a.href = url;
                 a.download = filename;
                 a.style.display = 'none';
                 
                 document.body.appendChild(a);
+                console.log('Triggering download...');
                 a.click();
                 document.body.removeChild(a);
                 
                 // Clean up URL object
-                setTimeout(() => URL.revokeObjectURL(url), 1000);
+                setTimeout(() => {
+                    console.log('Revoking object URL...');
+                    URL.revokeObjectURL(url);
+                }, 1000);
                 
                 showStatus('success', `Video downloaded using fallback method: ${filename}`);
                 
@@ -1142,13 +1190,17 @@
                     <div style="margin-top: 15px; text-align: center;">
                         <button class="btn" onclick="showSaveOptions()">⚙️ Save Options</button>
                         <button class="btn" onclick="saveWithDifferentMethod('${escapedFilename}')">💾 Save Copy</button>
-                        <button class="btn test-video-btn" onclick="testVideoFile()">▶️ Test Saved Video</button>
                     </div>
                 </div>
             `;
             
             const statusElement = document.getElementById('statusMessage');
-            statusElement.parentNode.insertBefore(saveResultElement, statusElement.nextSibling);
+            if (statusElement && statusElement.parentNode) {
+                statusElement.parentNode.insertBefore(saveResultElement, statusElement.nextSibling);
+            } else {
+                // Fallback: append to document body if statusMessage element not found
+                document.body.appendChild(saveResultElement);
+            }
         }
         
         // Show save options dialog (Step 3.1)
@@ -1284,7 +1336,7 @@
         
         // Display advanced video creation summary (Step 2.2 enhancement)
         function displayAdvancedVideoSummary(result) {
-            const summaryDiv = document.getElementById('status');
+            const summaryDiv = document.getElementById('statusMessage');
             const existingSummary = document.querySelector('.video-summary-advanced');
             
             // Remove existing summary if present
@@ -1336,70 +1388,21 @@
                     </div>
                     
                     <div style="margin-top: 15px; text-align: center;">
-                        <button class="btn test-video-btn" onclick="testAdvancedVideoPlayback('${escapedFilename}')">▶️ Test Video Playback</button>
                         <button class="btn" onclick="showVideoMetadata(${JSON.stringify(result.metadata).replace(/"/g, '&quot;')})">📋 View Full Metadata</button>
                     </div>
                 </div>
             `;
             
-            summaryDiv.parentNode.insertBefore(summaryElement, summaryDiv.nextSibling);
+            if (summaryDiv && summaryDiv.parentNode) {
+                summaryDiv.parentNode.insertBefore(summaryElement, summaryDiv.nextSibling);
+            } else {
+                // Fallback: append to document body if statusMessage element not found
+                document.body.appendChild(summaryElement);
+            }
             hideProgressBar();
         }
         
         // Test video file functionality (Step 3.2 implementation)
-        async function testVideoFile() {
-            if (!currentVideoBlob) {
-                showStatus('error', 'No video data available. Please create a video first.');
-                return;
-            }
-            
-            try {
-                showStatus('info', 'Starting comprehensive video validation...');
-                
-                // Initialize video tester
-                const tester = new VideoTester();
-                const reporter = new VideoReporter();
-                
-                // Set up progress callbacks
-                tester.setCallbacks(
-                    (start) => {
-                        showStatus('info', `Video testing started: ${start.message}`);
-                        showVideoTestProgress('Testing video quality and playback...', 0);
-                    },
-                    (progress) => {
-                        showVideoTestProgress(progress.message, progress.percentage);
-                    },
-                    async (results) => {
-                        hideVideoTestProgress();
-                        
-                        // Generate comprehensive report
-                        const report = reporter.generateTestReport(results, currentVideoBlob);
-                        
-                        if (results.success) {
-                            showStatus('success', `Video validation completed successfully! All tests passed.`);
-                            displayVideoTestResults(results, report);
-                        } else {
-                            showStatus('warning', `Video validation completed with issues. Check test results for details.`);
-                            displayVideoTestResults(results, report);
-                        }
-                    },
-                    (error) => {
-                        hideVideoTestProgress();
-                        showStatus('error', `Video testing failed: ${error.error}`);
-                        console.error('Video testing error:', error);
-                    }
-                );
-                
-                // Run comprehensive test
-                await tester.testVideo(currentVideoBlob, currentVideoFilename);
-                
-            } catch (error) {
-                console.error('Video testing error:', error);
-                showStatus('error', `Video testing failed: ${error.message}`);
-                hideVideoTestProgress();
-            }
-        }
-        
         // Show video test progress
         function showVideoTestProgress(message, percentage) {
             let progressContainer = document.getElementById('videoTestProgress');
@@ -1417,7 +1420,12 @@
                 `;
                 
                 const statusElement = document.getElementById('statusMessage');
-                statusElement.parentNode.insertBefore(progressContainer, statusElement.nextSibling);
+                if (statusElement && statusElement.parentNode) {
+                    statusElement.parentNode.insertBefore(progressContainer, statusElement.nextSibling);
+                } else {
+                    // Fallback: append to document body if statusMessage element not found
+                    document.body.appendChild(progressContainer);
+                }
             }
             
             progressContainer.style.display = 'block';
@@ -1514,13 +1522,17 @@
                         <button class="btn" onclick="runQuickVideoTest()">🔄 Quick Re-test</button>
                         <button class="btn" onclick="showDetailedTestReport(${JSON.stringify(report).replace(/"/g, '&quot;')})">📄 Detailed Report</button>
                         <button class="btn" onclick="downloadTestReport(${JSON.stringify(report).replace(/"/g, '&quot;')})">💾 Save Report</button>
-                        <button class="btn test-video-btn" onclick="playTestVideo()">▶️ Play Video</button>
                     </div>
                 </div>
             `;
             
             const statusElement = document.getElementById('statusMessage');
-            statusElement.parentNode.insertBefore(resultsElement, statusElement.nextSibling);
+            if (statusElement && statusElement.parentNode) {
+                statusElement.parentNode.insertBefore(resultsElement, statusElement.nextSibling);
+            } else {
+                // Fallback: append to document body if statusMessage element not found
+                document.body.appendChild(resultsElement);
+            }
         }
         
         // Format test name for display
@@ -1591,65 +1603,6 @@
         }
         
         // Play test video in popup
-        function playTestVideo() {
-            if (!currentVideoBlob) {
-                showStatus('error', 'No video data available.');
-                return;
-            }
-            
-            try {
-                const videoUrl = URL.createObjectURL(currentVideoBlob);
-                const playerWindow = window.open('', '_blank', 'width=800,height=600');
-                
-                // Escape filename to prevent XSS in the popup window
-                const escapedFilename = escapeHtml(currentVideoFilename);
-                
-                playerWindow.document.write(`
-                    <html>
-                    <head>
-                        <title>Video Playback Test - ${escapedFilename}</title>
-                        <style>
-                            body { margin: 0; padding: 20px; font-family: Arial, sans-serif; background-color: #f5f5f5; }
-                            .container { max-width: 800px; margin: 0 auto; text-align: center; }
-                            video { max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 8px; }
-                            .info { margin: 20px 0; padding: 15px; background-color: white; border-radius: 8px; }
-                        </style>
-                    </head>
-                    <body>
-                        <div class="container">
-                            <h2>Video Playback Test</h2>
-                            <div class="info">
-                                <p><strong>File:</strong> ${escapedFilename}</p>
-                                <p><strong>Size:</strong> ${(currentVideoBlob.size / 1024 / 1024).toFixed(2)} MB</p>
-                                <p>Use the video controls to test playback functionality.</p>
-                            </div>
-                            <video controls autoplay>
-                                <source src="${videoUrl}" type="video/mp4">
-                                Your browser does not support the video tag.
-                            </video>
-                            <div class="info">
-                                <p><small>This window can be closed when testing is complete.</small></p>
-                                <button onclick="window.close()" style="padding: 8px 16px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">Close</button>
-                            </div>
-                        </div>
-                    </body>
-                    </html>
-                `);
-                
-                playerWindow.document.close();
-                
-                // Clean up URL after window is closed
-                playerWindow.addEventListener('beforeunload', () => {
-                    URL.revokeObjectURL(videoUrl);
-                });
-                
-                showStatus('info', 'Video playback test opened in new window.');
-                
-            } catch (error) {
-                showStatus('error', `Failed to open video player: ${error.message}`);
-            }
-        }
-        
         // Store current video blob for additional operations (Step 3.1 enhancement)
         let currentVideoBlob = null;
         let currentVideoFilename = null;
@@ -1689,7 +1642,115 @@
         }
 
         function showSettings() {
-            showStatus('info', 'Settings panel will be implemented in Phase 4.');
+            // Create settings dialog
+            const settingsDialog = document.createElement('div');
+            settingsDialog.id = 'settingsDialog';
+            settingsDialog.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background-color: rgba(0, 0, 0, 0.5);
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                z-index: 1000;
+            `;
+            
+            // Get current settings from the converter
+            const currentSettings = {
+                frameRate: 15,
+                quality: 'medium',
+                resolution: 'original',
+                format: 'webm'
+            };
+            
+            settingsDialog.innerHTML = `
+                <div style="background: white; padding: 30px; border-radius: 8px; width: 90%; max-width: 500px; max-height: 80vh; overflow-y: auto;">
+                    <h3 style="margin-top: 0; color: #333;">Video Settings</h3>
+                    
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">Frame Rate (FPS):</label>
+                        <select id="frameRateSelect" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                            <option value="5" ${currentSettings.frameRate === 5 ? 'selected' : ''}>5 FPS (Very Slow)</option>
+                            <option value="10" ${currentSettings.frameRate === 10 ? 'selected' : ''}>10 FPS (Slow)</option>
+                            <option value="15" ${currentSettings.frameRate === 15 ? 'selected' : ''}>15 FPS (Default)</option>
+                            <option value="24" ${currentSettings.frameRate === 24 ? 'selected' : ''}>24 FPS (Cinema)</option>
+                            <option value="30" ${currentSettings.frameRate === 30 ? 'selected' : ''}>30 FPS (Smooth)</option>
+                            <option value="60" ${currentSettings.frameRate === 60 ? 'selected' : ''}>60 FPS (Very Smooth)</option>
+                        </select>
+                        <small style="color: #666;">Higher frame rates create smoother video but larger file sizes</small>
+                    </div>
+                    
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">Video Quality:</label>
+                        <select id="qualitySelect" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                            <option value="low" ${currentSettings.quality === 'low' ? 'selected' : ''}>Low (Smaller files)</option>
+                            <option value="medium" ${currentSettings.quality === 'medium' ? 'selected' : ''}>Medium (Balanced)</option>
+                            <option value="high" ${currentSettings.quality === 'high' ? 'selected' : ''}>High (Better quality)</option>
+                        </select>
+                        <small style="color: #666;">Higher quality preserves more detail but creates larger files</small>
+                    </div>
+                    
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">Resolution:</label>
+                        <select id="resolutionSelect" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                            <option value="original" ${currentSettings.resolution === 'original' ? 'selected' : ''}>Original (Preserve medical image resolution)</option>
+                            <option value="1080p" ${currentSettings.resolution === '1080p' ? 'selected' : ''}>1080p (1920x1080)</option>
+                            <option value="720p" ${currentSettings.resolution === '720p' ? 'selected' : ''}>720p (1280x720)</option>
+                            <option value="480p" ${currentSettings.resolution === '480p' ? 'selected' : ''}>480p (854x480)</option>
+                        </select>
+                        <small style="color: #666;">Original resolution is recommended for medical images</small>
+                    </div>
+                    
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">Output Format:</label>
+                        <select id="formatSelect" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                            <option value="webm" ${currentSettings.format === 'webm' ? 'selected' : ''}>WebM (Browser optimized)</option>
+                        </select>
+                        <small style="color: #666;">WebM format ensures compatibility with all modern browsers</small>
+                    </div>
+                    
+                    <div style="margin-top: 30px; text-align: right;">
+                        <button onclick="closeSettings()" style="padding: 10px 20px; background-color: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; margin-right: 10px;">Cancel</button>
+                        <button onclick="applySettings()" style="padding: 10px 20px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">Apply Settings</button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(settingsDialog);
+        }
+        
+        function closeSettings() {
+            const dialog = document.getElementById('settingsDialog');
+            if (dialog) {
+                dialog.remove();
+            }
+        }
+        
+        function applySettings() {
+            const frameRate = parseInt(document.getElementById('frameRateSelect').value);
+            const quality = document.getElementById('qualitySelect').value;
+            const resolution = document.getElementById('resolutionSelect').value;
+            const format = document.getElementById('formatSelect').value;
+            
+            // Update converter settings if converter exists
+            if (window.imageToVideoConverter) {
+                const newSettings = {
+                    frameRate: frameRate,
+                    quality: quality,
+                    resolution: resolution,
+                    format: format
+                };
+                
+                imageToVideoConverter.updateSettings(newSettings);
+                showStatus('success', `Settings updated: ${frameRate} FPS, ${quality} quality, ${resolution} resolution`);
+            } else {
+                showStatus('info', `Settings will be applied: ${frameRate} FPS, ${quality} quality, ${resolution} resolution`);
+            }
+            
+            closeSettings();
         }
 
         // Test functions for validation - Updated for Step 1.2 and 1.4
@@ -1725,13 +1786,11 @@
     <!-- Phase 2: Video Generation Engine -->
     <script src="progressTracker.js"></script>
     <script src="errorHandler.js"></script>
-    <script src="videoEncoder.js"></script>
+    <script src="customVideoEncoder.js"></script>
     <script src="imageToVideoConverter.js"></script>
     
-    <!-- Phase 3: Output and Validation -->
+    <!-- Phase 3: Output and File Handling -->
     <script src="fileSaver.js"></script>
-    <script src="videoTester.js"></script>
-    <script src="videoReporter.js"></script>
     <script src="successFailureReporter.js"></script>
 </body>
 </html>

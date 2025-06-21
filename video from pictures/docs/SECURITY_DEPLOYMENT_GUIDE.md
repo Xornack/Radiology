@@ -29,7 +29,7 @@ User Device (Local)          Web Server (Public)
 
 ### **Layer 2: Technical Implementation**
 - **File Access**: HTML5 File API (local device only)
-- **Processing**: WebAssembly FFmpeg.js (browser memory)
+- **Processing**: Canvas+MediaRecorder (browser native APIs)
 - **Storage**: JavaScript variables (temporary memory)
 - **Output**: Browser download (local save)
 - **Network**: Zero data transmission post-load
@@ -56,7 +56,7 @@ Deploy as static files only - no backend server:
 ├── fileSystemAccess.js           ← File access (if needed)
 ├── progressTracker.js            ← Progress tracking
 ├── errorHandler.js               ← Error handling
-├── videoEncoder.js               ← FFmpeg.js integration
+├── videoEncoder.js               ← Canvas+MediaRecorder integration
 └── imageToVideoConverter.js      ← Video processing
 ```
 

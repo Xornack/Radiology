@@ -31,7 +31,7 @@ class DataSecurityConfig {
         this.allowedOperations = [
             'local-file-selection',        // File input from user device
             'in-browser-processing',       // JavaScript processing only
-            'client-side-video-creation',  // FFmpeg.js in browser
+            'client-side-video-creation',  // Canvas+MediaRecorder in browser
             'local-file-download'          // Download to user device only
         ];
         
@@ -178,7 +178,7 @@ class DataSecurityConfig {
             
             technicalImplementation: {
                 fileAccess: 'File API (local device only)',
-                videoProcessing: 'FFmpeg.js (client-side WebAssembly)',
+                videoProcessing: 'Canvas+MediaRecorder (client-side native APIs)',
                 dataStorage: 'JavaScript variables (memory only)',
                 outputMethod: 'Browser download (local save only)',
                 networkRequests: audit.networkRequests.requestCount

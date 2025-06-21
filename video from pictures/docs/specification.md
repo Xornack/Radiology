@@ -1,8 +1,10 @@
 # Video from Pictures - Technical Specification
 
 ## Overview
-A locally-running application that converts a### Phase 3: Output and Validation
-1. **Step 3.1**: Add MP4 file save functionality ✅ **COMPLETED**
+A locally-running browser-based application that converts medical imaging sequences (JPEG images) into WebM video files using secure, local-only processing. The application uses Canvas and MediaRecorder APIs for video encoding without any external dependencies or data transmission.
+
+### Phase 3: Output and Validation
+1. **Step 3.1**: Add WebM file save functionality ✅ **COMPLETED**
    - Enhanced file saving with multiple save methods (File System Access API, directory selection, download)
    - User-configurable save options and preferences
    - Automatic unique filename generation with timestamps
@@ -10,20 +12,19 @@ A locally-running application that converts a### Phase 3: Output and Validation
    - Save method selection UI for user choice
    - Integration with existing progress tracking and error handling systems
 2. **Step 3.2**: Implement automatic video playback/testing ✅ **COMPLETED**
-   - Comprehensive video validation system with VideoTester module
-   - Automated quality testing including blob validation, metadata verification, and playback testing
-   - Detailed reporting system with VideoReporter module supporting multiple export formats
-   - Real-time progress tracking during video validation
-   - User-friendly test results display with visual indicators
-   - Integration with main application including test buttons and progress displays
-   - Comprehensive test suite with full coverage of validation functionality
+   - Built-in video validation through HTML5 video element testing
+   - Automated quality testing including blob validation and basic playback verification
+   - Integrated validation system within main application interface
+   - Real-time validation feedback during video creation process
+   - Error reporting and validation status display
+   - Simple test functionality using browser's native video playback capabilities
 3. **Step 3.3**: ✅ **COMPLETED** - Add success/failure reporting
 4. **Step 3.4**: ✅ **COMPLETED** - Implement proper error codes and messaging
 
 ## Goals
-1. **Primary Goal**: Convert medical imaging sequences (JPEG format) into MP4 videos for easier viewing and sharing
+1. **Primary Goal**: Convert medical imaging sequences (JPEG format) into WebM videos for easier viewing and sharing
 2. **Compliance Goal**: Work within IT-restricted environments that limit executable installations but allow browser-based applications
-3. **Validation Goal**: Ensure output quality by automatically playing/testing the generated MP4
+3. **Validation Goal**: Ensure output quality by automatically playing/testing the generated WebM video
 4. **User Experience Goal**: Provide simple, intuitive interface requiring minimal technical knowledge
 
 ## Requirements
@@ -32,9 +33,9 @@ A locally-running application that converts a### Phase 3: Output and Validation
 1. **FR001**: Accept user input for source folder path containing JPEG images
 2. **FR002**: Validate presence of JPEG files in specified folder
 3. **FR003**: Process ALL JPEG images found in the selected folder using natural/numerical sorting
-4. **FR004**: Generate MP4 video file from image sequence
-5. **FR005**: Save MP4 file to user-specified or default location
-6. **FR006**: Automatically test/play generated MP4 to verify successful creation
+4. **FR004**: Generate WebM video file from image sequence
+5. **FR005**: Save WebM file to user-specified or default location
+6. **FR006**: Automatically test/play generated WebM video to verify successful creation
 7. **FR007**: Display error messages for missing files, invalid formats, or processing failures
 8. **FR008**: Exit with appropriate error codes for programmatic integration
 9. **FR009**: Display count of detected JPEG files before processing
@@ -56,14 +57,14 @@ A locally-running application that converts a### Phase 3: Output and Validation
 3. **NFR003**: Minimal external dependencies
 4. **NFR004**: Process typical medical image sequences (50-500 images) within reasonable time
 5. **NFR005**: Support common JPEG variations used in medical imaging
-6. **NFR006**: Maintain image quality during MP4 conversion
+6. **NFR006**: Maintain image quality during WebM conversion
 
 ### Technical Requirements
 1. **TR001**: Primary implementation: Browser-based JavaScript/HTML application
 2. **TR002**: Fallback options: Python with PyQt6 GUI, or C++ with simple GUI
 3. **TR003**: Handle typical medical image dimensions and file sizes
-4. **TR004**: Generate MP4 with standard codecs for broad compatibility
-5. **TR005**: Default video settings: 15 FPS frame rate, original image resolution, medium compression
+4. **TR004**: Generate WebM video with VP8/VP9 codecs for broad browser compatibility
+5. **TR005**: Default video settings: 15 FPS frame rate, original image resolution, WebM format with VP8/VP9 codec
 6. **TR006**: Provide user interface for adjusting frame rate (5-60 FPS), resolution scaling, and quality settings
 7. **TR007**: Implement natural/numerical sorting algorithm for filename ordering (e.g., img1.jpg, img2.jpg, img10.jpg)
 8. **TR008**: Provide fallback sorting option using file modification date
@@ -73,7 +74,7 @@ A locally-running application that converts a### Phase 3: Output and Validation
 12. **TR012**: Generate processing summary report with file-by-file status
 13. **TR013**: No image preprocessing - preserve original medical image data integrity
 14. **TR014**: Handle dimension variations by using largest common resolution or original dimensions
-15. **TR015**: Implement smart output naming: "{folder_name}.mp4" with timestamp suffix if file exists
+15. **TR015**: Implement smart output naming: "{folder_name}.webm" with timestamp suffix if file exists
 16. **TR016**: Provide user-customizable naming patterns and filename override options
 17. **TR017**: Implement comprehensive progress tracking with step-by-step status updates
 18. **TR018**: Display real-time processing information: current operation, file being processed, completion percentage, ETA
@@ -104,19 +105,41 @@ A locally-running application that converts a### Phase 3: Output and Validation
 
 ### ✅ **COMPLETED PHASES**
 - **Phase 1**: Core App Setup (Steps 1.1-1.4) - File system access, JPEG detection, sorting
-- **Phase 2**: Video Generation Engine (Steps 2.1-2.4) - FFmpeg.js integration, conversion pipeline, progress tracking, error handling
+- **Phase 2**: Video Generation Engine (Steps 2.1-2.4) - Custom Canvas/MediaRecorder integration, conversion pipeline, progress tracking, error handling
 - **Phase 3**: Output and Validation ✅ **COMPLETED**
-  - **Step 3.1**: Enhanced MP4 file save functionality ✅ **COMPLETED**
+  - **Step 3.1**: Enhanced WebM file save functionality ✅ **COMPLETED**
   - **Step 3.2**: Automatic video playback/testing ✅ **COMPLETED**
   - **Step 3.3**: Success/failure reporting ✅ **COMPLETED**
   - **Step 3.4**: Error codes and messaging ✅ **COMPLETED**
 
+### **CURRENT FILE STRUCTURE**
+The application has been optimized to include only essential files:
+
+**Core Application (`src/` directory):**
+- `index.html` - Main application interface
+- `customVideoEncoder.js` - Canvas/MediaRecorder-based video encoder
+- `imageToVideoConverter.js` - Core conversion logic
+- `fileSystemAccess.js` - File system access and image loading
+- `progressTracker.js` - Progress tracking and reporting
+- `errorHandler.js` - Error handling and validation
+- `fileSaver.js` - File saving functionality
+- `successFailureReporter.js` - Operation result reporting
+- `dataSecurityConfig.js` - Security configuration
+
+**Documentation (`docs/` directory):**
+- `idea.md` - Project concept and requirements
+- `get_specification_prompt.md` - Development guidance
+- `specification.md` - Technical specification (this document)
+- `SECURITY_DEPLOYMENT_GUIDE.md` - Security and deployment guidelines
+
 ## Future Enhancement Considerations
-1. **Batch Processing**: Support for processing multiple folders in sequence
-2. **Advanced Video Controls**: Additional codec options and video effects
-3. **DICOM Integration**: Direct DICOM file support without JPEG conversion
-4. **Cloud Storage Integration**: Support for cloud-based medical image repositories
-5. **Export Formats**: Additional output formats (AVI, MOV, GIF animations)
+1. **MP4 Support**: Add MP4 output format using additional encoding libraries
+2. **Batch Processing**: Support for processing multiple folders in sequence
+3. **Advanced Video Controls**: Additional codec options and video effects
+4. **DICOM Integration**: Direct DICOM file support without JPEG conversion
+5. **Cloud Storage Integration**: Support for cloud-based medical image repositories
+6. **Export Formats**: Additional output formats (AVI, MOV, GIF animations)
+7. **Enhanced Testing**: More comprehensive video validation and quality assessment tools
 
 ## Step-by-Step Implementation Plan
 
@@ -127,13 +150,13 @@ A locally-running application that converts a### Phase 3: Output and Validation
 4. **Step 1.4**: ✅ **COMPLETED** - Implement file sorting algorithm
 
 ### Phase 2: Video Generation Engine
-1. **Step 2.1**: ✅ **COMPLETED** - Research and integrate browser-based video encoding library (e.g., FFmpeg.js)
+1. **Step 2.1**: ✅ **COMPLETED** - Research and integrate browser-based video encoding using Canvas and MediaRecorder APIs
 2. **Step 2.2**: ✅ **COMPLETED** - Implement image-to-video conversion logic
 3. **Step 2.3**: ✅ **COMPLETED** - Add enhanced progress tracking with ETA, step-by-step status, and statistics
 4. **Step 2.4**: ✅ **COMPLETED** - Implement comprehensive error handling, validation, and recovery mechanisms
 
 ### Phase 3: Output and Validation
-1. **Step 3.1**: ✅ **COMPLETED** - Add MP4 file save functionality
+1. **Step 3.1**: ✅ **COMPLETED** - Add WebM file save functionality
    - Enhanced file saving with multiple save methods (File System Access API, directory selection, download)
    - User-configurable save options and preferences
    - Automatic unique filename generation with timestamps
@@ -141,13 +164,12 @@ A locally-running application that converts a### Phase 3: Output and Validation
    - Save method selection UI for user choice
    - Integration with existing progress tracking and error handling systems
 2. **Step 3.2**: ✅ **COMPLETED** - Implement automatic video playback/testing
-   - Comprehensive video validation system with VideoTester module
-   - Automated quality testing including blob validation, metadata verification, and playback testing
-   - Detailed reporting system with VideoReporter module supporting multiple export formats
-   - Real-time progress tracking during video validation
-   - User-friendly test results display with visual indicators
-   - Integration with main application including test buttons and progress displays
-   - Comprehensive test suite with full coverage of validation functionality
+   - Built-in video validation through HTML5 video element testing
+   - Automated quality testing including blob validation and basic playback verification
+   - Integrated validation system within main application interface
+   - Real-time validation feedback during video creation process
+   - Error reporting and validation status display
+   - Simple test functionality using browser's native video playback capabilities
 3. **Step 3.3**: ✅ **COMPLETED** - Add success/failure reporting
    - Comprehensive session tracking and operation monitoring
    - Real-time success/failure status reporting with callbacks
@@ -168,26 +190,32 @@ A locally-running application that converts a### Phase 3: Output and Validation
 
 ## Dependencies and Technical Stack
 
-### Primary Stack (Browser-based)
-- File System Access API (primary file access method)
-- File Input API with webkitdirectory (fallback method)
-- Drag & Drop API (alternative user interface)
-- JavaScript (ES6+)
-- Canvas API for image processing
-- Web-based video encoding library (FFmpeg.js or similar)
-- CSS for styling
+### Primary Stack (Browser-based Implementation)
+- **File System Access API** (primary file access method)
+- **File Input API** with webkitdirectory (fallback method)
+- **Drag & Drop API** (alternative user interface)
+- **JavaScript (ES6+)** - Core application logic
+- **Canvas API** - Image processing and rendering
+- **MediaRecorder API** - Video encoding (WebM format with VP8/VP9 codecs)
+- **HTML5 Video Element** - Video validation and playback testing
+- **CSS3** - User interface styling
+- **Blob API** - File handling and download functionality
 
-### Fallback Stacks
-- **Python**: PyQt6, OpenCV, FFmpeg-python
-- **C++**: Qt or simple Windows API, OpenCV, FFmpeg
+### Security Features
+- Content Security Policy (CSP) headers
+- XSS protection with input sanitization
+- Local-only processing (no external network requests)
+- Secure file handling with validation
 
 ## Success Criteria
-1. Successfully converts medical image sequences to MP4 format
+1. Successfully converts medical image sequences to WebM format
 2. Runs in restricted IT environments without administrative privileges
 3. Processes typical image sequences (100-200 files) in under 2 minutes
-4. Generated videos play correctly in standard media players
+4. Generated videos play correctly in modern web browsers and standard media players
 5. User interface requires no technical training to operate
 6. Zero false positives in file validation and error handling
+7. All processing occurs locally with no data transmission to external servers
+8. Maintains medical image data integrity throughout the conversion process
 
 ---
 

@@ -124,9 +124,9 @@ class FileSaver {
             const fileHandle = await window.showSaveFilePicker({
                 suggestedName: filename,
                 types: [{
-                    description: 'MP4 Video files',
+                    description: 'WebM Video files',
                     accept: {
-                        'video/mp4': ['.mp4']
+                        'video/webm': ['.webm']
                     }
                 }],
                 excludeAcceptAllOption: true

@@ -9,8 +9,8 @@ class ImageToVideoConverter {
             frameRate: 15,
             quality: 'medium',
             resolution: 'original',
-            codec: 'libx264',
-            format: 'mp4'
+            codec: 'vp8',
+            format: 'webm'
         };
         this.onProgress = null;
         this.onError = null;
@@ -150,7 +150,9 @@ class ImageToVideoConverter {
             }
             
             // Validate encoding settings (Step 2.4)
+            console.log('Current conversion settings:', this.conversionSettings);
             const encodingValidation = this.errorHandler.validateEncodingParameters(this.conversionSettings);
+            console.log('Validation result:', encodingValidation);
             if (!encodingValidation.isValid) {
                 throw new Error(`Invalid encoding settings: ${encodingValidation.errors.map(e => e.message).join(', ')}`);
             }
@@ -179,7 +181,30 @@ class ImageToVideoConverter {
             // Step 3: Initialize video encoder with error handling
             this.progressTracker.startStep('encoder-init', 'Video Encoder Initialization', 1);
             if (!this.videoEncoder) {
-                this.videoEncoder = new VideoEncoder();
+                console.log('Creating VideoEncoder...');
+                console.log('VideoEncoder type:', typeof VideoEncoder);
+                console.log('VideoEncoder name:', VideoEncoder ? VideoEncoder.name : 'undefined');
+                console.log('VideoEncoder constructor:', VideoEncoder);
+                
+                try {
+                    // Always use CustomVideoEncoder approach - create with null canvas parameter
+                    // The CustomVideoEncoder will create its own canvas if needed
+                    this.videoEncoder = new VideoEncoder(null);
+                    console.log('VideoEncoder created successfully:', this.videoEncoder.constructor.name);
+                } catch (error) {
+                    console.error('VideoEncoder creation failed:', error);
+                    
+                    // Direct fallback to CustomVideoEncoder if global override failed
+                    if (typeof CustomVideoEncoder !== 'undefined') {
+                        console.log('Trying direct CustomVideoEncoder fallback...');
+                        this.videoEncoder = new CustomVideoEncoder(null);
+                        console.log('CustomVideoEncoder created successfully');
+                    } else {
+                        // Last resort: throw error with helpful message
+                        const errorMessage = `VideoEncoder initialization failed. Original error: ${error.message}. Please ensure customVideoEncoder.js is loaded correctly.`;
+                        throw new Error(errorMessage);
+                    }
+                }
             }
             
             await this.initializeEncoderWithErrorHandling();
@@ -326,17 +351,17 @@ class ImageToVideoConverter {
             await this.videoEncoder.initialize(
                 (progress) => {
                     // Map encoder progress to current step
-                    this.progressTracker.updateStepProgress(null, 'FFmpeg initialization', progress.message);
+                    this.progressTracker.updateStepProgress(null, 'Video encoder initialization', progress.message);
                 },
                 (log) => {
-                    console.log('FFmpeg log:', log);
+                    console.log('Video encoder log:', log);
                 }
             );
         } catch (error) {
             // Try error recovery for encoder initialization
             const handledError = await this.errorHandler.handleProcessingError(error, {
                 step: 'encoder-initialization',
-                encoderType: 'FFmpeg.js'
+                encoderType: 'Canvas+MediaRecorder'
             });
             
             if (!handledError.recovered) {
@@ -509,7 +534,7 @@ class ImageToVideoConverter {
             .slice(0, 19)
             .replace(/[:.]/g, '-');
 
-        return `${baseName}_${timestamp}.mp4`;
+        return `${baseName}_${timestamp}.webm`;
     }
 
     // Calculate video duration based on frame count and frame rate

@@ -165,7 +165,7 @@ class FileSystemManager {
 
         } catch (error) {
             if (error.name === 'AbortError') {
-                throw new Error('Directory selection was cancelled');
+                throw new Error('User cancelled directory selection');
             }
             throw error;
         }
@@ -655,25 +655,31 @@ class FileSystemManager {
 
 // Create global instance
 const fileSystemManager = new FileSystemManager();
-window.fileSystemModule = fileSystemManager;
 
-// Expose methods for testing and external use - properly bound to the instance
-window.fileSystemModule.detectAPISupport = () => fileSystemManager.apiSupport;
-window.fileSystemModule.getBestAvailableAPI = () => fileSystemManager.bestAPI;
-window.fileSystemModule.handleAPIError = (error) => fileSystemManager.handleAPIError(error);
-window.fileSystemModule.selectFiles = () => fileSystemManager.selectFiles();
-window.fileSystemModule.accessViaDragDrop = (dataTransfer) => fileSystemManager.accessViaDragDrop(dataTransfer);
-window.fileSystemModule.isValidJPEGFile = (file) => fileSystemManager.isValidJPEGFile(file);
-window.fileSystemModule.isJPEGFile = (file) => fileSystemManager.isJPEGFile(file);
-window.fileSystemModule.validateJPEGSignature = (file) => fileSystemManager.validateJPEGSignature(file);
-window.fileSystemModule.validateFilesBatch = (files, options) => fileSystemManager.validateFilesBatch(files, options);
-window.fileSystemModule.getBrowserInfo = () => fileSystemManager.getBrowserInfo();
-
-// Step 1.4: Expose file sorting methods - properly bound
-window.fileSystemModule.sortFiles = (files, sortMethod) => fileSystemManager.sortFiles(files, sortMethod);
-window.fileSystemModule.sortFilesNatural = (files) => fileSystemManager.sortFilesNatural(files);
-window.fileSystemModule.sortFilesByDate = (files) => fileSystemManager.sortFilesByDate(files);
-window.fileSystemModule.analyzeSortingPattern = (files) => fileSystemManager.analyzeSortingPattern(files);
+// Create a clean module object without circular references
+window.fileSystemModule = {
+    // Properties
+    apiSupport: fileSystemManager.apiSupport,
+    bestAPI: fileSystemManager.bestAPI,
+    
+    // Methods - properly bound to avoid circular references
+    detectAPISupport: () => fileSystemManager.apiSupport,
+    getBestAvailableAPI: () => fileSystemManager.bestAPI,
+    handleAPIError: (error) => fileSystemManager.handleAPIError(error),
+    selectFiles: () => fileSystemManager.selectFiles(),
+    accessViaDragDrop: (dataTransfer) => fileSystemManager.accessViaDragDrop(dataTransfer),
+    isValidJPEGFile: (file) => fileSystemManager.isValidJPEGFile(file),
+    isJPEGFile: (file) => fileSystemManager.isJPEGFile(file),
+    validateJPEGSignature: (file) => fileSystemManager.validateJPEGSignature(file),
+    validateFilesBatch: (files, options) => fileSystemManager.validateFilesBatch(files, options),
+    getBrowserInfo: () => fileSystemManager.getBrowserInfo(),
+    
+    // Step 1.4: File sorting methods - properly bound
+    sortFiles: (files, sortMethod) => fileSystemManager.sortFiles(files, sortMethod),
+    sortFilesNatural: (files) => fileSystemManager.sortFilesNatural(files),
+    sortFilesByDate: (files) => fileSystemManager.sortFilesByDate(files),
+    analyzeSortingPattern: (files) => fileSystemManager.analyzeSortingPattern(files)
+};
 
 console.log('File System Access Module loaded successfully');
 console.log('Available APIs:', window.fileSystemModule.apiSupport);

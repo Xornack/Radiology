@@ -59,8 +59,8 @@ class ErrorHandler {
             encoding: {
                 maxFrameRate: 60,
                 minFrameRate: 1,
-                supportedCodecs: ['libx264', 'libx265'],
-                supportedFormats: ['mp4'],
+                supportedCodecs: ['vp8', 'vp9', 'libx264', 'libx265'],
+                supportedFormats: ['webm', 'mp4'],
                 message: 'Encoding parameters not supported'
             }
         };
@@ -236,6 +236,8 @@ class ErrorHandler {
 
     // Validate encoding parameters
     validateEncodingParameters(settings) {
+        console.log('ErrorHandler validation rules:', this.validationRules.encoding);
+        console.log('Settings to validate:', settings);
         const result = {
             isValid: true,
             errors: [],
