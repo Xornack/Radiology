@@ -34,6 +34,68 @@ class FileSystemManager {
         }
     }
 
+    // Get browser information and capabilities
+    getBrowserInfo() {
+        const userAgent = navigator.userAgent;
+        let browserName = 'Unknown';
+        let browserVersion = 'Unknown';
+
+        // Detect browser
+        if (userAgent.indexOf('Chrome') > -1 && userAgent.indexOf('Edg') === -1) {
+            browserName = 'Chrome';
+            browserVersion = userAgent.match(/Chrome\/([0-9]+)/)?.[1] || 'Unknown';
+        } else if (userAgent.indexOf('Firefox') > -1) {
+            browserName = 'Firefox';
+            browserVersion = userAgent.match(/Firefox\/([0-9]+)/)?.[1] || 'Unknown';
+        } else if (userAgent.indexOf('Safari') > -1 && userAgent.indexOf('Chrome') === -1) {
+            browserName = 'Safari';
+            browserVersion = userAgent.match(/Version\/([0-9]+)/)?.[1] || 'Unknown';
+        } else if (userAgent.indexOf('Edg') > -1) {
+            browserName = 'Edge';
+            browserVersion = userAgent.match(/Edg\/([0-9]+)/)?.[1] || 'Unknown';
+        }
+
+        return {
+            browser: browserName,
+            version: browserVersion,
+            userAgent: userAgent,
+            apiSupport: this.apiSupport,
+            bestAPI: this.bestAPI,
+            platform: navigator.platform || 'Unknown'
+        };
+    }
+
+    // Handle API errors gracefully
+    handleAPIError(error) {
+        console.error('File system API error:', error);
+        
+        if (error.name === 'AbortError') {
+            return {
+                success: false,
+                error: 'File selection was cancelled by user',
+                canRetry: true
+            };
+        } else if (error.name === 'NotAllowedError') {
+            return {
+                success: false,
+                error: 'File access permission denied',
+                canRetry: true
+            };
+        } else if (error.name === 'SecurityError') {
+            return {
+                success: false,
+                error: 'Security error - file access blocked',
+                canRetry: false
+            };
+        } else {
+            return {
+                success: false,
+                error: error.message || 'Unknown file system error',
+                canRetry: true
+            };
+        }
+    }
+
     // Main method to select files using the best available API
     async selectFiles() {
         try {
@@ -592,37 +654,26 @@ class FileSystemManager {
 }
 
 // Create global instance
-window.fileSystemModule = new FileSystemManager();
+const fileSystemManager = new FileSystemManager();
+window.fileSystemModule = fileSystemManager;
 
-// Expose methods for testing and external use
-window.fileSystemModule.detectAPISupport = function() {
-    return this.apiSupport;
-};
+// Expose methods for testing and external use - properly bound to the instance
+window.fileSystemModule.detectAPISupport = () => fileSystemManager.apiSupport;
+window.fileSystemModule.getBestAvailableAPI = () => fileSystemManager.bestAPI;
+window.fileSystemModule.handleAPIError = (error) => fileSystemManager.handleAPIError(error);
+window.fileSystemModule.selectFiles = () => fileSystemManager.selectFiles();
+window.fileSystemModule.accessViaDragDrop = (dataTransfer) => fileSystemManager.accessViaDragDrop(dataTransfer);
+window.fileSystemModule.isValidJPEGFile = (file) => fileSystemManager.isValidJPEGFile(file);
+window.fileSystemModule.isJPEGFile = (file) => fileSystemManager.isJPEGFile(file);
+window.fileSystemModule.validateJPEGSignature = (file) => fileSystemManager.validateJPEGSignature(file);
+window.fileSystemModule.validateFilesBatch = (files, options) => fileSystemManager.validateFilesBatch(files, options);
+window.fileSystemModule.getBrowserInfo = () => fileSystemManager.getBrowserInfo();
 
-window.fileSystemModule.getBestAvailableAPI = function() {
-    return this.bestAPI;
-};
-
-window.fileSystemModule.handleAPIError = function(error) {
-    return this.handleAPIError(error);
-};
-
-// Step 1.4: Expose file sorting methods
-window.fileSystemModule.sortFiles = function(files, sortMethod) {
-    return this.sortFiles(files, sortMethod);
-};
-
-window.fileSystemModule.sortFilesNatural = function(files) {
-    return this.sortFilesNatural(files);
-};
-
-window.fileSystemModule.sortFilesByDate = function(files) {
-    return this.sortFilesByDate(files);
-};
-
-window.fileSystemModule.analyzeSortingPattern = function(files) {
-    return this.analyzeSortingPattern(files);
-};
+// Step 1.4: Expose file sorting methods - properly bound
+window.fileSystemModule.sortFiles = (files, sortMethod) => fileSystemManager.sortFiles(files, sortMethod);
+window.fileSystemModule.sortFilesNatural = (files) => fileSystemManager.sortFilesNatural(files);
+window.fileSystemModule.sortFilesByDate = (files) => fileSystemManager.sortFilesByDate(files);
+window.fileSystemModule.analyzeSortingPattern = (files) => fileSystemManager.analyzeSortingPattern(files);
 
 console.log('File System Access Module loaded successfully');
 console.log('Available APIs:', window.fileSystemModule.apiSupport);
