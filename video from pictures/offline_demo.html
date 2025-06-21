@@ -162,17 +162,22 @@
     <div class="container">
         <div class="header">
             <h1>Video from Pictures - Offline Demo</h1>
-            <p>Phase 2 Implementation Demo (Works without internet)</p>
+            <p>Phase 3 Implementation Demo (Enhanced File Save Functionality)</p>
         </div>
 
         <div class="alert alert-info">
-            <strong>Offline Demo Mode:</strong> This version demonstrates the Phase 2 functionality without requiring external libraries or internet access. 
-            It simulates the video creation process and shows how the complete workflow operates.
+            <strong>Phase 3 Demo Mode:</strong> This version demonstrates Phase 3 functionality including enhanced file save capabilities. 
+            It includes multiple save methods, user preferences, and comprehensive error handling.
         </div>
 
         <div class="alert alert-warning">
-            <strong>Note:</strong> This is a demonstration version. The actual video encoding requires FFmpeg.js which needs internet access to load. 
-            This demo shows the user interface and workflow without actual video creation.
+            <strong>Note:</strong> This demo simulates the video creation and enhanced save workflow. 
+            The actual video encoding requires FFmpeg.js. This demo focuses on the new Step 3.1 file save functionality.
+        </div>
+
+        <div class="alert alert-success">
+            <strong>New in Phase 3:</strong> Enhanced MP4 file save with multiple save methods, user preferences, 
+            unique filename generation, and comprehensive error handling with fallback options.
         </div>
 
         <div class="alert alert-info" id="sharedArrayBufferInfo" style="display: none;">
@@ -200,34 +205,54 @@
 
         <!-- Control Buttons -->
         <div style="text-align: center; margin: 30px 0;">
-            <button class="btn btn-success" id="processBtn" disabled onclick="processImages()">Create Video (Demo)</button>
-            <button class="btn" onclick="showSettings()">Settings</button>
-            <button class="btn" onclick="resetDemo()">Reset Demo</button>
+            <button class="btn btn-success" id="processBtn" disabled onclick="processImages()">🎬 Create Video (Phase 3 Demo)</button>
+            <button class="btn" onclick="showSettings()">⚙️ Settings</button>
+            <button class="btn" onclick="resetDemo()">🔄 Reset Demo</button>
         </div>
 
         <!-- Progress Display -->
         <div id="progressContainer" class="progress-container">
-            <h4>Video Creation Progress:</h4>
+            <h4>📊 Video Creation Progress (Phase 3 Enhanced):</h4>
             <div class="progress-bar">
                 <div id="progressFill" class="progress-fill">0%</div>
             </div>
             <div id="progressStatus"></div>
+            <small style="color: #6c757d; margin-top: 10px; display: block;">
+                Phase 3 includes enhanced progress tracking, comprehensive error handling, and advanced file save options
+            </small>
         </div>
 
-        <!-- Demo Video Result -->
+        <!-- Demo Video Result with Enhanced Save Options (Step 3.1) -->
         <div id="demoVideo" class="demo-video">
-            <h4>Demo Result:</h4>
-            <p>In the actual implementation, your MP4 video would be downloaded here.</p>
-            <div style="background-color: #f8f9fa; border: 2px dashed #ccc; padding: 40px; border-radius: 8px;">
-                <h3>🎬 Generated Video</h3>
+            <h4>🎬 Video Creation Complete - Enhanced Save Options:</h4>
+            <div style="background-color: #f8f9fa; border: 2px dashed #28a745; padding: 40px; border-radius: 8px;">
+                <h3>✅ Generated Video Ready</h3>
                 <p><strong>Filename:</strong> <span id="videoFilename">medical_images_2024-12-20.mp4</span></p>
                 <p><strong>Dimensions:</strong> <span id="videoDimensions">1024x768</span></p>
                 <p><strong>Duration:</strong> <span id="videoDuration">8.5 seconds</span></p>
                 <p><strong>Size:</strong> <span id="videoSize">2.4 MB</span></p>
-                <p><strong>Frame Rate:</strong> 15 FPS</p>
-                <p><strong>Quality:</strong> Medium</p>
-                <button class="btn">📥 Download Video (Demo)</button>
-                <button class="btn" onclick="testVideoPlayback()">▶️ Test Playback</button>
+                <p><strong>Frame Rate:</strong> 15 FPS | <strong>Quality:</strong> Medium</p>
+                
+                <div style="margin: 20px 0; padding: 15px; background-color: #e8f5e8; border-radius: 4px;">
+                    <h4>💾 Enhanced Save Options (Step 3.1):</h4>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 15px 0;">
+                        <button class="btn" onclick="demoSaveWithFilePicker()">🗂️ Save File Dialog</button>
+                        <button class="btn" onclick="demoSaveWithDirectory()">📁 Choose Directory</button>
+                        <button class="btn" onclick="demoSaveWithDownload()">📥 Browser Download</button>
+                        <button class="btn" onclick="demoSaveOptions()">⚙️ Save Settings</button>
+                    </div>
+                    <div style="margin-top: 15px;">
+                        <button class="btn" onclick="testVideoPlayback()">▶️ Test Video</button>
+                        <button class="btn" onclick="demoSaveMethodChoice()">🔄 Save Copy</button>
+                    </div>
+                </div>
+                
+                <div id="saveResult" style="display: none; margin-top: 15px; padding: 15px; background-color: #d4edda; border-radius: 4px; border-left: 4px solid #28a745;">
+                    <h5>✅ Save Operation Complete</h5>
+                    <p><strong>Method:</strong> <span id="saveMethod">File System Access API</span></p>
+                    <p><strong>Location:</strong> <span id="saveLocation">Downloads/medical_images_2024-12-20_14-23-45.mp4</span></p>
+                    <p><strong>Features:</strong> Unique filename generation, overwrite protection, progress tracking</p>
+                </div>
             </div>
         </div>
     </div>
@@ -407,20 +432,104 @@
         }
 
         function testVideoPlayback() {
-            showStatus('info', 'In the actual implementation, the generated MP4 would play in your default video player.');
+            showStatus('info', 'In the actual implementation, the generated MP4 would play in your default video player with automatic validation.');
+        }
+
+        // Phase 3 Step 3.1 Demo Functions - Enhanced File Save
+        function demoSaveWithFilePicker() {
+            showStatus('info', 'Demo: File System Access API - Choose exact location and filename');
+            document.getElementById('saveResult').style.display = 'block';
+            document.getElementById('saveMethod').textContent = 'File System Access API (showSaveFilePicker)';
+            document.getElementById('saveLocation').textContent = 'User-selected/medical_sequence_2024-12-20_14-23-45.mp4';
+        }
+
+        function demoSaveWithDirectory() {
+            showStatus('info', 'Demo: Directory Access - Choose folder and save with current filename');
+            document.getElementById('saveResult').style.display = 'block';
+            document.getElementById('saveMethod').textContent = 'File System Access API (directory)';
+            document.getElementById('saveLocation').textContent = 'Selected-Folder/medical_images_2024-12-20_14-23-45.mp4';
+        }
+
+        function demoSaveWithDownload() {
+            showStatus('info', 'Demo: Browser Download - Save to default downloads folder (fallback method)');
+            document.getElementById('saveResult').style.display = 'block';
+            document.getElementById('saveMethod').textContent = 'Browser Download (fallback)';
+            document.getElementById('saveLocation').textContent = 'Downloads/medical_images_2024-12-20_14-23-45.mp4';
+        }
+
+        function demoSaveOptions() {
+            alert(`🔧 Enhanced Save Options (Step 3.1):
+
+✅ Available Save Methods:
+• File System Access API (Modern browsers)
+• Directory selection with folder picker
+• Traditional browser download (Fallback)
+
+⚙️ User Preferences:
+• Generate unique filenames: ✅ Enabled
+• Confirm before overwrite: ✅ Enabled  
+• Auto-save mode: ❌ Disabled
+• Preserve timestamps: ✅ Enabled
+
+🛡️ Error Handling:
+• Automatic fallback to simpler save methods
+• Comprehensive error recovery
+• User-friendly error messages
+• Graceful degradation for restricted environments
+
+🎯 Cross-Browser Compatibility:
+• Modern browsers: Full functionality
+• Standard browsers: Download fallback
+• Legacy browsers: Always works
+• Corporate environments: Restricted-mode compatible`);
+        }
+
+        function demoSaveMethodChoice() {
+            const methods = ['File Dialog', 'Directory Access', 'Browser Download'];
+            const randomMethod = methods[Math.floor(Math.random() * methods.length)];
+            
+            showStatus('success', `Demo: Save copy using ${randomMethod} method. Multiple copies can be saved with different methods.`);
+            
+            // Show temporary additional save result
+            setTimeout(() => {
+                const additionalResult = document.createElement('div');
+                additionalResult.style.cssText = 'margin-top: 10px; padding: 10px; background-color: #d1ecf1; border-radius: 4px; border-left: 4px solid #17a2b8;';
+                additionalResult.innerHTML = `
+                    <strong>📋 Additional Copy Saved:</strong><br>
+                    Method: ${randomMethod}<br>
+                    Location: Another-Location/medical_sequence_copy_14-24-12.mp4
+                `;
+                document.getElementById('saveResult').appendChild(additionalResult);
+            }, 1000);
         }
 
         function showSettings() {
-            alert(`Settings Panel (Phase 4 Feature):
+            alert(`⚙️ Settings Panel (Phase 4 Feature Preview):
 
-Current Settings:
+🎬 Video Settings:
 • Frame Rate: 15 FPS
 • Quality: Medium (CRF 23)
 • Resolution: Original
 • Codec: H.264
 • Format: MP4
 
-In Phase 4, these will be customizable through a settings panel.`);
+💾 Save Settings (Phase 3 - Step 3.1):
+• Preferred Method: Auto-detect best available
+• Unique Filenames: ✅ Enabled (timestamp suffix)
+• Overwrite Protection: ✅ Enabled (confirmation dialog)
+• Auto-save Mode: ❌ Disabled (user confirmation)
+• Error Recovery: ✅ Enabled (multiple fallbacks)
+
+🔧 Available Save Methods:
+• File System Access API: Modern browsers
+• Directory Selection: Folder-based saving
+• Browser Download: Universal fallback
+
+🚀 Phase 4 will add:
+• Customizable video settings panel
+• Advanced save preferences
+• Batch processing options
+• Export format selection`);
         }
 
         function resetDemo() {
@@ -446,7 +555,7 @@ In Phase 4, these will be customizable through a settings panel.`);
                 document.getElementById('sharedArrayBufferInfo').style.display = 'block';
             }
             
-            showStatus('info', 'Demo ready. Please select JPEG images to test the video creation workflow.');
+            showStatus('info', 'Phase 3 Demo ready. Enhanced file save functionality included. Please select JPEG images to test the complete workflow.');
         });
     </script>
 </body>

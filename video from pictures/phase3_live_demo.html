@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video from Pictures - Phase 3 Live Demo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .alert {
+            padding: 15px;
+            margin-bottom: 20px;
+            border: 1px solid transparent;
+            border-radius: 4px;
+        }
+        .alert-info {
+            color: #31708f;
+            background-color: #d9edf7;
+            border-color: #bce8f1;
+        }
+        .alert-success {
+            color: #3c763d;
+            background-color: #dff0d8;
+            border-color: #d6e9c6;
+        }
+        .alert-warning {
+            color: #8a6d3b;
+            background-color: #fcf8e3;
+            border-color: #faebcc;
+        }
+        .btn {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+        }
+        .btn:hover {
+            background-color: #0056b3;
+        }
+        .btn:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        .btn-success {
+            background-color: #28a745;
+        }
+        .btn-success:hover {
+            background-color: #218838;
+        }
+        .folder-selection {
+            border: 2px dashed #ccc;
+            padding: 40px;
+            text-align: center;
+            border-radius: 8px;
+            margin: 20px 0;
+            transition: border-color 0.3s;
+        }
+        .folder-selection:hover {
+            border-color: #007bff;
+        }
+        .folder-selection.dragover {
+            border-color: #28a745;
+            background-color: #f8f9fa;
+        }
+        .status {
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+            display: none;
+        }
+        .status.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        .file-info {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 15px 0;
+            display: none;
+        }
+        .save-demo-section {
+            margin: 30px 0;
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #007bff;
+        }
+        .capabilities-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .capability-card {
+            padding: 15px;
+            background-color: white;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+        }
+        .capability-supported {
+            border-left: 4px solid #28a745;
+        }
+        .capability-not-supported {
+            border-left: 4px solid #dc3545;
+        }
+        .demo-controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎬 Video from Pictures</h1>
+            <h2>Phase 3 - Step 3.1 Live Demo</h2>
+            <p>Enhanced MP4 File Save Functionality</p>
+        </div>
+
+        <div class="alert alert-success">
+            <strong>✅ Phase 3 - Step 3.1 Complete:</strong> This demo includes the actual enhanced file save functionality 
+            with multiple save methods, browser capability detection, and comprehensive error handling.
+        </div>
+
+        <div class="alert alert-info">
+            <strong>🔧 Live Functionality:</strong> This version includes the real fileSaver.js module and demonstrates 
+            actual browser capabilities. Test the different save methods based on your browser support.
+        </div>
+
+        <!-- Browser Capabilities Detection -->
+        <div class="save-demo-section">
+            <h3>🔍 Browser Capabilities Detection</h3>
+            <p>Your browser supports the following save methods:</p>
+            
+            <div class="capabilities-grid" id="capabilitiesGrid">
+                <!-- Populated by JavaScript -->
+            </div>
+            
+            <button class="btn" onclick="refreshCapabilities()">🔄 Refresh Capabilities</button>
+            <button class="btn" onclick="showCapabilityDetails()">📋 View Details</button>
+        </div>
+
+        <!-- File Save Demo Controls -->
+        <div class="save-demo-section">
+            <h3>💾 File Save Method Testing</h3>
+            <p>Test different save methods with a mock video file:</p>
+            
+            <div class="demo-controls">
+                <button class="btn" onclick="testSaveFilePicker()" id="testFilePickerBtn">
+                    🗂️ Test File Picker
+                </button>
+                <button class="btn" onclick="testSaveDirectory()" id="testDirectoryBtn">
+                    📁 Test Directory Save
+                </button>
+                <button class="btn" onclick="testSaveDownload()" id="testDownloadBtn">
+                    📥 Test Download
+                </button>
+                <button class="btn" onclick="testSaveMethodChoice()">
+                    🔄 User Method Choice
+                </button>
+                <button class="btn" onclick="showSaveOptions()">
+                    ⚙️ Save Options
+                </button>
+                <button class="btn" onclick="generateMockVideo()">
+                    🎬 Generate Mock Video
+                </button>
+            </div>
+        </div>
+
+        <!-- File Selection for Real Testing -->
+        <div class="folder-selection" id="folderSelection">
+            <h3>📁 Select JPEG Images (Optional)</h3>
+            <p>Or select actual JPEG files to test with real image processing</p>
+            <button class="btn" onclick="selectFiles()">Choose JPEG Files</button>
+            <input type="file" id="fileInput" multiple accept=".jpg,.jpeg" style="display: none;">
+        </div>
+
+        <!-- Status Display -->
+        <div id="status" class="status"></div>
+
+        <!-- File Information -->
+        <div id="fileInfo" class="file-info">
+            <h4>Selected Files:</h4>
+            <div id="fileDetails"></div>
+        </div>
+
+        <!-- Demo Results -->
+        <div id="demoResults" style="display: none; margin: 20px 0; padding: 20px; background-color: #e8f5e8; border-radius: 8px;">
+            <h4>✅ Save Operation Results</h4>
+            <div id="saveResultDetails"></div>
+        </div>
+    </div>
+
+    <!-- Load Phase 3 modules -->
+    <script src="fileSaver.js"></script>
+    
+    <script>
+        // Global variables
+        let fileSaver = null;
+        let mockVideoBlob = null;
+        let selectedFiles = [];
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeDemo();
+        });
+
+        // Initialize the demo
+        function initializeDemo() {
+            try {
+                // Initialize FileSaver
+                fileSaver = new FileSaver();
+                
+                // Display capabilities
+                displayBrowserCapabilities();
+                
+                // Generate mock video for testing
+                generateMockVideo();
+                
+                showStatus('success', 'Phase 3 Step 3.1 demo initialized successfully! FileSaver ready with ' + 
+                          Object.keys(fileSaver.supportedMethods).filter(m => fileSaver.supportedMethods[m]).length + 
+                          ' supported save methods.');
+                
+            } catch (error) {
+                showStatus('error', 'Failed to initialize demo: ' + error.message);
+                console.error('Demo initialization error:', error);
+            }
+        }
+
+        // Display browser capabilities
+        function displayBrowserCapabilities() {
+            const grid = document.getElementById('capabilitiesGrid');
+            const capabilities = fileSaver.validateSaveCapabilities();
+            
+            grid.innerHTML = '';
+            
+            capabilities.available.forEach(capability => {
+                const supported = fileSaver.supportedMethods[capability.method];
+                const card = document.createElement('div');
+                card.className = `capability-card ${supported ? 'capability-supported' : 'capability-not-supported'}`;
+                
+                card.innerHTML = `
+                    <h4>${supported ? '✅' : '❌'} ${capability.method}</h4>
+                    <p>${capability.description}</p>
+                    <small><strong>Status:</strong> ${supported ? 'Supported' : 'Not Available'}</small>
+                    ${capability.recommended ? '<br><small><strong>Recommended:</strong> ✅ Yes</small>' : ''}
+                `;
+                
+                grid.appendChild(card);
+            });
+            
+            // Update button states based on capabilities
+            document.getElementById('testFilePickerBtn').disabled = !fileSaver.supportedMethods.showSaveFilePicker;
+            document.getElementById('testDirectoryBtn').disabled = !fileSaver.supportedMethods.fileSystemAccess;
+            // Download is always available
+        }
+
+        // Generate mock video blob for testing
+        function generateMockVideo() {
+            try {
+                // Create a realistic-sized mock video (2MB)
+                const mockSize = 2 * 1024 * 1024;
+                const mockData = new Uint8Array(mockSize);
+                
+                // Fill with some pattern to simulate video data
+                for (let i = 0; i < mockData.length; i++) {
+                    mockData[i] = (i % 256);
+                }
+                
+                mockVideoBlob = new Blob([mockData], { type: 'video/mp4' });
+                
+                console.log(`Mock video generated: ${(mockVideoBlob.size / 1024 / 1024).toFixed(2)} MB`);
+                
+            } catch (error) {
+                console.error('Failed to generate mock video:', error);
+                showStatus('error', 'Failed to generate mock video for testing');
+            }
+        }
+
+        // Test File System Access API (showSaveFilePicker)
+        async function testSaveFilePicker() {
+            if (!fileSaver.supportedMethods.showSaveFilePicker) {
+                showStatus('error', 'File System Access API (showSaveFilePicker) is not supported in your browser');
+                return;
+            }
+            
+            try {
+                showStatus('info', 'Testing File Picker save method...');
+                
+                const filename = `test_video_filepicker_${new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-')}.mp4`;
+                const result = await fileSaver.saveWithFilePicker(mockVideoBlob, filename, fileSaver.settings);
+                
+                displaySaveResult(result);
+                
+            } catch (error) {
+                showStatus('error', 'File picker test failed: ' + error.message);
+            }
+        }
+
+        // Test directory-based save
+        async function testSaveDirectory() {
+            if (!fileSaver.supportedMethods.fileSystemAccess) {
+                showStatus('error', 'File System Access API (directory) is not supported in your browser');
+                return;
+            }
+            
+            try {
+                showStatus('info', 'Testing directory save method...');
+                
+                const filename = `test_video_directory_${new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-')}.mp4`;
+                const result = await fileSaver.saveWithFileSystemAccess(mockVideoBlob, filename, fileSaver.settings);
+                
+                displaySaveResult(result);
+                
+            } catch (error) {
+                showStatus('error', 'Directory save test failed: ' + error.message);
+            }
+        }
+
+        // Test download method
+        async function testSaveDownload() {
+            try {
+                showStatus('info', 'Testing download save method...');
+                
+                const filename = `test_video_download_${new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-')}.mp4`;
+                const result = await fileSaver.saveWithDownload(mockVideoBlob, filename, fileSaver.settings);
+                
+                displaySaveResult(result);
+                
+            } catch (error) {
+                showStatus('error', 'Download test failed: ' + error.message);
+            }
+        }
+
+        // Test save method choice dialog
+        async function testSaveMethodChoice() {
+            try {
+                showStatus('info', 'Testing save method choice dialog...');
+                
+                const filename = `test_video_choice_${new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-')}.mp4`;
+                const result = await fileSaver.saveWithMethodChoice(mockVideoBlob, filename);
+                
+                if (result) {
+                    displaySaveResult(result);
+                } else {
+                    showStatus('info', 'Save method choice was cancelled');
+                }
+                
+            } catch (error) {
+                showStatus('error', 'Method choice test failed: ' + error.message);
+            }
+        }
+
+        // Show save options dialog
+        function showSaveOptions() {
+            if (!fileSaver) {
+                showStatus('error', 'FileSaver not initialized');
+                return;
+            }
+            
+            // This would show the actual save options dialog from the main application
+            // For demo purposes, we'll show current settings
+            const capabilities = fileSaver.getBrowserCapabilities();
+            
+            alert(`💾 Current Save Settings:
+
+🔧 Preferred Method: ${capabilities.preferredMethod}
+
+⚙️ Settings:
+• Generate Unique Names: ${fileSaver.settings.generateUniqueNames ? '✅' : '❌'}
+• Confirm Overwrite: ${fileSaver.settings.confirmOverwrite ? '✅' : '❌'}
+• Auto Save: ${fileSaver.settings.autoSave ? '✅' : '❌'}
+• Preserve Timestamp: ${fileSaver.settings.preserveTimestamp ? '✅' : '❌'}
+
+🌐 Supported Methods:
+${Object.keys(fileSaver.supportedMethods).map(method => 
+    `• ${method}: ${fileSaver.supportedMethods[method] ? '✅' : '❌'}`
+).join('\n')}
+
+📍 Last Save Location: ${capabilities.lastSaveLocation || 'None'}`);
+        }
+
+        // Display save operation result
+        function displaySaveResult(result) {
+            const resultsDiv = document.getElementById('demoResults');
+            const detailsDiv = document.getElementById('saveResultDetails');
+            
+            if (result.success) {
+                showStatus('success', `Save operation completed successfully via ${result.method}`);
+                
+                detailsDiv.innerHTML = `
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div>
+                            <strong>📁 File Information:</strong><br>
+                            <small>Name: ${result.filename}</small><br>
+                            <small>Size: ${(result.size / 1024 / 1024).toFixed(2)} MB</small><br>
+                            <small>Timestamp: ${new Date(result.timestamp).toLocaleString()}</small>
+                        </div>
+                        <div>
+                            <strong>🔧 Save Details:</strong><br>
+                            <small>Method: ${result.method}</small><br>
+                            <small>Location: ${result.location}</small><br>
+                            ${result.note ? `<small>Note: ${result.note}</small>` : ''}
+                        </div>
+                    </div>
+                `;
+                
+            } else {
+                showStatus('error', `Save operation failed: ${result.error}`);
+                
+                detailsDiv.innerHTML = `
+                    <div style="color: #721c24;">
+                        <strong>❌ Save Failed:</strong><br>
+                        <small>Method: ${result.method}</small><br>
+                        <small>Error: ${result.error}</small><br>
+                        ${result.cancelled ? '<small>Operation was cancelled by user</small>' : ''}
+                    </div>
+                `;
+            }
+            
+            resultsDiv.style.display = 'block';
+        }
+
+        // Refresh capabilities display
+        function refreshCapabilities() {
+            if (fileSaver) {
+                fileSaver.detectSaveMethods();
+                displayBrowserCapabilities();
+                showStatus('info', 'Browser capabilities refreshed');
+            }
+        }
+
+        // Show detailed capability information
+        function showCapabilityDetails() {
+            const capabilities = fileSaver.getBrowserCapabilities();
+            const validation = fileSaver.validateSaveCapabilities();
+            
+            const details = `🔍 Detailed Browser Capabilities:
+
+🌐 Browser Environment:
+• User Agent: ${navigator.userAgent.substring(0, 80)}...
+• Secure Context: ${window.isSecureContext ? '✅' : '❌'}
+
+💾 Save Method Support:
+${validation.available.map(cap => 
+    `• ${cap.method}: ${fileSaver.supportedMethods[cap.method] ? '✅ Available' : '❌ Not supported'}
+  ${cap.description}`
+).join('\n')}
+
+⚙️ Current Configuration:
+• Preferred Method: ${capabilities.preferredMethod}
+• Total Methods: ${validation.total}
+• Modern Methods: ${validation.modern}
+
+📊 Statistics:
+• Methods Available: ${Object.values(fileSaver.supportedMethods).filter(Boolean).length}
+• Fallback Required: ${!fileSaver.supportedMethods.showSaveFilePicker && !fileSaver.supportedMethods.fileSystemAccess ? 'Yes' : 'No'}`;
+            
+            alert(details);
+        }
+
+        // Select files (for real testing)
+        function selectFiles() {
+            document.getElementById('fileInput').click();
+        }
+
+        // Handle file selection
+        document.getElementById('fileInput').addEventListener('change', function(event) {
+            selectedFiles = Array.from(event.target.files);
+            
+            if (selectedFiles.length > 0) {
+                document.getElementById('fileDetails').innerHTML = `
+                    <p><strong>Selected ${selectedFiles.length} files:</strong></p>
+                    <small>${selectedFiles.map(f => f.name).slice(0, 5).join(', ')}${selectedFiles.length > 5 ? '...' : ''}</small>
+                `;
+                document.getElementById('fileInfo').style.display = 'block';
+                
+                showStatus('success', `Selected ${selectedFiles.length} JPEG files. You can now test save functionality with real files.`);
+            }
+        });
+
+        // Show status message
+        function showStatus(type, message) {
+            const statusEl = document.getElementById('status');
+            statusEl.className = `status ${type}`;
+            statusEl.textContent = message;
+            statusEl.style.display = 'block';
+            
+            console.log(`[${type.toUpperCase()}] ${message}`);
+        }
+    </script>
+</body>
+</html>
