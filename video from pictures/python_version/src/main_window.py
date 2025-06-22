@@ -9,10 +9,14 @@ from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QPushButton, QLabel, QProgressBar, QLineEdit, 
     QComboBox, QGroupBox, QFileDialog, QApplication,
-    QSpacerItem, QSizePolicy, QMessageBox
+    QSpacerItem, QSizePolicy, QMessageBox, QTextEdit
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QFont
+
+# Import our video processing worker and settings manager
+from video_processing_worker import VideoProcessingWorker
+from settings_manager import SettingsManager
 
 
 class MainWindow(QMainWindow):
@@ -22,7 +26,12 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.selected_folder = None
         self.processing_thread = None
+        
+        # Initialize settings manager
+        self.settings_manager = SettingsManager()
+        
         self.setup_ui()
+        self.load_ui_settings()
         
     def setup_ui(self):
         """Set up the user interface components."""
@@ -197,6 +206,9 @@ class MainWindow(QMainWindow):
             # Update folder info
             self._update_folder_info()
             
+            # Save the selected folder path
+            self.settings_manager.update_setting('last_folder_path', str(self.selected_folder))
+            
             # Enable start button if folder is valid
             self.start_button.setEnabled(True)
             self.status_label.setText("Folder selected. Ready to process images.")
@@ -240,6 +252,9 @@ class MainWindow(QMainWindow):
         else:
             self.settings_button.setText("Hide Settings")
             
+        # Save the updated visibility state
+        self.settings_manager.update_setting('settings_visible', not is_visible)
+            
     def start_processing(self):
         """Start the image processing and video creation."""
         if not self.selected_folder:
@@ -255,23 +270,117 @@ class MainWindow(QMainWindow):
         self.current_file_label.setVisible(True)
         self.status_label.setText("Starting processing...")
         
-        # TODO: Implement actual processing logic in Phase 2
-        # For now, just show a placeholder message
-        QMessageBox.information(
-            self, 
-            "Processing Started", 
-            "Processing functionality will be implemented in Phase 2.\n"
-            "This is the GUI design phase (Step 1.3)."
-        )
+        # Save current settings before processing
+        self.save_ui_settings()
         
-        # Reset UI state (temporary for this phase)
-        self._reset_processing_state()
+        # Gather settings from UI
+        settings = {
+            'output_filename': self.filename_input.text().strip(),
+            'frame_rate': int(self.framerate_combo.currentText()),
+            'sorting_method': self._get_sorting_method(),
+            'output_directory': None  # Use source folder by default
+        }
+        
+        # Create and start processing worker thread
+        self.processing_thread = VideoProcessingWorker(self.selected_folder, settings)
+        
+        # Connect worker signals to UI update methods
+        self.processing_thread.progress_updated.connect(self._on_progress_updated)
+        self.processing_thread.current_file_updated.connect(self._on_current_file_updated)
+        self.processing_thread.processing_finished.connect(self._on_processing_finished)
+        self.processing_thread.error_occurred.connect(self._on_error_occurred)
+        
+        # Start the worker thread
+        self.processing_thread.start()
         
     def stop_processing(self):
         """Stop the current processing operation."""
-        # TODO: Implement actual stop logic in Phase 2
+        if self.processing_thread and self.processing_thread.isRunning():
+            self.status_label.setText("Stopping processing...")
+            self.processing_thread.stop()
+            self.processing_thread.wait(5000)  # Wait up to 5 seconds for thread to finish
+            
+            if self.processing_thread.isRunning():
+                self.processing_thread.terminate()
+                self.processing_thread.wait()
+                
         self.status_label.setText("Processing stopped by user.")
         self._reset_processing_state()
+        
+    def _get_sorting_method(self) -> str:
+        """Convert UI sorting selection to internal method name."""
+        sorting_text = self.sorting_combo.currentText()
+        if "Natural" in sorting_text:
+            return "natural"
+        elif "Alphabetical" in sorting_text:
+            return "alphabetical"
+        elif "Modification Date" in sorting_text:
+            return "modification_date"
+        else:
+            return "natural"  # Default
+    
+    def _on_progress_updated(self, percentage: int, message: str):
+        """Handle progress updates from worker thread."""
+        self.progress_bar.setValue(percentage)
+        self.status_label.setText(message)
+    
+    def _on_current_file_updated(self, filename: str):
+        """Handle current file updates from worker thread."""
+        self.current_file_label.setText(filename)
+    
+    def _on_processing_finished(self, success: bool, message: str, report: dict):
+        """Handle processing completion from worker thread."""
+        self._reset_processing_state()
+        
+        if success:
+            # Show success message with details
+            details = self._format_processing_report(report)
+            QMessageBox.information(
+                self,
+                "Processing Complete",
+                f"{message}\n\n{details}"
+            )
+        else:
+            # Show error message
+            error_details = ""
+            if self.processing_thread:
+                error_report = self.processing_thread.get_error_report()
+                if error_report.get('total_errors', 0) > 0:
+                    error_details = f"\n\nErrors encountered: {error_report['total_errors']}"
+                    if error_report.get('recommendations'):
+                        error_details += f"\nRecommendations:\n" + "\n".join(f"• {r}" for r in error_report['recommendations'][:3])
+            
+            QMessageBox.critical(
+                self,
+                "Processing Failed",
+                f"{message}{error_details}"
+            )
+    
+    def _on_error_occurred(self, error_type: str, error_message: str):
+        """Handle error notifications from worker thread."""
+        # For now, just update status. Major errors will be handled in _on_processing_finished
+        self.status_label.setText(f"Error: {error_message}")
+    
+    def _format_processing_report(self, report: dict) -> str:
+        """Format the processing report for display."""
+        if not report:
+            return "Processing completed."
+        
+        summary = report.get('summary', {})
+        timing = summary.get('total_time', 0)
+        
+        details = []
+        if timing > 0:
+            details.append(f"Processing time: {timing:.1f} seconds")
+        
+        if 'steps' in report:
+            for step_name, step_data in report['steps'].items():
+                if step_data.get('completed', False):
+                    items_processed = step_data.get('items_processed', 0)
+                    if items_processed > 0:
+                        details.append(f"{step_name.replace('_', ' ').title()}: {items_processed} items")
+        
+        return "\n".join(details) if details else "Processing completed successfully."
         
     def _reset_processing_state(self):
         """Reset the UI to non-processing state."""
@@ -281,23 +390,89 @@ class MainWindow(QMainWindow):
         self.progress_bar.setVisible(False)
         self.current_file_label.setVisible(False)
         self.status_label.setText("Ready to process images")
-
-
-def main():
-    """Main entry point for the application."""
-    app = QApplication(sys.argv)
-    
-    # Set application properties
-    app.setApplicationName("Video from Pictures")
-    app.setApplicationVersion("1.0.0")
-    app.setOrganizationName("Medical Imaging Tools")
-    
-    # Create and show main window
-    window = MainWindow()
-    window.show()
-    
-    sys.exit(app.exec())
-
-
-if __name__ == "__main__":
-    main()
+        
+    def load_ui_settings(self):
+        """Load and apply UI settings from the settings manager."""
+        ui_settings = self.settings_manager.get_ui_settings()
+        
+        # Restore window size
+        self.resize(ui_settings['window_width'], ui_settings['window_height'])
+        
+        # Restore settings visibility
+        self.settings_section.setVisible(ui_settings['settings_visible'])
+        if ui_settings['settings_visible']:
+            self.settings_button.setText("Hide Settings")
+        else:
+            self.settings_button.setText("Show Settings")
+            
+        # Restore last folder path if it exists and is valid
+        if ui_settings['last_folder_path'] and Path(ui_settings['last_folder_path']).exists():
+            self.selected_folder = Path(ui_settings['last_folder_path'])
+            self.folder_label.setText(str(self.selected_folder))
+            self._update_folder_info()
+            
+        # Load video processing settings
+        video_settings = self.settings_manager.get_video_settings()
+        
+        # Set frame rate
+        frame_rate_str = str(video_settings['frame_rate'])
+        index = self.framerate_combo.findText(frame_rate_str)
+        if index >= 0:
+            self.framerate_combo.setCurrentIndex(index)
+            
+        # Set sorting method
+        sorting_mapping = {
+            'natural': 'Filename (Natural)',
+            'alphabetical': 'Filename (Alphabetical)', 
+            'modification_date': 'Modification Date'
+        }
+        sorting_text = sorting_mapping.get(video_settings['sorting_method'], 'Filename (Natural)')
+        index = self.sorting_combo.findText(sorting_text)
+        if index >= 0:
+            self.sorting_combo.setCurrentIndex(index)
+            
+        # Set output filename pattern
+        if video_settings['output_filename']:
+            self.filename_input.setText(video_settings['output_filename'])
+            
+    def save_ui_settings(self):
+        """Save current UI settings to the settings manager."""
+        # Get current window size
+        size = self.size()
+        
+        # Get current UI values
+        ui_values = {
+            'window_size': (size.width(), size.height()),
+            'settings_visible': self.settings_section.isVisible(),
+            'last_folder_path': str(self.selected_folder) if self.selected_folder else "",
+            'frame_rate': int(self.framerate_combo.currentText()),
+            'output_filename': self.filename_input.text().strip(),
+        }
+        
+        # Map sorting method
+        sorting_mapping = {
+            'Filename (Natural)': 'natural',
+            'Filename (Alphabetical)': 'alphabetical',
+            'Modification Date': 'modification_date'
+        }
+        ui_values['sorting_method'] = sorting_mapping.get(
+            self.sorting_combo.currentText(), 'natural'
+        )
+        
+        # Update settings and save
+        self.settings_manager.update_from_ui(ui_values)
+        self.settings_manager.save_settings()
+        
+    def closeEvent(self, event):
+        """Handle window close event to save settings."""
+        # Stop any running processing
+        if self.processing_thread and self.processing_thread.isRunning():
+            self.stop_processing()
+            # Wait a bit for the thread to stop
+            self.processing_thread.wait(1000)
+            
+        # Save settings before closing
+        self.save_ui_settings()
+        
+        # Accept the close event
+        event.accept()

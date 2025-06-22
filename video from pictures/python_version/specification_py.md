@@ -123,7 +123,7 @@ This specification outlines the requirements and design for a Python-based appli
     *   Start button initiates video creation in a separate QThread (to avoid GUI blocking).
     *   Progress updates from the processing thread are communicated to the GUI via signals.
     *   Completion or error signals are handled to display appropriate messages.
-2.  **Step 3.2**: Implement settings functionality:
+2.  **Step 3.2**: ✅ **COMPLETED** - Implement settings functionality:
     *   Load and save user settings (output filename pattern, frame rate, sorting method) using JSON configuration files.
     *   Apply settings to the video creation process.
 3.  **Step 3.3**: Thoroughly test the application:
