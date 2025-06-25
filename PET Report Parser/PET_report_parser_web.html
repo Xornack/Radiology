@@ -21,142 +21,227 @@
         <label for="output">Output:</label><br>
         <textarea id="output" readonly></textarea>
     </div>
-    <script>
-// --- PET Parser and Formatter in JS ---
-function roundHalfUp(num, decimals = 1) {
-    if (num === '' || isNaN(num)) return '';
-    const factor = Math.pow(10, decimals);
-    return (Math.round(num * factor + Number.EPSILON) / factor).toFixed(decimals);
-}
 
-function parsePetReport(text) {
-    const findings = {};
-    let currentFinding = null;
-    let currentDate = null;
-    const datePattern = /^\d{4}-\d{2}-\d{2}$/;
-    const findingPattern = /^Finding (\d+)/;
-    const maxPattern = /^Max: ([\d.]+) SUVbw/;
-    const slicePattern = /^Slice with Max: (\d+) #/;
-    const recistLongPattern = /^RECIST Long: ([\d.]+) cm/;
-    const recistShortPattern = /^RECIST Short: ([\d.]+) cm/;
-    const meanPattern = /^Mean: /;
-    const nameCollisionPattern = /Name collision prevented result/;
-    const lines = text.split(/\r?\n/);
-    for (let line of lines) {
-        line = line.trim();
-        if (!line) continue;
-        let m;
-        if ((m = findingPattern.exec(line))) {
-            currentFinding = m[1];
-            if (!findings[currentFinding]) findings[currentFinding] = {};
-            continue;
-        }
-        if ((m = datePattern.exec(line))) {
-            currentDate = m[0];
-            continue;
-        }
-        if (nameCollisionPattern.test(line)) continue;
-        if (meanPattern.test(line)) continue;
-        if (currentFinding) {
-            // Use date as key if present, else use 'nodate'
+    <script>
+    // --- helper: round half up ---
+    function roundHalfUp(num, decimals = 1) {
+        if (num === '' || isNaN(num)) return '';
+        const factor = 10 ** decimals;
+        return (Math.round(num * factor + Number.EPSILON) / factor)
+               .toFixed(decimals);
+    }
+
+    // --- parse the raw PET text into a structured object ---
+    function parsePetReport(text) {
+        const findings = {};
+        let currentFinding = null, currentDate = null;
+
+        const datePattern    = /^\d{4}-\d{2}-\d{2}$/,
+              findingPattern = /^Finding\s+(\d+)/,
+              maxPattern     = /^Max:\s*([\d.]+)\s*SUVbw/,
+              meanPattern    = /^Mean:\s*([\d.]+)\s*SUVbw/,
+              slicePattern   = /^Slice with Max:\s*(\d+)/;
+
+        text.split(/\r?\n/).forEach(raw => {
+            const line = raw.trim();
+            if (!line) return;
+
+            console.log('Processing line:', JSON.stringify(line));
+            let m;
+            if (m = findingPattern.exec(line)) {
+                const newFinding = m[1];
+                // Only reset currentDate if this is a new finding number or a bare "Finding X" line
+                if (newFinding !== currentFinding || line === `Finding ${newFinding}`) {
+                    currentFinding = newFinding;
+                    findings[currentFinding] = findings[currentFinding] || {};
+                    if (line === `Finding ${newFinding}`) {
+                        currentDate = null; // Only reset date for bare "Finding X" lines
+                    }
+                }
+                console.log('Found finding:', currentFinding);
+                return;
+            }
+            if (m = datePattern.exec(line)) {
+                currentDate = m[0];
+                console.log('Found date:', currentDate);
+                return;
+            }
+            if (!currentFinding) return;
+
             const key = currentDate || 'nodate';
             findings[currentFinding][key] = findings[currentFinding][key] || {};
-            if ((m = maxPattern.exec(line))) {
-                findings[currentFinding][key]['max'] = parseFloat(m[1]);
-            } else if ((m = slicePattern.exec(line))) {
-                findings[currentFinding][key]['slice'] = parseInt(m[1]);
-            } else if ((m = recistLongPattern.exec(line))) {
-                findings[currentFinding][key]['long'] = parseFloat(m[1]);
-            } else if ((m = recistShortPattern.exec(line))) {
-                findings[currentFinding][key]['short'] = parseFloat(m[1]);
+
+            if (m = maxPattern.exec(line)) {
+                findings[currentFinding][key].max = parseFloat(m[1]);
+            }
+            else if (m = meanPattern.exec(line)) {
+                findings[currentFinding][key].mean = parseFloat(m[1]);
+            }
+            else if (m = slicePattern.exec(line)) {
+                findings[currentFinding][key].slice = parseInt(m[1], 10);
+            }
+        });
+
+        return findings;
+    }
+
+    // --- format the structured findings into report lines ---
+    function formatPetOutput(findings) {
+        // helper to get sorted dates (or ['nodate'])
+        const sortDates = obj => {
+            const d = Object.keys(obj)
+                        .filter(k => /^\d{4}-\d{2}-\d{2}$/.test(k))
+                        .sort().reverse();
+            return d.length ? d : ['nodate'];
+        };
+
+        // background lines (if 1 & 2 exist)
+        const has1 = '1' in findings,
+              has2 = '2' in findings;
+        if (has1 && has2) {
+            const [d1]     = sortDates(findings['1']);
+            const dates2   = sortDates(findings['2']);
+            console.log('dates2:', dates2);
+            const [d2, p2] = dates2;  // d2 is latest, p2 is prior
+            console.log('d2:', d2, 'p2:', p2);
+            const latest1 = findings['1'][d1];
+            const latest2 = findings['2'][d2];
+            const prior2  = (dates2.length >= 2 && p2) ? findings['2'][p2] : null;
+            console.log('prior2:', prior2);
+
+            const aortaMean      = roundHalfUp(latest1.mean || 0),
+                  liverMean      = roundHalfUp(latest2.mean || 0),
+                  liverMeanPrior = prior2 ? roundHalfUp(prior2.mean || 0) : '';
+
+            let lines = [
+              `Blood pool obtained at the descending thoracic aorta: Mean SUV: ${aortaMean}.`
+            ];
+
+            if (prior2) {
+              const bigger  = Math.max(latest2.mean, prior2.mean);
+              const diffRel = bigger ? (Math.abs(latest2.mean - prior2.mean) / bigger) : (latest2.mean === 0 ? 0 : Infinity);
+              const cmp     = diffRel < 0.20 ? 'is reasonable' : 'may not be reasonable';
+              lines.push(
+                `Liver reference: Mean SUV: ${liverMean}. Prior liver mean SUV: `
+                + `${liverMeanPrior}. Direct SUV comparison ${cmp}.`
+              );
+            } else {
+              lines.push(
+                `Liver reference: Mean SUV: ${liverMean}.`
+              );
+            }
+
+            // if ONLY findings 1 & 2, return JUST background
+            if (Object.keys(findings).length === 2) {
+                return lines;
+            }
+
+            // otherwise, prepend background to full report
+            var output = [...lines];
+        } else {
+            var output = [];
+        }
+
+        // 1) per-finding details
+        for (const f in findings) {
+            // skip 1 & 2 if we already included background only
+            if (has1 && has2 && Object.keys(findings).length === 2) break;
+
+            const dateDict = findings[f],
+                  keys     = Object.keys(dateDict),
+                  dateKeys = keys.filter(k => /^\d{4}-\d{2}-\d{2}$/.test(k)),
+                  hasNo    = keys.includes('nodate');
+
+            if (dateKeys.length >= 2) {
+                const [lk, pk] = dateKeys.sort().reverse();
+                const L = dateDict[lk], P = dateDict[pk];
+
+                if ('long' in L && 'short' in L && 'long' in P && 'short' in P) {
+                    const aL = roundHalfUp(L.long),
+                          sL = roundHalfUp(L.short),
+                          aP = roundHalfUp(P.long),
+                          sP = roundHalfUp(P.short),
+                          mL = L.max   != null ? roundHalfUp(L.max) : '',
+                          mP = P.max   != null ? roundHalfUp(P.max) : '';
+                    output.push(
+                      `Finding ${f}. ${aL} x ${sL} cm (axial image ) from `
+                      + `${aP} x ${sP} cm. Max SUV ${mL} from ${mP}.`
+                    );
+                }
+                else if ('max' in L && 'slice' in L && 'max' in P && 'slice' in P) {
+                    output.push(
+                      `Finding ${f} (axial image ${L.slice}). `
+                      + `Max SUV ${roundHalfUp(L.max)} from ${roundHalfUp(P.max)}.`
+                    );
+                }
+
+            } else if (dateKeys.length === 1) {
+                const only = dateDict[dateKeys[0]];
+                if ('long' in only && 'short' in only) {
+                    output.push(
+                      `Finding ${f}. ${roundHalfUp(only.long)} x `
+                      + `${roundHalfUp(only.short)} cm (axial image ).`
+                    );
+                }
+                else if ('max' in only && 'slice' in only) {
+                    output.push(
+                      `Finding ${f} (axial image ${only.slice}). `
+                      + `Max SUV ${roundHalfUp(only.max)}.`
+                    );
+                }
+            } else if (hasNo) {
+                const only = dateDict.nodate;
+                if ('long' in only && 'short' in only) {
+                    output.push(
+                      `Finding ${f}. ${roundHalfUp(only.long)} x `
+                      + `${roundHalfUp(only.short)} cm. (axial image ).`
+                    );
+                }
+                else if ('max' in only && 'slice' in only) {
+                    output.push(
+                      `Finding ${f} (axial image ${only.slice}). `
+                      + `Max SUV ${roundHalfUp(only.max)}.`
+                    );
+                }
             }
         }
+
+        return output;
     }
-    return findings;
-}
 
-function formatPetOutput(findings) {
-    const output = [];
-    for (const finding in findings) {
-        const dateDict = findings[finding];
-        const keys = Object.keys(dateDict);
-        // Separate date keys and 'nodate'
-        const dateKeys = keys.filter(k => /^\d{4}-\d{2}-\d{2}$/.test(k));
-        const hasNodate = keys.includes('nodate');
-        if (dateKeys.length >= 2) {
-            // Use only date keys for comparison
-            const dates = dateKeys.sort().reverse();
-            const latest = dates[0], prior = dates[1];
-            const latestData = dateDict[latest], priorData = dateDict[prior];
-            if ('long' in latestData && 'short' in latestData && 'long' in priorData && 'short' in priorData) {
-                const longLatest = roundHalfUp(latestData['long']);
-                const shortLatest = roundHalfUp(latestData['short']);
-                const longPrior = roundHalfUp(priorData['long']);
-                const shortPrior = roundHalfUp(priorData['short']);
-                const maxLatest = ('max' in latestData && latestData['max'] !== '') ? roundHalfUp(latestData['max']) : '';
-                const maxPrior = ('max' in priorData && priorData['max'] !== '') ? roundHalfUp(priorData['max']) : '';
-                output.push(`Finding ${finding}. ${longLatest} x ${shortLatest} cm. (axial image ) from ${longPrior} x ${shortPrior} cm. Max SUV ${maxLatest} from ${maxPrior}.`);
-            } else if ('max' in latestData && 'slice' in latestData && 'max' in priorData && 'slice' in priorData) {
-                const maxLatest = roundHalfUp(latestData['max']);
-                const maxPrior = roundHalfUp(priorData['max']);
-                output.push(`Finding ${finding} (axial image ${latestData['slice']}). Max SUV ${maxLatest} from ${maxPrior}.`);
-            }
-        } else if (dateKeys.length === 1) {
-            // Only one date key, single time point
-            const onlyData = dateDict[dateKeys[0]];
-            if ('long' in onlyData && 'short' in onlyData) {
-                const long = roundHalfUp(onlyData['long']);
-                const short = roundHalfUp(onlyData['short']);
-                output.push(`Finding ${finding}. ${long} x ${short} cm. (axial image ).`);
-            } else if ('max' in onlyData && 'slice' in onlyData) {
-                const max = roundHalfUp(onlyData['max']);
-                output.push(`Finding ${finding} (axial image ${onlyData['slice']}). Max SUV ${max}.`);
-            }
-        } else if (hasNodate) {
-            // Only 'nodate' present
-            const onlyData = dateDict['nodate'];
-            if ('long' in onlyData && 'short' in onlyData) {
-                const long = roundHalfUp(onlyData['long']);
-                const short = roundHalfUp(onlyData['short']);
-                output.push(`Finding ${finding}. ${long} x ${short} cm. (axial image ).`);
-            } else if ('max' in onlyData && 'slice' in onlyData) {
-                const max = roundHalfUp(onlyData['max']);
-                output.push(`Finding ${finding} (axial image ${onlyData['slice']}). Max SUV ${max}.`);
-            }
-        }
+    // --- UI glue ---
+    function processInput() {
+        const findings = parsePetReport(
+            document.getElementById('input').value
+        );
+        console.log('Parsed findings:', findings);
+        document.getElementById('output').value =
+            formatPetOutput(findings).join('\n');
     }
-    return output;
-}
-
-function processInput() {
-    console.log('Process button clicked'); // Debugging
-    const input = document.getElementById('input').value;
-    const findings = parsePetReport(input);
-    const outputLines = formatPetOutput(findings);
-    document.getElementById('output').value = outputLines.join('\n');
-}
-
-function copyOutput() {
-    const output = document.getElementById('output').value;
-    navigator.clipboard.writeText(output);
-}
-
-function saveOutput() {
-    const output = document.getElementById('output').value;
-    const blob = new Blob([output], {type: 'text/plain'});
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'pet_report_output.txt';
-    a.click();
-}
-
-// Attach event listeners after DOM is loaded
-window.onload = function() {
-    document.getElementById('processBtn').addEventListener('click', processInput);
-    document.getElementById('copyBtn').addEventListener('click', copyOutput);
-    document.getElementById('saveBtn').addEventListener('click', saveOutput);
-    document.getElementById('output').value = 'Script loaded. Ready.';
-};
+    function copyOutput() {
+        navigator.clipboard.writeText(
+          document.getElementById('output').value
+        );
+    }
+    function saveOutput() {
+        const blob = new Blob(
+          [document.getElementById('output').value],
+          { type: 'text/plain' }
+        );
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'pet_report_output.txt';
+        a.click();
+    }
+    window.onload = () => {
+        document.getElementById('processBtn')
+                .addEventListener('click', processInput);
+        document.getElementById('copyBtn')
+                .addEventListener('click', copyOutput);
+        document.getElementById('saveBtn')
+                .addEventListener('click', saveOutput);
+        document.getElementById('output').value = 'Ready.';
+    };
     </script>
 </body>
 </html>
