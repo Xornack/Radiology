@@ -17,7 +17,7 @@ at R-R 70%
 3D-P-Anterior(s): 44.0 mm
 """
 
-OUTPUT
+OUTPUT:
 """
 2D
 Trigone-trigone distance: 22.2 mm
