@@ -1,0 +1,34 @@
+INPUT:
+"""
+at R-R 70%
+2D-TT-Distance(s): 22.2 mm
+2D-SL-Distance(s): 40.2 mm
+2D-IC-Distance(s): 26.8 mm
+2D-Area(s): 7.46 cm²
+2D-P(s): 110 mm
+2D-P-Posterior(s): 68.5 mm
+2D-P-Anterior(s): 41.3 mm
+
+3D-TT-Distance(s): 22.2 mm
+3D-SL-Distance(s): 40.2 mm
+3D-IC-Distance(s): 27.2 mm
+3D-P(s): 115 mm
+3D-P-Posterior(s): 70.9 mm
+3D-P-Anterior(s): 44.0 mm
+"""
+
+OUTPUT
+"""
+2D
+Trigone-trigone distance: 22.2 mm
+SL distance: 40.2 mm
+IC distance: 26.8 mm
+Area: 746 sq mm
+Perimeter: 110 mm
+
+3D:
+Trigone-trigone distance: 22.2 mm
+SL distance: 40.2 mm
+IC distance: 27.2 mm
+Perimeter: 115 mm
+"""
