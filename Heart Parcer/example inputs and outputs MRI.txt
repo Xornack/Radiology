@@ -1,0 +1,248 @@
+No personally identifiable health information is ever transmitted.
+
+INPUT:
+"""
+SAX3D Stack LV Function
+EDV:
+72.85 ml
+ESV:
+26.82 ml
+SV:
+46.03 ml
+EF:
+63.18 %
+CO:
+3.59 l/min
+CI:
+1.59 l/min/m²
+HR:
+78.0/min
+Myo Mass (Diast):
+72.83 g
+Myo Mass (Syst):
+76.43 g
+Phase Diastole:
+30
+Phase Systole:
+11
+EDV/H:
+39.81 ml/m
+EDV/BSA:
+32.20 ml/m²
+ESV/H:
+14.66 ml/m
+ESV/BSA:
+11.86 ml/m²
+SV/H:
+25.15 ml/m
+SV/BSA:
+20.34 ml/m²
+Myo Mass/H (Diast):
+39.80 g/m
+Myo Mass/BSA (Diast):
+32.19 g/m²
+Myo Mass/H (Syst):
+41.76 g/m
+Myo Mass/BSA (Syst):
+33.78 g/m²
+Global Peak Wall Thickness (Diast):
+
+Slice 3
+13.86 mm
+Wall thickening excluding papillaries:
+Off
+
+SAX3D Stack RV Function
+RVEDV:
+81.96 ml
+RVESV:
+46.94 ml
+RVSV:
+35.02 ml
+RVEF:
+42.73 %
+RVCO:
+2.73 l/min
+RVCI:
+1.21 l/min/m²
+HR:
+78.0/min
+Phase Diastole:
+30
+Phase Systole:
+13
+RVEDV/H:
+44.79 ml/m
+RVEDV/BSA:
+36.23 ml/m²
+RVESV/H:
+25.65 ml/m
+RVESV/BSA:
+20.75 ml/m²
+RVSV/H:
+19.14 ml/m
+RVSV/BSA:
+15.48 ml/m²
+"""
+
+OUTPUT:
+"""
+LEFT VENTRICLE:
+
+Left ventricular end-diastolic volume (LVEDV): 72.8 mL, normal
+Left ventricular end-systolic volume (LVESV): 26.8 mL
+Left ventricular stroke volume (LVSV): 46.0 mL
+Left ventricular ejection fraction (LVEF): 63.2%, normal
+Myocardial mass (end-diastole): 72.8 g
+Left ventricular end-diastolic volume index (LVEDVi): 32.2 mL/m2, normal
+Left ventricular end systolic volume index (LVESVi): 11.9 mL/m2
+
+RIGHT VENTRICLE: 
+
+Right ventricular end-diastolic volume (RVEDV): 82.0 mL
+Right ventricular end-systolic volume (RVESV): 46.9 mL
+Right ventricular stroke volume (RVSV): 35.0 mL
+Right ventricular ejection fraction (RVEF): 42.7%, mildly depressed
+Right ventricular end-diastolic volume index (RVEDVi): 36.2 mL/m2, normal
+Right ventricular end systolic volume index (RVESVi): 20.8 mL/m2
+"""
+
+INPUT:
+"""Flow Report
+GE inline: phase offset correction applied
+Through Plane Encoding
+Results Inverted
+Time Interval Not Constant
+Flow Analysis Aorta
+Measurement
+Total
+
+Total Forward Volume:
+32.47 ml
+
+Total Backward Volume:
+-2.57 ml
+
+Total Volume:
+29.90 ml
+
+Regurgitation Fraction:
+7.91 %
+
+Vol/min:
+2.86 l/min
+
+Vol/min (effective):
+2.63 l/min
+
+Heart Rate:
+88.00 /min
+
+Max Pressure Gradient:
+1.59 mmHg
+
+Mean Pressure Gradient:
+0.44 mmHg
+
+Maximum Velocity (1x1 px):
+63.10 cm/s
+
+Minimum Velocity (1x1 px):
+-39.00 cm/s
+
+Maximum Acceleration:
+0.54 cm/s/s
+
+Minimum Acceleration:
+-0.31 cm/s/s
+
+Maximum Flow:
+242.37 ml/s
+
+Minimum Flow:
+-29.43 ml/s
+
+Net Positive Volume:
+-7.39 ml
+
+Net Negative Volume:
+3.55 ml
+
+
+
+Flow Report
+GE inline: phase offset correction applied
+Through Plane Encoding
+Flow Analysis Pulmonary Artery
+Measurement
+Total
+
+Total Forward Volume:
+35.18 ml
+
+Total Backward Volume:
+-1.34 ml
+
+Total Volume:
+33.84 ml
+
+Regurgitation Fraction:
+3.80 %
+
+Vol/min:
+3.03 l/min
+
+Vol/min (effective):
+2.91 l/min
+
+Heart Rate:
+86.00 /min
+
+Max Pressure Gradient:
+1.82 mmHg
+
+Mean Pressure Gradient:
+0.49 mmHg
+
+Maximum Velocity (1x1 px):
+67.40 cm/s
+
+Minimum Velocity (1x1 px):
+-31.80 cm/s
+
+Maximum Acceleration:
+0.71 cm/s/s
+
+Minimum Acceleration:
+-0.41 cm/s/s
+
+Maximum Flow:
+232.87 ml/s
+
+Minimum Flow:
+-16.16 ml/s
+
+Net Positive Volume:
+38.53 ml
+
+Net Negative Volume:
+-3.74 ml
+"""
+
+OUTPUT:
+"""
+FLOW QUANTIFICATION:
+Aorta:
+Forward volume: 32.5 mL
+Reverse volume: -2.6 mL
+Regurgitant fraction: 7.9%
+Peak velocity: 63.1 cm/s
+Peak gradient: 1.6 mmHg
+
+Pulmonary Artery:
+Forward volume: 35.2 mL
+Reverse volume: -1.34 mL
+Regurgitant fraction: 3.8%
+Peak velocity: 67.4 cm/s
+Peak gradient: 0.5 mmHg
+"""
