@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>PET Report Parser (Web)</title>
+    <title>PET Report Parser (Web) - Lymphoma Version</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 2em; }
         textarea { width: 100%; height: 200px; }
@@ -11,7 +11,7 @@
     </style>
 </head>
 <body>
-    <h2>PET Report Parser (Web Version)</h2>
+    <h2>PET Report Parser (Web Version) - Lymphoma</h2>
     <label for="input">Paste PET Report Text Below:</label><br>
     <textarea id="input"></textarea><br>
     <button id="processBtn">Process</button>
@@ -173,13 +173,13 @@
                           mL = L.max   != null ? roundHalfUp(L.max) : '',
                           mP = P.max   != null ? roundHalfUp(P.max) : '';
                     output.push(
-                      `\t-Finding ${f}. ${aL} x ${sL} cm (axial image ) from `
+                      `\t- Finding ${f}. ${aL} x ${sL} cm (axial image ) from `
                       + `${aP} x ${sP} cm. Max SUV ${mL} from ${mP}.`
                     );
                 }
                 else if ('max' in L && 'slice' in L && 'max' in P && 'slice' in P) {
                     output.push(
-                      `\t-Finding ${f} (axial image ${L.slice}). `
+                      `\t- Finding ${f} (axial image ${L.slice}). `
                       + `Max SUV ${roundHalfUp(L.max)} from ${roundHalfUp(P.max)}.`
                     );
                 }
@@ -187,7 +187,7 @@
             } else if (dateKeys.length === 1) {
                 const only = dateDict[dateKeys[0]];
                 if ('long' in only && 'short' in only) {
-                    let line = `\t-Finding ${f}. ${roundHalfUp(only.long)} x `
+                    let line = `\t- Finding ${f}. ${roundHalfUp(only.long)} x `
                              + `${roundHalfUp(only.short)} cm (axial image `;
                     if ('slice' in only) {
                         line += `${only.slice}`;
@@ -201,14 +201,14 @@
                 }
                 else if ('max' in only && 'slice' in only) {
                     output.push(
-                      `\t-Finding ${f} (axial image ${only.slice}). `
+                      `\t- Finding ${f} (axial image ${only.slice}). `
                       + `Max SUV ${roundHalfUp(only.max)}.`
                     );
                 }
             } else if (hasNo) {
                 const only = dateDict.nodate;
                 if ('long' in only && 'short' in only) {
-                    let line = `\t-Finding ${f}. ${roundHalfUp(only.long)} x `
+                    let line = `\t- Finding ${f}. ${roundHalfUp(only.long)} x `
                              + `${roundHalfUp(only.short)} cm (axial image `;
                     if ('slice' in only) {
                         line += `${only.slice}`;
@@ -222,7 +222,7 @@
                 }
                 else if ('max' in only && 'slice' in only) {
                     output.push(
-                      `\t-Finding ${f} (axial image ${only.slice}). `
+                      `\t- Finding ${f} (axial image ${only.slice}). `
                       + `Max SUV ${roundHalfUp(only.max)}.`
                     );
                 }
