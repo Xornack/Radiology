@@ -1,5 +1,11 @@
-Convert Output from cardiac MRI software package to a format for radiology reports.
-Includes left and right ventricular volumes and relevant statistics and aortic and pulmonary outflow measurements.
-Can call upon normal values for select variables to categorize as normal or abnormal, and if abnormal, by how much (e.g. mild, moderate, severe dilation).
-Rules based and runs locally. Uses HTML and Javascript, preferrably in one single HTML file.
+# Purpose:
+Convert output from a cardiac MRI software package into a structured format suitable for radiology reports.
+
+# Features:
+- Extracts left and right ventricular volumes, relevant statistics, and aortic and pulmonary outflow measurements.
+- References normal value ranges for select variables to categorize findings as normal or abnormal. If abnormal, provides grading (e.g., mild, moderate, severe dilation).
+- Employs a rule-based approach for classification.
+- Designed to run locally.
+- Implemented using HTML and JavaScript, preferably as a single, self-contained HTML file.
+
 Very similar to Radiology/../PET_report_parcer_web.html.
