@@ -2,7 +2,7 @@
 Convert output from a cardiac CT and MRI software package into a structured format suitable for radiology reports.
 
 # Features:
-- Extracts left and right ventricular volumes, relevant statistics, and aortic and pulmonary outflow measurements.
+- Extracts TMVR measurements, left and right ventricular volumes, relevant statistics, and aortic and pulmonary outflow measurements.
 - References normal value ranges for select variables to categorize findings as normal or abnormal. If abnormal, provides grading (e.g., mild, moderate, severe dilation).
 - Employs a rule-based approach for classification.
 - Designed to run locally.
