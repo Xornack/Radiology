@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Heart Parser (Web)</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 2em; }
+        textarea { width: 100%; height: 200px; }
+        #output { width: 100%; height: 150px; margin-top: 1em; }
+        button { margin: 0.5em 0.5em 0.5em 0; }
+        .button-group { margin: 0.5em 0; }
+        .section-title { font-weight: bold; margin-top: 1em; }
+    </style>
+</head>
+<body>
+    <h2>Heart Parser (Web Version)</h2>
+    <label for="input">Paste Heart Report Data Below:</label><br>
+    <textarea id="input"></textarea><br>
+    
+    <div class="button-group">
+        <label for="gender">Gender: </label>
+        <select id="gender">
+            <option value="male">Male</option>
+            <option value="female">Female</option>
+        </select>
+    </div>
+    
+    <div class="button-group">
+        <button id="tmvrBtn">TMVR</button>
+        <button id="lvFunctionBtn">LV/RV Function</button>
+        <button id="flowMeasurementBtn">Flow Measurement</button>
+    </div>
+    
+    <div class="button-group">
+        <button id="copyBtn">Copy Output</button>
+        <button id="saveBtn">Save to File</button>
+        <button id="clearBtn">Clear</button>
+    </div>
+    
+    <div>
+        <label for="output">Output:</label><br>
+        <textarea id="output" readonly></textarea>
+    </div>
+
+    <script>
+    // --- helper: round to specified decimals ---
+    function roundToDecimal(num, decimals = 1) {
+        if (num === '' || isNaN(num)) return '';
+        const factor = 10 ** decimals;
+        return (Math.round(num * factor + Number.EPSILON) / factor)
+               .toFixed(decimals);
+    }
+
+    // --- helper: format number for display ---
+    function formatNumber(num, decimals = 1) {
+        if (num === '' || isNaN(num)) return '';
+        return parseFloat(roundToDecimal(num, decimals));
+    }
+
+    // --- TMVR Parser ---
+    function parseTMVR(text) {
+        const measurements = { '2D': {}, '3D': {} };
+        
+        const patterns = {
+            ttDistance: /(\d+D)-TT-Distance\(s\):\s*([\d.]+)\s*mm/,
+            slDistance: /(\d+D)-SL-Distance\(s\):\s*([\d.]+)\s*mm/,
+            icDistance: /(\d+D)-IC-Distance\(s\):\s*([\d.]+)\s*mm/,
+            area: /(\d+D)-Area\(s\):\s*([\d.]+)\s*cm²/,
+            perimeter: /(\d+D)-P\(s\):\s*([\d.]+)\s*mm/,
+            posterior: /(\d+D)-P-Posterior\(s\):\s*([\d.]+)\s*mm/,
+            anterior: /(\d+D)-P-Anterior\(s\):\s*([\d.]+)\s*mm/
+        };
+
+        text.split(/\r?\n/).forEach(line => {
+            line = line.trim();
+            if (!line) return;
+
+            for (const [key, pattern] of Object.entries(patterns)) {
+                const match = pattern.exec(line);
+                if (match) {
+                    const dimension = match[1]; // '2D' or '3D'
+                    const value = parseFloat(match[2]);
+                    measurements[dimension][key] = value;
+                }
+            }
+        });
+
+        return measurements;
+    }
+
+    function formatTMVROutput(measurements) {
+        const output = [];
+        
+        if (Object.keys(measurements['2D']).length > 0) {
+            output.push('2D');
+            if (measurements['2D'].ttDistance) {
+                output.push(`Trigone-trigone distance: ${formatNumber(measurements['2D'].ttDistance)} mm`);
+            }
+            if (measurements['2D'].slDistance) {
+                output.push(`SL distance: ${formatNumber(measurements['2D'].slDistance)} mm`);
+            }
+            if (measurements['2D'].icDistance) {
+                output.push(`IC distance: ${formatNumber(measurements['2D'].icDistance)} mm`);
+            }
+            if (measurements['2D'].area) {
+                // Convert cm² to sq mm
+                const areaMm = measurements['2D'].area * 100;
+                output.push(`Area: ${Math.round(areaMm)} sq mm`);
+            }
+            if (measurements['2D'].perimeter) {
+                output.push(`Perimeter: ${Math.round(measurements['2D'].perimeter)} mm`);
+            }
+            output.push('');
+        }
+
+        if (Object.keys(measurements['3D']).length > 0) {
+            output.push('3D:');
+            if (measurements['3D'].ttDistance) {
+                output.push(`Trigone-trigone distance: ${formatNumber(measurements['3D'].ttDistance)} mm`);
+            }
+            if (measurements['3D'].slDistance) {
+                output.push(`SL distance: ${formatNumber(measurements['3D'].slDistance)} mm`);
+            }
+            if (measurements['3D'].icDistance) {
+                output.push(`IC distance: ${formatNumber(measurements['3D'].icDistance)} mm`);
+            }
+            if (measurements['3D'].perimeter) {
+                output.push(`Perimeter: ${Math.round(measurements['3D'].perimeter)} mm`);
+            }
+        }
+
+        return output;
+    }
+
+    // --- Cardiac MRI LV Function Parser ---
+    function parseLVFunction(text) {
+        const measurements = { LV: {}, RV: {} };
+        
+        // Handle both inline and multi-line formats
+        const lines = text.split(/\r?\n/);
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (!line) continue;
+
+            // LV measurements - check current line and next line for value
+            if (line === 'EDV:' && i + 1 < lines.length) {
+                const nextLine = lines[i + 1].trim();
+                const match = nextLine.match(/([\d.]+)\s*ml/);
+                if (match) measurements.LV.edv = parseFloat(match[1]);
+            } else if (line.match(/^EDV:\s*([\d.]+)\s*ml/)) {
+                measurements.LV.edv = parseFloat(line.match(/^EDV:\s*([\d.]+)\s*ml/)[1]);
+            }
+
+            if (line === 'ESV:' && i + 1 < lines.length) {
+                const nextLine = lines[i + 1].trim();
+                const match = nextLine.match(/([\d.]+)\s*ml/);
+                if (match) measurements.LV.esv = parseFloat(match[1]);
+            } else if (line.match(/^ESV:\s*([\d.]+)\s*ml/)) {
+                measurements.LV.esv = parseFloat(line.match(/^ESV:\s*([\d.]+)\s*ml/)[1]);
+            }
+
+            if (line === 'SV:' && i + 1 < lines.length) {
+                const nextLine = lines[i + 1].trim();
+                const match = nextLine.match(/([\d.]+)\s*ml/);
+                if (match) measurements.LV.sv = parseFloat(match[1]);
+            } else if (line.match(/^SV:\s*([\d.]+)\s*ml/)) {
+                measurements.LV.sv = parseFloat(line.match(/^SV:\s*([\d.]+)\s*ml/)[1]);
+            }
+
+            if (line === 'EF:' && i + 1 < lines.length) {
+                const nextLine = lines[i + 1].trim();
+                const match = nextLine.match(/([\d.]+)\s*%/);
+                if (match) measurements.LV.ef = parseFloat(match[1]);
+            } else if (line.match(/^EF:\s*([\d.]+)\s*%/)) {
+                measurements.LV.ef = parseFloat(line.match(/^EF:\s*([\d.]+)\s*%/)[1]);
+            }
+
+            if (line === 'Myo Mass (Diast):' && i + 1 < lines.length) {
+                const nextLine = lines[i + 1].trim();
+                const match = nextLine.match(/([\d.]+)\s*g/);
+                if (match) measurements.LV.myoMass = parseFloat(match[1]);
+            } else if (line.match(/^Myo Mass \(Diast\):\s*([\d.]+)\s*g/)) {
+                measurements.LV.myoMass = parseFloat(line.match(/^Myo Mass \(Diast\):\s*([\d.]+)\s*g/)[1]);
+            }
+
+            if (line === 'EDV/BSA:' && i + 1 < lines.length) {
+                const nextLine = lines[i + 1].trim();
+                const match = nextLine.match(/([\d.]+)\s*ml\/m²/);
+                if (match) measurements.LV.edvBsa = parseFloat(match[1]);
+            } else if (line.match(/^EDV\/BSA:\s*([\d.]+)\s*ml\/m²/)) {
+                measurements.LV.edvBsa = parseFloat(line.match(/^EDV\/BSA:\s*([\d.]+)\s*ml\/m²/)[1]);
+            }
+
+            if (line === 'ESV/BSA:' && i + 1 < lines.length) {
+                const nextLine = lines[i + 1].trim();
+                const match = nextLine.match(/([\d.]+)\s*ml\/m²/);
+                if (match) measurements.LV.esvBsa = parseFloat(match[1]);
+            } else if (line.match(/^ESV\/BSA:\s*([\d.]+)\s*ml\/m²/)) {
+                measurements.LV.esvBsa = parseFloat(line.match(/^ESV\/BSA:\s*([\d.]+)\s*ml\/m²/)[1]);
+            }
+
+            if (line === 'Myo Mass/BSA (Diast):' && i + 1 < lines.length) {
+                const nextLine = lines[i + 1].trim();
+                const match = nextLine.match(/([\d.]+)\s*g\/m²/);
+                if (match) measurements.LV.myoMassBsa = parseFloat(match[1]);
+            } else if (line.match(/^Myo Mass\/BSA \(Diast\):\s*([\d.]+)\s*g\/m²/)) {
+                measurements.LV.myoMassBsa = parseFloat(line.match(/^Myo Mass\/BSA \(Diast\):\s*([\d.]+)\s*g\/m²/)[1]);
+            }
+
+            // RV measurements
+            if (line === 'RVEDV:' && i + 1 < lines.length) {
+                const nextLine = lines[i + 1].trim();
+                const match = nextLine.match(/([\d.]+)\s*ml/);
+                if (match) measurements.RV.rvedv = parseFloat(match[1]);
+            } else if (line.match(/^RVEDV:\s*([\d.]+)\s*ml/)) {
+                measurements.RV.rvedv = parseFloat(line.match(/^RVEDV:\s*([\d.]+)\s*ml/)[1]);
+            }
+
+            if (line === 'RVESV:' && i + 1 < lines.length) {
+                const nextLine = lines[i + 1].trim();
+                const match = nextLine.match(/([\d.]+)\s*ml/);
+                if (match) measurements.RV.rvesv = parseFloat(match[1]);
+            } else if (line.match(/^RVESV:\s*([\d.]+)\s*ml/)) {
+                measurements.RV.rvesv = parseFloat(line.match(/^RVESV:\s*([\d.]+)\s*ml/)[1]);
+            }
+
+            if (line === 'RVSV:' && i + 1 < lines.length) {
+                const nextLine = lines[i + 1].trim();
+                const match = nextLine.match(/([\d.]+)\s*ml/);
+                if (match) measurements.RV.rvsv = parseFloat(match[1]);
+            } else if (line.match(/^RVSV:\s*([\d.]+)\s*ml/)) {
+                measurements.RV.rvsv = parseFloat(line.match(/^RVSV:\s*([\d.]+)\s*ml/)[1]);
+            }
+
+            if (line === 'RVEF:' && i + 1 < lines.length) {
+                const nextLine = lines[i + 1].trim();
+                const match = nextLine.match(/([\d.]+)\s*%/);
+                if (match) measurements.RV.rvef = parseFloat(match[1]);
+            } else if (line.match(/^RVEF:\s*([\d.]+)\s*%/)) {
+                measurements.RV.rvef = parseFloat(line.match(/^RVEF:\s*([\d.]+)\s*%/)[1]);
+            }
+
+            if (line === 'RVEDV/BSA:' && i + 1 < lines.length) {
+                const nextLine = lines[i + 1].trim();
+                const match = nextLine.match(/([\d.]+)\s*ml\/m²/);
+                if (match) measurements.RV.rvedvBsa = parseFloat(match[1]);
+            } else if (line.match(/^RVEDV\/BSA:\s*([\d.]+)\s*ml\/m²/)) {
+                measurements.RV.rvedvBsa = parseFloat(line.match(/^RVEDV\/BSA:\s*([\d.]+)\s*ml\/m²/)[1]);
+            }
+
+            if (line === 'RVESV/BSA:' && i + 1 < lines.length) {
+                const nextLine = lines[i + 1].trim();
+                const match = nextLine.match(/([\d.]+)\s*ml\/m²/);
+                if (match) measurements.RV.rvesvBsa = parseFloat(match[1]);
+            } else if (line.match(/^RVESV\/BSA:\s*([\d.]+)\s*ml\/m²/)) {
+                measurements.RV.rvesvBsa = parseFloat(line.match(/^RVESV\/BSA:\s*([\d.]+)\s*ml\/m²/)[1]);
+            }
+        }
+
+        return measurements;
+    }
+
+    function assessNormalValues(type, value, gender) {
+        // Normal value ranges based on Kawel-Boehm JCMR 2015, Salton JACC 2002, and Plein JMRI 2003
+        const normalRanges = {
+            male: {
+                lvef: { 
+                    normal: [57, 77], 
+                    mildlyDepressed: [45, 56], 
+                    moderatelyDepressed: [30, 44], 
+                    severelyDepressed: [0, 29] 
+                },
+                rvef: { 
+                    normal: [52, 72], 
+                    mildlyDepressed: [36, 51], 
+                    moderatelyDepressed: [24, 35], 
+                    severelyDepressed: [0, 23] 
+                },
+                lvedvi: { 
+                    normal: [57, 105], 
+                    small: [0, 39],
+                    mildDilation: [81, 110], 
+                    moderateDilation: [111, 160], 
+                    severeDilation: [161, 999] 
+                },
+                rvedvi: { 
+                    normal: [61, 121], 
+                    small: [0, 54],
+                    mildDilation: [115, 171], 
+                    moderateDilation: [172, 228], 
+                    severeDilation: [229, 999] 
+                },
+                lvMassIndex: {
+                    abnormalLow: [0, 48],
+                    normal: [49, 85],
+                    abnormalHigh: [86, 999]
+                }
+            },
+            female: {
+                lvef: { 
+                    normal: [57, 77], 
+                    mildlyDepressed: [45, 56], 
+                    moderatelyDepressed: [30, 44], 
+                    severelyDepressed: [0, 29] 
+                },
+                rvef: { 
+                    normal: [51, 71], 
+                    mildlyDepressed: [37, 50], 
+                    moderatelyDepressed: [25, 36], 
+                    severelyDepressed: [0, 24] 
+                },
+                lvedvi: { 
+                    normal: [56, 96], 
+                    small: [0, 34],
+                    mildDilation: [67, 95], 
+                    moderateDilation: [96, 135], 
+                    severeDilation: [136, 999] 
+                },
+                rvedvi: { 
+                    normal: [48, 112], 
+                    small: [0, 47],
+                    mildDilation: [104, 153], 
+                    moderateDilation: [154, 206], 
+                    severeDilation: [207, 999] 
+                },
+                lvMassIndex: {
+                    abnormalLow: [0, 40],
+                    normal: [41, 81],
+                    abnormalHigh: [82, 999]
+                }
+            }
+        };
+
+        if (!normalRanges[gender] || !normalRanges[gender][type]) return '';
+
+        const ranges = normalRanges[gender][type];
+        
+        // Check each category in order
+        for (const [category, range] of Object.entries(ranges)) {
+            if (value >= range[0] && value <= range[1]) {
+                if (category === 'normal') return 'normal';
+                if (category === 'abnormalLow') return 'abnormal, low';
+                if (category === 'abnormalHigh') return 'abnormal, high';
+                return category.replace(/([A-Z])/g, ' $1').toLowerCase();
+            }
+        }
+        
+        return '';
+    }
+
+    function formatLVFunctionOutput(measurements) {
+        const output = [];
+        const gender = document.getElementById('gender').value;
+        
+        // Left Ventricle
+        if (Object.keys(measurements.LV).length > 0) {
+            output.push('LEFT VENTRICLE:');
+            output.push('');
+            
+            if (measurements.LV.edv) {
+                output.push(`Left ventricular end-diastolic volume (LVEDV): ${formatNumber(measurements.LV.edv)} mL`);
+            }
+            if (measurements.LV.esv) {
+                output.push(`Left ventricular end-systolic volume (LVESV): ${formatNumber(measurements.LV.esv)} mL`);
+            }
+            if (measurements.LV.sv) {
+                output.push(`Left ventricular stroke volume (LVSV): ${formatNumber(measurements.LV.sv)} mL`);
+            }
+            if (measurements.LV.ef) {
+                const assessment = assessNormalValues('lvef', measurements.LV.ef, gender);
+                output.push(`Left ventricular ejection fraction (LVEF): ${formatNumber(measurements.LV.ef)}%${assessment ? ', ' + assessment : ''}`);
+            }
+            if (measurements.LV.myoMass) {
+                output.push(`Myocardial mass (end-diastole): ${formatNumber(measurements.LV.myoMass)} g`);
+            }
+            if (measurements.LV.myoMassBsa) {
+                const assessment = assessNormalValues('lvMassIndex', measurements.LV.myoMassBsa, gender);
+                output.push(`Myocardial mass index: ${formatNumber(measurements.LV.myoMassBsa)} g/m2${assessment ? ', ' + assessment : ''}`);
+            }
+            if (measurements.LV.edvBsa) {
+                const assessment = assessNormalValues('lvedvi', measurements.LV.edvBsa, gender);
+                output.push(`Left ventricular end-diastolic volume index (LVEDVi): ${formatNumber(measurements.LV.edvBsa)} mL/m2${assessment ? ', ' + assessment : ''}`);
+            }
+            if (measurements.LV.esvBsa) {
+                output.push(`Left ventricular end systolic volume index (LVESVi): ${formatNumber(measurements.LV.esvBsa)} mL/m2`);
+            }
+            output.push('');
+        }
+
+        // Right Ventricle
+        if (Object.keys(measurements.RV).length > 0) {
+            output.push('RIGHT VENTRICLE:');
+            output.push('');
+            
+            if (measurements.RV.rvedv) {
+                output.push(`Right ventricular end-diastolic volume (RVEDV): ${formatNumber(measurements.RV.rvedv)} mL`);
+            }
+            if (measurements.RV.rvesv) {
+                output.push(`Right ventricular end-systolic volume (RVESV): ${formatNumber(measurements.RV.rvesv)} mL`);
+            }
+            if (measurements.RV.rvsv) {
+                output.push(`Right ventricular stroke volume (RVSV): ${formatNumber(measurements.RV.rvsv)} mL`);
+            }
+            if (measurements.RV.rvef) {
+                const assessment = assessNormalValues('rvef', measurements.RV.rvef, gender);
+                output.push(`Right ventricular ejection fraction (RVEF): ${formatNumber(measurements.RV.rvef)}%${assessment ? ', ' + assessment : ''}`);
+            }
+            if (measurements.RV.rvedvBsa) {
+                const assessment = assessNormalValues('rvedvi', measurements.RV.rvedvBsa, gender);
+                output.push(`Right ventricular end-diastolic volume index (RVEDVi): ${formatNumber(measurements.RV.rvedvBsa)} mL/m2${assessment ? ', ' + assessment : ''}`);
+            }
+            if (measurements.RV.rvesvBsa) {
+                output.push(`Right ventricular end systolic volume index (RVESVi): ${formatNumber(measurements.RV.rvesvBsa)} mL/m2`);
+            }
+        }
+
+        return output;
+    }
+
+    // --- Flow Measurement Parser ---
+    function parseFlowMeasurement(text) {
+        const flows = { aorta: {}, pulmonary: {} };
+        let currentVessel = null;
+        
+        const lines = text.split(/\r?\n/);
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (!line) continue;
+
+            // Detect vessel type
+            if (line.toLowerCase().includes('aorta')) {
+                currentVessel = 'aorta';
+                continue;
+            }
+            if (line.toLowerCase().includes('pulmonary')) {
+                currentVessel = 'pulmonary';
+                continue;
+            }
+
+            if (!currentVessel) continue;
+
+            // Parse measurements - handle both inline and multi-line formats
+            if (line === 'Total Forward Volume:' && i + 1 < lines.length) {
+                const nextLine = lines[i + 1].trim();
+                const match = nextLine.match(/([\d.]+)\s*ml/);
+                if (match) flows[currentVessel].forwardVolume = parseFloat(match[1]);
+            } else if (line.match(/^Total Forward Volume:\s*([\d.]+)\s*ml/)) {
+                flows[currentVessel].forwardVolume = parseFloat(line.match(/^Total Forward Volume:\s*([\d.]+)\s*ml/)[1]);
+            }
+
+            if (line === 'Total Backward Volume:' && i + 1 < lines.length) {
+                const nextLine = lines[i + 1].trim();
+                const match = nextLine.match(/(-?[\d.]+)\s*ml/);
+                if (match) flows[currentVessel].backwardVolume = parseFloat(match[1]);
+            } else if (line.match(/^Total Backward Volume:\s*(-?[\d.]+)\s*ml/)) {
+                flows[currentVessel].backwardVolume = parseFloat(line.match(/^Total Backward Volume:\s*(-?[\d.]+)\s*ml/)[1]);
+            }
+
+            if (line === 'Regurgitation Fraction:' && i + 1 < lines.length) {
+                const nextLine = lines[i + 1].trim();
+                const match = nextLine.match(/([\d.]+)\s*%/);
+                if (match) flows[currentVessel].regurgitantFraction = parseFloat(match[1]);
+            } else if (line.match(/^Regurgitation Fraction:\s*([\d.]+)\s*%/)) {
+                flows[currentVessel].regurgitantFraction = parseFloat(line.match(/^Regurgitation Fraction:\s*([\d.]+)\s*%/)[1]);
+            }
+
+            if (line === 'Max Pressure Gradient:' && i + 1 < lines.length) {
+                const nextLine = lines[i + 1].trim();
+                const match = nextLine.match(/([\d.]+)\s*mmHg/);
+                if (match) flows[currentVessel].maxGradient = parseFloat(match[1]);
+            } else if (line.match(/^Max Pressure Gradient:\s*([\d.]+)\s*mmHg/)) {
+                flows[currentVessel].maxGradient = parseFloat(line.match(/^Max Pressure Gradient:\s*([\d.]+)\s*mmHg/)[1]);
+            }
+
+            if (line === 'Mean Pressure Gradient:' && i + 1 < lines.length) {
+                const nextLine = lines[i + 1].trim();
+                const match = nextLine.match(/([\d.]+)\s*mmHg/);
+                if (match) flows[currentVessel].meanGradient = parseFloat(match[1]);
+            } else if (line.match(/^Mean Pressure Gradient:\s*([\d.]+)\s*mmHg/)) {
+                flows[currentVessel].meanGradient = parseFloat(line.match(/^Mean Pressure Gradient:\s*([\d.]+)\s*mmHg/)[1]);
+            }
+
+            if (line.startsWith('Maximum Velocity') && i + 1 < lines.length) {
+                const nextLine = lines[i + 1].trim();
+                const match = nextLine.match(/([\d.]+)\s*cm\/s/);
+                if (match) flows[currentVessel].maxVelocity = parseFloat(match[1]);
+            } else if (line.match(/Maximum Velocity.*?:\s*([\d.]+)\s*cm\/s/)) {
+                flows[currentVessel].maxVelocity = parseFloat(line.match(/Maximum Velocity.*?:\s*([\d.]+)\s*cm\/s/)[1]);
+            }
+        }
+
+        return flows;
+    }
+
+    function formatFlowMeasurementOutput(flows) {
+        const output = ['FLOW QUANTIFICATION:'];
+        
+        if (Object.keys(flows.aorta).length > 0) {
+            output.push('Aorta:');
+            if (flows.aorta.forwardVolume) {
+                output.push(`Forward volume: ${formatNumber(flows.aorta.forwardVolume)} mL`);
+            }
+            if (flows.aorta.backwardVolume !== undefined) {
+                output.push(`Reverse volume: ${formatNumber(flows.aorta.backwardVolume)} mL`);
+            }
+            if (flows.aorta.regurgitantFraction) {
+                output.push(`Regurgitant fraction: ${formatNumber(flows.aorta.regurgitantFraction)}%`);
+            }
+            if (flows.aorta.maxVelocity) {
+                output.push(`Peak velocity: ${formatNumber(flows.aorta.maxVelocity)} cm/s`);
+            }
+            if (flows.aorta.maxGradient) {
+                output.push(`Peak gradient: ${formatNumber(flows.aorta.maxGradient)} mmHg`);
+            }
+            output.push('');
+        }
+
+        if (Object.keys(flows.pulmonary).length > 0) {
+            output.push('Pulmonary Artery:');
+            if (flows.pulmonary.forwardVolume) {
+                output.push(`Forward volume: ${formatNumber(flows.pulmonary.forwardVolume)} mL`);
+            }
+            if (flows.pulmonary.backwardVolume !== undefined) {
+                output.push(`Reverse volume: ${formatNumber(flows.pulmonary.backwardVolume)} mL`);
+            }
+            if (flows.pulmonary.regurgitantFraction) {
+                output.push(`Regurgitant fraction: ${formatNumber(flows.pulmonary.regurgitantFraction)}%`);
+            }
+            if (flows.pulmonary.maxVelocity) {
+                output.push(`Peak velocity: ${formatNumber(flows.pulmonary.maxVelocity)} cm/s`);
+            }
+            if (flows.pulmonary.maxGradient || flows.pulmonary.meanGradient) {
+                const gradient = flows.pulmonary.maxGradient || flows.pulmonary.meanGradient;
+                output.push(`Peak gradient: ${formatNumber(gradient)} mmHg`);
+            }
+        }
+
+        return output;
+    }
+
+    // --- UI Functions ---
+    function processTMVR() {
+        const measurements = parseTMVR(document.getElementById('input').value);
+        console.log('Parsed TMVR measurements:', measurements);
+        document.getElementById('output').value = formatTMVROutput(measurements).join('\n');
+    }
+
+    function processLVFunction() {
+        const measurements = parseLVFunction(document.getElementById('input').value);
+        console.log('Parsed LV function measurements:', measurements);
+        document.getElementById('output').value = formatLVFunctionOutput(measurements).join('\n');
+    }
+
+    function processFlowMeasurement() {
+        const flows = parseFlowMeasurement(document.getElementById('input').value);
+        console.log('Parsed flow measurements:', flows);
+        document.getElementById('output').value = formatFlowMeasurementOutput(flows).join('\n');
+    }
+
+    function copyOutput() {
+        navigator.clipboard.writeText(document.getElementById('output').value);
+    }
+
+    function saveOutput() {
+        const blob = new Blob([document.getElementById('output').value], { type: 'text/plain' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'heart_parser_output.txt';
+        a.click();
+    }
+
+    function clearAll() {
+        document.getElementById('input').value = '';
+        document.getElementById('output').value = 'Ready.';
+    }
+
+    // --- Initialize ---
+    window.onload = () => {
+        document.getElementById('tmvrBtn').addEventListener('click', processTMVR);
+        document.getElementById('lvFunctionBtn').addEventListener('click', processLVFunction);
+        document.getElementById('flowMeasurementBtn').addEventListener('click', processFlowMeasurement);
+        document.getElementById('copyBtn').addEventListener('click', copyOutput);
+        document.getElementById('saveBtn').addEventListener('click', saveOutput);
+        document.getElementById('clearBtn').addEventListener('click', clearAll);
+        document.getElementById('output').value = 'Ready.';
+    };
+    </script>
+</body>
+</html>

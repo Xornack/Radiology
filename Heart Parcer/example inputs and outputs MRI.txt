@@ -244,5 +244,5 @@ Forward volume: 35.2 mL
 Reverse volume: -1.34 mL
 Regurgitant fraction: 3.8%
 Peak velocity: 67.4 cm/s
-Peak gradient: 0.5 mmHg
+Peak gradient: 1.8 mmHg
 """
