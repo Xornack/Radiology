@@ -2,7 +2,7 @@
 PyQt6>=6.6.0
 Pillow>=10.0.0
 pydicom>=2.4.0
-moviepy>=1.0.3
+moviepy>=1.0.3,<3.0.0  # Support both 1.x and 2.x versions
 
 # Development and testing
 pytest>=7.4.0

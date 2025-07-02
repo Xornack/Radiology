@@ -18,8 +18,19 @@ if os.name == 'posix':  # Unix-like systems
 def main():
     """Main entry point."""
     try:
-        from main_window import main as window_main
-        window_main()
+        from PyQt6.QtWidgets import QApplication
+        from main_window import MainWindow
+        
+        # Create QApplication instance
+        app = QApplication(sys.argv)
+        
+        # Create and show the main window
+        window = MainWindow()
+        window.show()
+        
+        # Start the application event loop
+        sys.exit(app.exec())
+        
     except ImportError as e:
         print(f"Error importing required modules: {e}")
         print("Please ensure all dependencies are installed:")

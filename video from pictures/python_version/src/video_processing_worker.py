@@ -71,11 +71,12 @@ class VideoProcessingWorker(QThread):
     def stop(self):
         """Request the worker to stop processing."""
         self.should_stop = True
-        self.progress_tracker.add_note("Processing stopped by user request")
+        self.progress_tracker.add_warning("Processing stopped by user request")
         
     def _process_video(self):
         """Execute the complete video processing workflow."""
-        self.progress_tracker.start_operation("video_creation")
+        self.progress_tracker.initialize(5, "video_creation")  # 5 total steps
+        self.progress_tracker.start_timing()
         
         try:
             # Step 1: Load and validate images
@@ -83,7 +84,7 @@ class VideoProcessingWorker(QThread):
             if self.should_stop:
                 return
                 
-            self.progress_tracker.start_step("image_loading")
+            self.progress_tracker.update_progress(1, "Loading and validating images")
             image_files = self._load_and_validate_images()
             
             if not image_files:
@@ -92,36 +93,49 @@ class VideoProcessingWorker(QThread):
                 self.processing_finished.emit(False, error_msg, {})
                 return
                 
-            self.progress_tracker.complete_step("image_loading", len(image_files))
+            # Step 2: Sort images
+            self._emit_progress(15, "Sorting images...")
+            if self.should_stop:
+                return
+                
+            self.progress_tracker.update_progress(2, "Sorting images")
+            sorted_files = self._sort_images(image_files)
             
-            # Step 2: Generate output filename
+            # Step 3: Generate output filename
             self._emit_progress(20, "Preparing output settings...")
             if self.should_stop:
                 return
                 
+            self.progress_tracker.update_progress(3, "Preparing output settings")
             output_path = self._generate_output_path()
             
-            # Step 3: Create video
+            # Step 4: Create video
             self._emit_progress(25, "Creating video...")
             if self.should_stop:
                 return
                 
+            self.progress_tracker.update_progress(4, "Creating video")
             success = self._create_video(sorted_files, output_path)
             
             if success:
+                # Step 5: Complete operation
+                self.progress_tracker.update_progress(5, "Video creation completed")
+                self.progress_tracker.complete_operation()
+                
                 # Generate final report
-                report = self.progress_tracker.generate_report()
+                report = self.progress_tracker.generate_detailed_report()
                 self._emit_progress(100, "Video creation completed successfully!")
                 self.processing_finished.emit(True, f"Video saved to: {output_path}", report)
             else:
                 error_msg = "Video creation failed"
+                self.progress_tracker.fail_operation(error_msg)
                 self.processing_finished.emit(False, error_msg, {})
                 
         except Exception as e:
             self.error_logger.handle_generic_error("video_processing_workflow", e, preserve_stack=True)
             self.processing_finished.emit(False, f"Processing failed: {str(e)}", {})
         finally:
-            self.progress_tracker.complete_operation("video_creation")
+            self.progress_tracker.complete_operation()
     
     def _load_and_validate_images(self) -> List[Path]:
         """Load and validate image files from the folder."""
@@ -158,10 +172,13 @@ class VideoProcessingWorker(QThread):
         sorting_method = self.settings.get('sorting_method', 'natural')
         
         if sorting_method == 'modification_date':
-            return self.image_loader.sort_by_modification_date(image_files)
+            return self.image_loader.sort_files_by_date(image_files)
+        elif sorting_method == 'alphabetical':
+            # Simple alphabetical sorting by filename
+            return sorted(image_files, key=lambda p: p.name.lower())
         else:
             # Default to natural sorting
-            return self.image_loader.sort_naturally(image_files)
+            return self.image_loader.sort_files_natural(image_files)
     
     def _generate_output_path(self) -> Path:
         """Generate the output file path based on settings."""
@@ -180,14 +197,15 @@ class VideoProcessingWorker(QThread):
         if output_directory:
             output_dir = Path(output_directory)
         else:
-            output_dir = self.folder_path
+            # CHANGED: Use parent directory instead of the image folder
+            output_dir = self.folder_path.parent  # Changed from self.folder_path
         
         return output_dir / output_filename
     
     def _create_video(self, image_files: List[Path], output_path: Path) -> bool:
         """Create the video from image files."""
         try:
-            self.progress_tracker.start_step("video_encoding")
+            # Video encoding is part of step 4, no need for a separate tracker update here
             
             # Get video settings
             frame_rate = int(self.settings.get('frame_rate', 15))
@@ -201,17 +219,16 @@ class VideoProcessingWorker(QThread):
             )
             
             if result.get('success', False):
-                self.progress_tracker.complete_step("video_encoding", len(image_files))
                 return True
             else:
                 error_msg = result.get('error', 'Unknown video creation error')
-                self.progress_tracker.record_error("video_encoding", error_msg)
+                self.progress_tracker.add_error(error_msg, "video_encoding")
                 self.error_logger.handle_video_error(str(output_path), Exception(error_msg))
                 return False
             
         except Exception as e:
             self.error_logger.handle_video_error(str(output_path), e)
-            self.progress_tracker.record_error("video_encoding", str(e))
+            self.progress_tracker.add_error(str(e), "video_encoding")
             return False
     
     def _on_progress_update(self, data: Dict[str, Any]):
@@ -231,8 +248,8 @@ class VideoProcessingWorker(QThread):
         if self.should_stop:
             return False  # Signal to video encoder to stop
         
-        # Update progress tracker
-        self.progress_tracker.update_progress(percentage, message)
+        # Don't update progress tracker here as video creation is part of step 4
+        # The progress tracker step was already set when _create_video was called
         
         # Map to our GUI progress range (25-95% for video creation)
         base_progress = 25
@@ -251,3 +268,35 @@ class VideoProcessingWorker(QThread):
     def get_error_report(self) -> Dict[str, Any]:
         """Get comprehensive error report."""
         return self.error_logger.generate_error_report()
+    
+    def _prepare_output_settings(self, folder_path: Path) -> Dict[str, Any]:
+        """Prepare output video settings."""
+        self.progress_tracker.update_progress(3, "Preparing output settings")
+        
+        # Get settings from manager
+        fps = self.settings_manager.get_fps()
+        quality = self.settings_manager.get_quality()
+        output_format = self.settings_manager.get_output_format()
+        
+        # Create output filename based on folder name
+        folder_name = folder_path.name
+        timestamp = ""
+        
+        # Add timestamp if enabled
+        if self.settings_manager.get_add_timestamp():
+            from datetime import datetime
+            timestamp = datetime.now().strftime("_%Y%m%d_%H%M%S")
+        
+        # Build output path - CHANGED: Use parent directory instead of the image folder
+        output_filename = f"{folder_name}{timestamp}.{output_format}"
+        output_path = folder_path.parent / output_filename  # Changed from folder_path to folder_path.parent
+        
+        # Ensure output directory exists (though parent should already exist)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        return {
+            'output_path': output_path,
+            'fps': fps,
+            'quality': quality,
+            'format': output_format
+        }

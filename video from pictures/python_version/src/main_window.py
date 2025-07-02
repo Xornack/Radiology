@@ -258,7 +258,7 @@ class MainWindow(QMainWindow):
     def start_processing(self):
         """Start the image processing and video creation."""
         if not self.selected_folder:
-            QMessageBox.warning(self, "Warning", "Please select a folder first.")
+            self._show_selectable_message_box("warning", "Warning", "Please select a folder first.")
             return
             
         # Update UI for processing state
@@ -335,8 +335,8 @@ class MainWindow(QMainWindow):
         if success:
             # Show success message with details
             details = self._format_processing_report(report)
-            QMessageBox.information(
-                self,
+            self._show_selectable_message_box(
+                "information",
                 "Processing Complete",
                 f"{message}\n\n{details}"
             )
@@ -350,8 +350,8 @@ class MainWindow(QMainWindow):
                     if error_report.get('recommendations'):
                         error_details += f"\nRecommendations:\n" + "\n".join(f"• {r}" for r in error_report['recommendations'][:3])
             
-            QMessageBox.critical(
-                self,
+            self._show_selectable_message_box(
+                "critical",
                 "Processing Failed",
                 f"{message}{error_details}"
             )
@@ -476,3 +476,30 @@ class MainWindow(QMainWindow):
         
         # Accept the close event
         event.accept()
+
+    def _show_selectable_message_box(self, icon_type: str, title: str, message: str):
+        """
+        Show a message box with selectable text.
+        
+        Args:
+            icon_type: Type of icon ('information', 'warning', 'critical')
+            title: Window title
+            message: Message text
+        """
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle(title)
+        msg_box.setText(message)
+        
+        # Set the appropriate icon
+        if icon_type == 'information':
+            msg_box.setIcon(QMessageBox.Icon.Information)
+        elif icon_type == 'warning':
+            msg_box.setIcon(QMessageBox.Icon.Warning)
+        elif icon_type == 'critical':
+            msg_box.setIcon(QMessageBox.Icon.Critical)
+        
+        # Make text selectable
+        msg_box.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse | Qt.TextInteractionFlag.TextSelectableByKeyboard)
+        
+        # Show the dialog
+        msg_box.exec()

@@ -8,11 +8,17 @@ from pathlib import Path
 from typing import List, Dict, Any, Callable, Optional
 
 try:
-    from moviepy.editor import ImageSequenceClip
+    # Try new MoviePy 2.0+ import structure first
+    from moviepy import ImageSequenceClip
     MOVIEPY_AVAILABLE = True
 except ImportError:
-    MOVIEPY_AVAILABLE = False
-    ImageSequenceClip = None
+    try:
+        # Fallback to old import structure for older versions
+        from moviepy.editor import ImageSequenceClip
+        MOVIEPY_AVAILABLE = True
+    except ImportError:
+        MOVIEPY_AVAILABLE = False
+        ImageSequenceClip = None
 
 
 class VideoEncoder:
@@ -122,7 +128,8 @@ class VideoEncoder:
         if not moviepy_available:
             return {
                 'success': False,
-                'error': 'moviepy is not available. Please install it: pip install moviepy'
+                'error': 'MoviePy is not available. Please install it: pip install moviepy\n'
+                        'Note: This application supports both MoviePy 1.x and 2.x versions.'
             }
         
         # Validate inputs
@@ -149,12 +156,32 @@ class VideoEncoder:
             # Convert Path objects to strings for moviepy
             image_paths = [str(img) for img in image_files]
             
-            # Validate that image files exist
-            missing_files = [img for img in image_files if not img.exists()]
+            # Validate that image files exist and are readable
+            missing_files = []
+            invalid_files = []
+            
+            for i, img_path in enumerate(image_files):
+                if not img_path.exists():
+                    missing_files.append(str(img_path))
+                else:
+                    # Try to verify it's a valid image file
+                    try:
+                        # Basic size check - image files should be larger than 0 bytes
+                        if img_path.stat().st_size == 0:
+                            invalid_files.append(str(img_path))
+                    except Exception:
+                        invalid_files.append(str(img_path))
+            
             if missing_files:
                 return {
                     'success': False,
-                    'error': f'Missing image files: {[str(f) for f in missing_files[:5]]}'
+                    'error': f'Missing image files: {missing_files[:5]}'
+                }
+                
+            if invalid_files:
+                return {
+                    'success': False,
+                    'error': f'Invalid or empty image files: {invalid_files[:5]}'
                 }
             
             # Progress callback wrapper
@@ -170,9 +197,104 @@ class VideoEncoder:
                 progress_callback(0, "Initializing video creation...")
             
             self.logger.info(f"Creating video from {len(image_files)} images")
+            self.logger.debug(f"Sample image paths: {[str(img) for img in image_files[:3]]}")
             
-            # Create video clip
-            clip = ImageSequenceClip(image_paths, fps=fps)
+            # Create video clip with error handling
+            try:
+                # First, try to load just one image to check compatibility
+                if progress_callback:
+                    progress_callback(10, "Checking image compatibility...")
+                
+                # Pre-load images as numpy arrays for better compatibility
+                from PIL import Image
+                import numpy as np
+                
+                self.logger.info("Pre-loading images for better compatibility...")
+                loaded_images = []
+                
+                for i, img_path in enumerate(image_files):
+                    try:
+                        img = Image.open(img_path)
+                        
+                        # Convert to RGB if necessary (handles grayscale, RGBA, etc.)
+                        if img.mode != 'RGB':
+                            self.logger.debug(f"Converting {img_path.name} from {img.mode} to RGB")
+                            img = img.convert('RGB')
+                        
+                        # Convert to numpy array
+                        img_array = np.array(img)
+                        loaded_images.append(img_array)
+                        img.close()
+                        
+                        if progress_callback and i % 10 == 0:
+                            progress_callback(10 + (i / len(image_files)) * 10, f"Loading image {i+1}/{len(image_files)}")
+                            
+                    except Exception as e:
+                        self.logger.error(f"Error loading image {img_path}: {e}")
+                        return {
+                            'success': False,
+                            'error': f'Failed to load image {img_path.name}: {str(e)}'
+                        }
+                
+                self.logger.info(f"Successfully loaded {len(loaded_images)} images as numpy arrays")
+                
+                # MoviePy 2.x approach with numpy arrays
+                self.logger.info(f"Creating ImageSequenceClip with {len(loaded_images)} preprocessed images at {fps} fps")
+                
+                # Method 1: Try MoviePy 2.x style with durations parameter and numpy arrays
+                try:
+                    duration_per_frame = 1.0 / fps
+                    durations = [duration_per_frame] * len(loaded_images)
+                    self.logger.debug(f"Trying durations method with numpy arrays: {len(durations)} frames, {duration_per_frame:.4f}s each")
+                    clip = ImageSequenceClip(loaded_images, durations=durations)
+                    self.logger.info("Successfully created clip with durations parameter and numpy arrays")
+                except Exception as e1:
+                    self.logger.debug(f"Method 1 (durations with arrays) failed: {e1}")
+                    
+                    # Method 2: Try with fps parameter and numpy arrays
+                    try:
+                        self.logger.debug("Trying fps parameter method with numpy arrays")
+                        clip = ImageSequenceClip(loaded_images, fps=fps)
+                        self.logger.info("Successfully created clip with fps parameter and numpy arrays")
+                    except Exception as e2:
+                        self.logger.debug(f"Method 2 (fps with arrays) failed: {e2}")
+                        
+                        # Method 3: Try with file paths as fallback
+                        try:
+                            self.logger.debug("Falling back to file paths method")
+                            duration_per_frame = 1.0 / fps
+                            durations = [duration_per_frame] * len(image_paths)
+                            clip = ImageSequenceClip(image_paths, durations=durations)
+                            self.logger.info("Successfully created clip with file paths and durations")
+                        except Exception as e3:
+                            self.logger.debug(f"Method 3 (paths with durations) failed: {e3}")
+                            
+                            # Method 4: Create from sequence manually
+                            try:
+                                self.logger.debug("Trying manual sequence creation")
+                                # Create clips from individual images and concatenate
+                                from moviepy import CompositeVideoClip, ImageClip
+                                
+                                clips = []
+                                for img_array in loaded_images:
+                                    img_clip = ImageClip(img_array, duration=duration_per_frame)
+                                    clips.append(img_clip)
+                                
+                                clip = CompositeVideoClip(clips).set_duration(len(loaded_images) / fps)
+                                self.logger.info("Successfully created clip using CompositeVideoClip")
+                            except Exception as e4:
+                                # All methods failed
+                                raise Exception(f"All ImageSequenceClip creation methods failed. "
+                                              f"Arrays+durations: {e1}, Arrays+fps: {e2}, "
+                                              f"Paths+durations: {e3}, Composite: {e4}")
+                
+            except Exception as e:
+                self.logger.error(f"Failed to create ImageSequenceClip: {e}")
+                return {
+                    'success': False,
+                    'error': f'Failed to create video clip: {str(e)}. This may be due to incompatible image formats or MoviePy version issues.',
+                    'technical_details': str(e)
+                }
             
             if progress_callback:
                 progress_callback(25, "Video clip created, starting encoding...")
@@ -180,29 +302,43 @@ class VideoEncoder:
             # Get quality settings
             quality_settings = self.get_quality_settings(quality)
             
-            # Prepare encoding parameters
-            encode_params = {
-                'fps': fps,
-                'codec': codec,
-                'audio': False
-            }
-            
-            # Add quality-specific parameters
-            if quality in self.QUALITY_PRESETS:
-                encode_params['bitrate'] = quality_settings['bitrate']
-                if codec == 'auto':
-                    encode_params['codec'] = quality_settings['codec']
-            
             if progress_callback:
                 progress_callback(50, "Starting video encoding...")
             
             # Write video file
-            clip.write_videofile(
-                str(output_path),
-                **encode_params,
-                verbose=False,
-                logger=None  # Suppress moviepy's verbose output
-            )
+            try:
+                # Try with full parameters including bitrate
+                write_params = {
+                    'fps': fps,
+                    'codec': codec,
+                    'audio': False,
+                    'verbose': False,
+                    'logger': None
+                }
+                
+                # Add bitrate if quality preset is used
+                if quality in self.QUALITY_PRESETS:
+                    write_params['bitrate'] = quality_settings['bitrate']
+                    if codec == 'auto':
+                        write_params['codec'] = quality_settings['codec']
+                
+                clip.write_videofile(str(output_path), **write_params)
+                
+            except TypeError as te:
+                # Handle MoviePy version differences in write_videofile parameters
+                self.logger.warning(f"write_videofile parameter error: {te}, trying with basic parameters")
+                try:
+                    clip.write_videofile(
+                        str(output_path),
+                        fps=fps,
+                        codec=codec,
+                        audio=False,
+                        verbose=False
+                    )
+                except Exception as e2:
+                    # Final fallback with minimal parameters
+                    self.logger.warning(f"Basic parameters failed: {e2}, trying minimal parameters")
+                    clip.write_videofile(str(output_path), fps=fps)
             
             if progress_callback:
                 progress_callback(100, "Video encoding completed successfully")
