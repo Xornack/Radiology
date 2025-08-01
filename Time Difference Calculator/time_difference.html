@@ -196,10 +196,22 @@
             }
 
             const diff = Math.abs(end - start);
-            const hours = Math.floor(diff / 1000 / 60 / 60);
+            const totalHours = Math.floor(diff / 1000 / 60 / 60);
+            const days = Math.floor(totalHours / 24);
+            const hours = totalHours % 24;
             const minutes = Math.floor((diff / 1000 / 60) % 60);
 
-            resultDiv.textContent = `${hours} hours, ${minutes} minutes`;
+            let resultText = '';
+            
+            // Always show total hours
+            resultText = `${totalHours} hours, ${minutes} minutes`;
+            
+            // If more than a day, also show the breakdown
+            if (days > 0) {
+                resultText += `<br>(${days} day${days !== 1 ? 's' : ''}, ${hours} hour${hours !== 1 ? 's' : ''}, ${minutes} minute${minutes !== 1 ? 's' : ''})`;
+            }
+
+            resultDiv.innerHTML = resultText;
         };
 
         document.getElementById('calculate-btn').addEventListener('click', calculate);
