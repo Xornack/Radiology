@@ -55,11 +55,3 @@ No installation required—just open the HTML file in your browser.
 ## Technologies
 
 - HTML, CSS, and vanilla JavaScript
-
-## License
-
-MIT License
-
-## Author
-
-Created by Xornack.
