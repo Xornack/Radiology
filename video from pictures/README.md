@@ -89,7 +89,3 @@ python3 -m http.server 8000
 - Modern web browser with MediaRecorder support
 - JavaScript enabled
 - Local file access permissions
-
----
-
-**Built with security and privacy in mind for medical imaging professionals.**
