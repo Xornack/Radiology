@@ -36,12 +36,13 @@ A comprehensive web-based parser for cardiac MRI and TMVR measurement data, desi
 
 1. **Open** `heart_parser_web.html` in any modern web browser
 2. **Select patient gender** from the dropdown menu
-3. **Paste** raw cardiac MRI data into the input text area
+3. **Paste** cardiac data into the input text area
 4. **Choose processing type**:
    - **TMVR**: For transcatheter mitral valve replacement measurements
    - **LV/RV Function**: For ventricular function analysis
    - **Flow Measurement**: For aortic/pulmonary flow quantification
-5. **Copy or save** the formatted output
+5. **Process**
+6. **Copy or save** the formatted output
 
 ## Technical Features
 
