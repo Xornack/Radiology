@@ -1,1 +1,1 @@
-A place to start for machine learning projects. Questions you should answer in order.
+Questions to ask for machine learning projects. Questions you should answer in order.
