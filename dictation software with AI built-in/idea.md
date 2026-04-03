@@ -70,3 +70,32 @@ A "best-of-breed" approach using modular, swappable containers.
 * **Safe Harbors:** * Avoid proprietary names (use "Templates" instead of "Autotext").
     * Avoid copying the exact "Trade Dress" (visual look) of Nuance software.
     * Consult an IP attorney regarding specific workflow patents.
+
+# PyQt6 PowerScribe Functionality Mapping
+
+## 1. The Floating Dictation Box
+* **PyQt6 Component:** `Qt::WindowStaysOnTopHint` and `Qt::FramelessWindowHint`
+* **Implementation:** Use these window flags to create a borderless, transparent overlay that hovers over PACS or EHRs (Epic/Cerner) without losing focus.
+
+## 2. Rich Text & Report Body
+* **PyQt6 Component:** `QTextEdit`
+* **Implementation:** This is the core widget for your text editor. It natively supports HTML/Rich Text, allowing for standard medical tables, bolding, and structured formatting.
+
+## 3. Labeled Box Fill-in Fields (e.g., `[Diagnosis]`)
+* **PyQt6 Component:** `QSyntaxHighlighter` + `QTextCharFormat`
+* **Implementation:** Write a custom syntax highlighter using a regular expression (like `\[.*?\]`). The `QTextCharFormat` automatically changes the background and font color of anything inside brackets, visually mimicking PowerScribe fields.
+
+## 4. "Next Field" Navigation & Overwriting
+* **PyQt6 Component:** `QTextCursor`
+* **Implementation:** When triggered by a hardware button (via `hidapi`) or voice command, use `QTextCursor` to search the document for the next regex match. The cursor highlights the entire `[ ]` block so the next dictated phrase automatically overwrites it.
+
+## 5. Drop-down "Pick Lists"
+* **PyQt6 Component:** `QMenu`
+* **Implementation:** Capture a right-click or mic button event when a field is highlighted. Spawn a `QMenu` at the exact coordinates of the `QTextCursor` containing pre-defined field options (e.g., Mild, Moderate, Severe). Selecting an option replaces the highlighted text.
+
+## 6. Voice Commands & Auto-Text Interception
+* **PyQt6 Component:** `undo()` method and `insertHtml()` / `insertPlainText()`
+* **Implementation:** Route the STT output through a Python interceptor before it hits the UI. 
+    * If the text matches "scratch that," call `QTextEdit.undo()`.
+    * If it matches an Autotext trigger (e.g., "Insert Normal Chest"), fetch the HTML template from a local database and insert it at the current `QTextCursor` position using `insertHtml()`.
+
