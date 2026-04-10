@@ -42,19 +42,19 @@ Build a modular, secure, and high-performance radiology dictation platform that 
 ### Task 1.1: De-identification (PHI Scrubber)
 **Goal:** Create a utility that replaces PHI with placeholders before sending text to any AI model.
 
-- [ ] **Step 1:** Create `src/security/scrubber.py`.
-- [ ] **Step 2:** Write a unit test in `tests/unit/test_scrubber.py`: `test_scrub_patient_name` (Input: "Patient John Doe has a mass", Output: "Patient [NAME] has a mass").
-- [ ] **Step 3:** **RED:** Run `pytest tests/unit/test_scrubber.py` and watch it fail.
-- [ ] **Step 4:** **GREEN:** Implement `scrub_text` using basic Regex for names/dates.
-- [ ] **Step 5:** **REFACTOR:** Optimize regex and move patterns to a separate config file.
+- [x] **Step 1:** Create `src/security/scrubber.py`.
+- [x] **Step 2:** Write a unit test in `tests/unit/test_scrubber.py`: `test_scrub_patient_name` (Input: "Patient John Doe has a mass", Output: "Patient [NAME] has a mass").
+- [x] **Step 3:** **RED:** Run `pytest tests/unit/test_scrubber.py` and watch it fail.
+- [x] **Step 4:** **GREEN:** Implement `scrub_text` using basic Regex for names/dates.
+- [x] **Step 5:** **REFACTOR:** Optimize regex and move patterns to a separate config file.
 
 ### Task 1.2: Local Encryption
 **Goal:** Encrypt any local cache or logs using AES-256.
 
-- [ ] **Step 1:** Create `src/security/encryption.py` using `cryptography` library.
-- [ ] **Step 2:** Write test `test_encrypt_decrypt_cycle`.
-- [ ] **Step 3:** **RED:** Fail.
-- [ ] **Step 4:** **GREEN:** Implement `encrypt(data, key)` and `decrypt(token, key)`.
+- [x] **Step 1:** Create `src/security/encryption.py` using `cryptography` library.
+- [x] **Step 2:** Write test `test_encrypt_decrypt_cycle`.
+- [x] **Step 3:** **RED:** Fail.
+- [x] **Step 4:** **GREEN:** Implement `encrypt(data, key)` and `decrypt(token, key)`.
 
 ---
 
@@ -63,35 +63,35 @@ Build a modular, secure, and high-performance radiology dictation platform that 
 ### Task 2.1: The "Stay on Top" Floating Window
 **Goal:** Create a minimalist PyQt6 window that doesn't steal focus.
 
-- [ ] **Step 1:** Create `src/ui/main_window.py`.
-- [ ] **Step 2:** Inherit from `QMainWindow`, set `Qt.WindowStaysOnTopHint` and `Qt.FramelessWindowHint`.
-- [ ] **Step 3:** Add a `QTextEdit` but keep it read-only for now.
-- [ ] **Step 4:** **TEST:** Write a test that launches the app and asserts `window.isWindowVisible()` and `window.windowFlags() & Qt.WindowStaysOnTopHint`.
+- [x] **Step 1:** Create `src/ui/main_window.py`.
+- [x] **Step 2:** Inherit from `QMainWindow`, set `Qt.WindowStaysOnTopHint` and `Qt.FramelessWindowHint`.
+- [x] **Step 3:** Add a `QTextEdit` but keep it read-only for now.
+- [x] **Step 4:** **TEST:** Write a test that launches the app and asserts `window.isWindowVisible()` and `window.windowFlags() & Qt.WindowStaysOnTopHint`.
 
 ### Task 2.2: Keyboard Wedge (Injection)
 **Goal:** Type text into other apps using Windows `SendInput`.
 
-- [ ] **Step 1:** Create `src/engine/wedge.py`.
-- [ ] **Step 2:** Implement `type_text(string)` using `ctypes` (SendInput).
-- [ ] **Step 3:** **TEST:** Create a test that opens a notepad process, calls `type_text`, and verifies notepad content (this is an integration test).
-- [ ] **Step 4:** **REFACTOR:** Ensure scan codes are used for better compatibility with medical apps.
+- [x] **Step 1:** Create `src/engine/wedge.py`.
+- [x] **Step 2:** Implement `type_text(string)` using `ctypes` (SendInput).
+- [x] **Step 3:** **TEST:** Create a test that opens a notepad process, calls `type_text`, and verifies notepad content (this is an integration test).
+- [x] **Step 4:** **REFACTOR:** Ensure scan codes are used for better compatibility with medical apps.
 
 ### Task 2.3: Medical Mic Buttons (HID)
 **Goal:** Map a SpeechMike button to a "Record" trigger.
 
-- [ ] **Step 1:** Create `src/hardware/mic_listener.py` using `hidapi`.
-- [ ] **Step 2:** Write a script to list HID devices and find the VendorID/ProductID for a PowerMic/SpeechMike.
-- [ ] **Step 3:** **RED:** Test `get_button_state` with no mic plugged in (should handle gracefully).
-- [ ] **Step 4:** **GREEN:** Implement a background thread that emits a signal when the trigger is pressed.
+- [x] **Step 1:** Create `src/hardware/mic_listener.py` using `hidapi`.
+- [x] **Step 2:** Write a script to list HID devices and find the VendorID/ProductID for a PowerMic/SpeechMike.
+- [x] **Step 3:** **RED:** Test `get_button_state` with no mic plugged in (should handle gracefully).
+- [x] **Step 4:** **GREEN:** Implement a background thread that emits a signal when the trigger is pressed.
 
 ### Task 2.4: Audio Recording (Buffer)
 **Goal:** Capture high-quality mono audio into a memory buffer while recording is active.
 
-- [ ] **Step 1:** Create `src/hardware/recorder.py` using `sounddevice`.
-- [ ] **Step 2:** Write test `test_recorder_captures_audio_stream`.
-- [ ] **Step 3:** **RED:** Fail.
-- [ ] **Step 4:** **GREEN:** Implement a `Recorder` class that captures 16kHz mono audio (Whisper standard).
-- [ ] **Step 5:** **REFACTOR:** Ensure the recorder uses a thread-safe queue for processing.
+- [x] **Step 1:** Create `src/hardware/recorder.py` using `sounddevice`.
+- [x] **Step 2:** Write test `test_recorder_captures_audio_stream`.
+- [x] **Step 3:** **RED:** Fail.
+- [x] **Step 4:** **GREEN:** Implement a `Recorder` class that captures 16kHz mono audio (Whisper standard).
+- [x] **Step 5:** **REFACTOR:** Ensure the recorder uses a thread-safe queue for processing.
 
 ---
 
@@ -100,17 +100,18 @@ Build a modular, secure, and high-performance radiology dictation platform that 
 ### Task 3.1: Whisper Client
 **Goal:** Send audio bytes to a local FastAPI service and get text back.
 
-- [ ] **Step 1:** Create `src/ai/whisper_client.py`.
-- [ ] **Step 2:** Write test `test_transcribe_audio` with a mock FastAPI server.
-- [ ] **Step 3:** **RED:** Fail.
-- [ ] **Step 4:** **GREEN:** Implement `transcribe(audio_bytes)` using `requests`.
+- [x] **Step 1:** Create `src/ai/whisper_client.py`.
+- [x] **Step 2:** Write test `test_transcribe_audio` with a mock FastAPI server.
+- [x] **Step 3:** **RED:** Fail.
+- [x] **Step 4:** **GREEN:** Implement `transcribe(audio_bytes)` using `requests`.
 
 ### Task 3.2: LLM Impression Generator
 **Goal:** Send "Findings" text and get a "Summary" back.
 
-- [ ] **Step 1:** Create `src/ai/llm_client.py`.
-- [ ] **Step 2:** Define a prompt template for radiology summaries.
-- [ ] **Step 3:** **TEST:** Verify that the de-identification layer is called *before* the LLM client is called.
+- [x] **Step 1:** Create `src/ai/llm_client.py`.
+- [x] **Step 2:** Define a prompt template for radiology summaries.
+- [x] **Step 3:** **TEST:** Verify that the de-identification layer is called *before* the LLM client is called.
+- [x] **Step 4:** Wire `LLMClient` into `DictationOrchestrator` via `generate_impression(findings)` method.
 
 ---
 
@@ -119,9 +120,9 @@ Build a modular, secure, and high-performance radiology dictation platform that 
 ### Task 4.1: DICOM C-FIND for Priors
 **Goal:** Query PACS for previous studies when a PatientID is entered.
 
-- [ ] **Step 1:** Create `src/network/pacs_query.py` using `pynetdicom`.
-- [ ] **Step 2:** Implement `get_priors(patient_id)`.
-- [ ] **Step 3:** **TEST:** Use a local DICOM simulator (like `dcmtk`'s `dcmqrscp`) to verify queries.
+- [x] **Step 1:** Create `src/network/pacs_query.py` using `pynetdicom`.
+- [x] **Step 2:** Implement `get_priors(patient_id)`.
+- [x] **Step 3:** **TEST:** Use a local DICOM simulator (like `dcmtk`'s `dcmqrscp`) to verify queries.
 
 ---
 
@@ -130,9 +131,56 @@ Build a modular, secure, and high-performance radiology dictation platform that 
 ### Task 5.1: Latency Profiling
 **Goal:** Measure time from "Button Down" to "Text on Screen".
 
-- [ ] **Step 1:** Use `utils/profiler.py` with `cProfile` and `time.perf_counter()`.
-- [ ] **Step 2:** Log every step of the pipeline (Audio Capture -> STT -> Wedge Injection).
+- [x] **Step 1:** Use `utils/profiler.py` with `cProfile` and `time.perf_counter()`.
+- [x] **Step 2:** Log every step of the pipeline (Audio Capture -> STT -> Wedge Injection).
 - [ ] **Step 3:** Identify the bottleneck (likely STT inference) and optimize batching or model size.
+
+---
+
+## Phase 6: Hardening & Bug Fixes
+
+### Task 6.1: Audio Pipeline Type Safety ✅
+**Fixed:** `AudioRecorder.get_wav_bytes()` converts the float32 numpy buffer to
+16-bit mono WAV bytes. The orchestrator now calls `get_wav_bytes()` instead of
+`get_buffer()`, ensuring Whisper receives correctly formatted audio data.
+
+### Task 6.2: Keyboard Wedge — Full Character Set ✅
+**Fixed:** `type_text()` now handles uppercase letters, Shift-modified symbols
+(`!@#$%^&*()_+{}|:"<>?`), and direct symbols (`;'[]/\=`).
+The erroneous `.lower()` call was removed to preserve case.
+
+### Task 6.3: Silent Exception Handling ✅
+**Fixed:** All bare `except:` blocks in `whisper_client.py`, `llm_client.py`,
+`recorder.py`, and `mic_listener.py` now log errors/warnings via `loguru`.
+
+### Task 6.4: LLM Client Integration ✅
+**Fixed:** `DictationOrchestrator` accepts an optional `llm_client` parameter.
+`generate_impression(findings)` method added. `main.py` instantiates and wires
+`LLMClient` so the impression workflow is fully operational.
+
+### Task 6.5: HID Background Polling Thread ✅
+**Fixed:** `MicListener.start()` spawns a daemon polling thread (`_poll_loop`).
+Button state-change detection fires `on_trigger` on press *and* release.
+`stop()` gracefully terminates the thread and closes the device.
+
+### Task 6.6: Configuration & Settings ✅
+**Fixed:** `src/utils/settings.py` added. All hardcoded URLs and HID IDs moved to
+environment variables (`WHISPER_URL`, `LLM_URL`, `SPEECHMIKE_VID`, `SPEECHMIKE_PID`)
+with safe defaults. `main.py` uses `settings` throughout.
+
+### Task 6.7: PHI Pattern Expansion ✅
+**Fixed:** `src/utils/config.py` now scrubs SSNs (`[SSN]`), US phone numbers
+(`[PHONE]`), email addresses (`[EMAIL]`), and month-spelled dates, in addition
+to the original patterns.
+
+### Task 6.8: Audio Recorder Hardening ✅
+**Fixed:** Audio stream status codes are logged as warnings (not silently discarded).
+`start()` closes any existing stream before opening a new one (resource leak fix).
+Stream creation errors are logged then re-raised for visibility.
+
+### Task 6.9: pyproject.toml Dependencies ✅
+**Fixed:** `pyproject.toml` now declares all runtime dependencies, matching
+`requirements.txt`. Dev/test dependencies isolated under `[project.optional-dependencies]`.
 
 ---
 

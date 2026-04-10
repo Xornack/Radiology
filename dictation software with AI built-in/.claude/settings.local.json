@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(\".\\\\.venv\\\\Scripts\\\\python.exe\")",
+      "Bash(\".\\\\.venv\\\\Scripts\\\\python.exe\" -c \"from src.utils.config import PHI_PATTERNS; from src.security.scrubber import scrub_text; from src.core.orchestrator import DictationOrchestrator; print\\('All critical imports work'\\)\")"
+    ]
+  }
+}

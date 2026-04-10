@@ -6,4 +6,20 @@ build-backend = "setuptools.build_meta"
 name = "proj"
 version = "0.1.0"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+    "PyQt6",
+    "loguru",
+    "requests",
+    "numpy",
+    "sounddevice",
+    "hidapi",
+    "pynetdicom",
+    "pydicom",
+    "cryptography",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-qt",
+]

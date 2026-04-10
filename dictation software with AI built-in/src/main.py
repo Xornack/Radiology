@@ -2,59 +2,68 @@ import sys
 from PyQt6.QtWidgets import QApplication
 from loguru import logger
 
-# Import modular components
 from src.ui.main_window import MainWindow
 from src.hardware.recorder import AudioRecorder
 from src.hardware.mic_listener import MicListener
 from src.ai.whisper_client import WhisperClient
+from src.ai.llm_client import LLMClient
 from src.core.orchestrator import DictationOrchestrator
 from src.engine import wedge
 from src.utils.profiler import LatencyTimer
+from src.utils.settings import settings
+
 
 def main():
     logger.info("Initializing Local AI Radiology Dictation Platform...")
-    
+
     app = QApplication(sys.argv)
-    
-    # 1. Initialize Components
-    # Note: URLs and HID IDs would move to a config/env file in production
-    whisper = WhisperClient(url="http://localhost:8000/transcribe")
+
+    # 1. Initialize AI clients from settings (env-configurable, no hardcoded URLs)
+    whisper = WhisperClient(url=settings.whisper_url)
+    llm = LLMClient(url=settings.llm_url)
     recorder = AudioRecorder()
     profiler = LatencyTimer()
-    
-    # 2. Setup Orchestrator
+
+    # 2. Setup Orchestrator (LLM client wired in for impression generation)
     orchestrator = DictationOrchestrator(
         recorder=recorder,
         whisper_client=whisper,
         wedge=wedge,
-        profiler=profiler
+        profiler=profiler,
+        llm_client=llm
     )
-    
+
     # 3. Setup UI
     window = MainWindow()
     window.show()
-    
-    # 4. Setup Hardware Listener (SpeechMike Example VID/PID)
-    # Philips SpeechMike: 0x0911 / 0x0c1c (Example)
-    mic = MicListener(vendor_id=0x0911, product_id=0x0c1c)
-    
-    # Connect HID events to Orchestrator
-    # Note: Real hardware needs a polling thread, but logic is wired here
-    def handle_mic_event(pressed):
+
+    # 4. Setup Hardware Listener (VID/PID from env or defaults)
+    mic = MicListener(
+        vendor_id=settings.speechmike_vid,
+        product_id=settings.speechmike_pid
+    )
+
+    def handle_mic_event(pressed: bool):
         if pressed:
+            window.set_status("Recording...", "#f38ba8")   # red
             orchestrator.handle_trigger_down()
         else:
-            orchestrator.handle_trigger_up()
-            
-    mic.on_trigger = handle_mic_event
-    
-    if mic.start():
-        logger.info("Medical Microphone detected and initialized.")
-    else:
-        logger.warning("No Medical Microphone found. Keyboard fallbacks active.")
+            window.set_status("Processing...", "#fab387")  # orange
+            result = orchestrator.handle_trigger_up()
+            if result:
+                window.append_text(result)
+            window.set_status("Ready")
 
-    logger.info("Application Ready.")
+    mic.on_trigger = handle_mic_event
+
+    if mic.start():
+        logger.info("Medical microphone detected and initialized.")
+    else:
+        logger.warning("No medical microphone found. Keyboard fallbacks active.")
+
+    logger.info("Application ready.")
     sys.exit(app.exec())
+
 
 if __name__ == "__main__":
     main()
