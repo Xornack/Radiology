@@ -6,6 +6,7 @@ from loguru import logger
 INPUT_KEYBOARD = 1
 KEYEVENTF_SCANCODE = 0x0008
 KEYEVENTF_KEYUP = 0x0002
+KEYEVENTF_UNICODE = 0x0004
 SCAN_SHIFT = 0x2A  # Left Shift
 
 # Direct scan codes — no modifier needed
@@ -21,7 +22,7 @@ SCAN_CODES = {
     'z': 0x2C, 'x': 0x2D, 'c': 0x2E, 'v': 0x2F, 'b': 0x30,
     'n': 0x31, 'm': 0x32,
     # Whitespace & navigation
-    ' ': 0x39, '\n': 0x1C,
+    ' ': 0x39, '\n': 0x1C, '\t': 0x0F,
     # Punctuation / symbol keys (no shift required)
     '-': 0x0C, '=': 0x0D,
     '[': 0x1A, ']': 0x1B,
@@ -81,10 +82,42 @@ def _send_shifted(scan_code: int):
     _send_key(SCAN_SHIFT, key_up=True)
 
 
+def _send_unicode_codepoint(code_unit: int):
+    """Sends a single UTF-16 code unit via SendInput with KEYEVENTF_UNICODE."""
+    for down_flags in (KEYEVENTF_UNICODE, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP):
+        extra = ctypes.c_ulong(0)
+        ii_ = INPUT_I()
+        # Virtual key must be 0 when using KEYEVENTF_UNICODE; code unit goes in wScan
+        ii_.ki = KEYBDINPUT(0, code_unit, down_flags, 0, ctypes.pointer(extra))
+        input_obj = INPUT(INPUT_KEYBOARD, ii_)
+        ctypes.windll.user32.SendInput(
+            1, ctypes.pointer(input_obj), ctypes.sizeof(input_obj)
+        )
+
+
+def _send_unicode_char(char: str):
+    """
+    Sends an arbitrary Unicode character, handling BMP and surrogate pairs.
+    Used as a fallback for characters without a direct scan code mapping.
+    """
+    cp = ord(char)
+    if cp <= 0xFFFF:
+        _send_unicode_codepoint(cp)
+    else:
+        # Encode supplementary-plane char as UTF-16 surrogate pair
+        cp -= 0x10000
+        hi = 0xD800 + (cp >> 10)
+        lo = 0xDC00 + (cp & 0x3FF)
+        _send_unicode_codepoint(hi)
+        _send_unicode_codepoint(lo)
+
+
 def type_text(text: str):
     """
     Simulates keyboard input into the currently focused window.
     Handles lowercase, uppercase, digits, and a full set of punctuation/symbols.
+    Falls back to KEYEVENTF_UNICODE for any character without a scan code mapping
+    so no data is silently dropped (em-dash, curly quotes, °, ±, µ, etc.).
     """
     for char in text:  # Process original case — do NOT lowercase
         if char in SCAN_CODES:
@@ -96,4 +129,10 @@ def type_text(text: str):
         elif char.isupper() and char.lower() in SCAN_CODES:
             _send_shifted(SCAN_CODES[char.lower()])
         else:
-            logger.warning(f"No scan code mapping for character: {repr(char)} — skipped")
+            # Unicode fallback — preserves characters a scan-code map can't cover
+            try:
+                _send_unicode_char(char)
+            except Exception as e:
+                logger.warning(
+                    f"Failed to send character {char!r} via Unicode: {e}"
+                )

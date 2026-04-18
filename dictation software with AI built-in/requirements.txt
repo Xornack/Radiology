@@ -1,13 +1,12 @@
 pytest
+pytest-qt
 cryptography
 PyQt6
 pynetdicom
 pydicom
 requests
 hidapi
-pywinusb
-pydirectinput
 loguru
 sounddevice
 numpy
-pytest-qt
+faster-whisper

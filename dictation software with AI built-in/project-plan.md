@@ -184,6 +184,112 @@ Stream creation errors are logged then re-raised for visibility.
 
 ---
 
+## Phase 7: Live Transcription, UX, and Second Hardening Pass
+
+### Task 7.1: Local Whisper (in-process STT) ✅
+**Added:** `src/ai/local_whisper_client.py` runs `faster-whisper` in-process —
+no microservice required. Drop-in replacement for `WhisperClient` (same
+`transcribe(bytes) -> str` interface). Chosen by `WHISPER_MODE=local` (default).
+Model is lazy-loaded and can be preloaded via `warm()` on startup.
+
+### Task 7.2: STT Defaults & CUDA Fallback ✅
+**Added:** Default `WHISPER_DEVICE=cpu`, `WHISPER_COMPUTE_TYPE=int8` for
+zero-setup operation on any machine. If `WHISPER_DEVICE=cuda` is set but
+cuBLAS/cuDNN DLLs are missing at inference time, the client automatically
+falls back to CPU + int8 with a warning (no silent empty transcripts).
+
+### Task 7.3: Streaming Partial Transcription ✅
+**Added:** `src/core/streaming.py` → `StreamingTranscriber`. A `QTimer` ticks
+every 1500ms during recording, dispatches transcription to a worker thread,
+and emits `partial_ready` to the Qt main thread. UI shows partials in italic
+gray; on Stop, the authoritative final transcribe commits in normal color.
+Ticks are skipped while a previous transcribe is still in flight (no queue buildup).
+
+### Task 7.4: UI Controls — Record / Stop / Clear ✅
+**Added:** Three buttons in a new action bar, sharing a single
+`handle_trigger(bool)` path with the HID mic and F4 shortcut. Buttons reflect
+recording state (Record disabled while recording, Stop enabled, and vice versa).
+
+### Task 7.5: UI — Microphone Picker ✅
+**Added:** `hardware/recorder.list_input_devices()` enumerates all input-capable
+devices with host API labels. `MainWindow.populate_microphones()` fills a
+`QComboBox` with a "System default" entry first. Selection updates
+`AudioRecorder.device`. Combo is disabled while recording to prevent mid-stream
+swaps.
+
+### Task 7.6: UI — Generate Impression Button ✅
+**Wired:** `MainWindow.impression_btn` now calls `orchestrator.generate_impression()`
+with the current transcript text. Result is appended under an `IMPRESSION:`
+label. Button disables while generating.
+
+### Task 7.7: Keyboard Fallback (F4) ✅
+**Added:** `QShortcut` on F4 always registered, using
+`Qt.ShortcutContext.ApplicationShortcut`. Functions with or without an HID mic
+connected. Shares `recording_state` with the mic and buttons so all three
+sources stay in sync.
+
+### Task 7.8: Shutdown Cleanup ✅
+**Added:** `app.aboutToQuit.connect(on_shutdown)` calls `mic.stop()` and
+`recorder.stop()` on exit. Close button (`×`) now quits the application via
+`QApplication.quit()` rather than just hiding the window.
+
+### Task 7.9: PHI Pattern Broadening ✅
+**Fixed:** Name scrubbing no longer requires the literal "Patient" prefix.
+Added: ALL-CAPS names, hyphenated and accented names (`Mary-Jane`, `José`),
+single-name patients, `Mr./Mrs./Ms./Dr./Prof.` titled names, and `Name:` labels.
+
+### Task 7.10: Keyboard Wedge Unicode Fallback ✅
+**Fixed:** `wedge.py` previously dropped any character missing from its scan-code
+map (em-dash, curly quotes, `°`, `±`, `µ`, tab). Now falls back to
+`KEYEVENTF_UNICODE` with surrogate-pair support. No character is silently lost.
+
+### Task 7.11: PACS Resource Leak & Timeouts ✅
+**Fixed:** `PACSClient.get_priors()` now wraps the association in `try/finally`
+so `assoc.release()` runs even on exceptions. Added `network_timeout` and
+`acse_timeout` (10 s each) so a dead PACS can't hang the UI. Failed associations
+are logged.
+
+### Task 7.12: Audio Buffer Thread Safety ✅
+**Fixed:** `AudioRecorder._buffer` is now guarded by a `threading.Lock` on both
+the callback (`extend`) and the readers (`get_buffer`, `get_wav_bytes`).
+Clipping during float→int16 conversion now logs a warning instead of silently
+distorting audio.
+
+### Task 7.13: Whisper Retry & Fast-Fail ✅
+**Fixed:** `WhisperClient.transcribe()` retries with exponential backoff on 5xx
+and timeout. Catches `requests.exceptions.ConnectionError` first and returns
+immediately (no retry loop when the port is closed).
+
+### Task 7.14: HID Listener Busy-Loop Mitigation ✅
+**Fixed:** `MicListener._poll_loop` sleeps 1 ms when a poll returns no data,
+preventing a CPU-pinning tight loop when the device has nothing to report.
+
+### Task 7.15: Settings Safe Parsing & Orchestrator Error Wrapping ✅
+**Fixed:** `Settings._safe_int()` catches malformed `SPEECHMIKE_VID`/`PID`
+environment variables and falls back to defaults (no startup crash).
+`DictationOrchestrator` wraps `wedge.type_text()` in try/except so a Win32
+failure cannot crash the Qt trigger handler.
+
+---
+
+## Known Issues & Next Steps
+
+- **Dictated punctuation** — Whisper's own inferred punctuation is imperfect
+  for clinical speech, and spoken commands ("comma", "period", "new paragraph")
+  are not recognized. Needs a post-processor that maps spoken tokens to
+  punctuation characters. *[Deferred]*
+- **Streaming on long dictations** — each tick re-transcribes the whole growing
+  buffer, so recordings > ~30 s see ticks skipped. A VAD-based
+  committed/in-flight split (whisper_streaming style) would give stable earlier
+  text and faster updates. *[Deferred]*
+- **PACS not in UI** — `PACSClient.get_priors()` works but has no button wired.
+- **Local cache encryption not wired** — `security/encryption.py` is
+  implemented but no cache exists to consume it.
+- **Profiler export (Phase 5 Step 3)** — latencies are logged per-run but not
+  persisted for weekly bottleneck review.
+
+---
+
 ## Developer Instructions
 
 1.  **Script Size:** No Python file should exceed 150 lines. If it does, split it into smaller modules.

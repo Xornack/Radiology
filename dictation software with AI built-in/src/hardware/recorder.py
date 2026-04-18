@@ -1,8 +1,47 @@
 import io
+import threading
 import wave
 import numpy as np
 import sounddevice as sd
 from loguru import logger
+
+
+def list_input_devices() -> list[dict]:
+    """
+    Enumerate audio input devices available on this system.
+    Returns a list of dicts with keys: index, name, hostapi_name, channels,
+    default_samplerate, is_default.
+    """
+    try:
+        devices = sd.query_devices()
+        hostapis = sd.query_hostapis()
+    except Exception as e:
+        logger.error(f"Failed to enumerate audio devices: {e}")
+        return []
+
+    try:
+        default_input_idx = sd.default.device[0]
+    except Exception:
+        default_input_idx = None
+
+    result = []
+    for idx, dev in enumerate(devices):
+        if dev.get("max_input_channels", 0) <= 0:
+            continue
+        hostapi_name = ""
+        try:
+            hostapi_name = hostapis[dev["hostapi"]]["name"]
+        except (IndexError, KeyError, TypeError):
+            pass
+        result.append({
+            "index": idx,
+            "name": dev.get("name", f"Device {idx}"),
+            "hostapi_name": hostapi_name,
+            "channels": dev.get("max_input_channels", 0),
+            "default_samplerate": dev.get("default_samplerate", 0),
+            "is_default": idx == default_input_idx,
+        })
+    return result
 
 
 class AudioRecorder:
@@ -10,17 +49,25 @@ class AudioRecorder:
     Captures mono audio into an internal buffer.
     Designed for 16kHz audio as required by Whisper.
     """
-    def __init__(self, sample_rate: int = 16000, channels: int = 1):
+    def __init__(self, sample_rate: int = 16000, channels: int = 1, device: int | None = None):
         self.sample_rate = sample_rate
         self.channels = channels
+        self.device = device   # None = system default input
         self._buffer: list = []
+        self._buffer_lock = threading.Lock()
         self._stream = None
+
+    def set_device(self, device: int | None):
+        """Change the input device. Takes effect on the next start()."""
+        self.device = device
 
     def _audio_callback(self, indata, frames, time, status):
         """Callback invoked by sounddevice for each audio block."""
         if status:
             logger.warning(f"Audio stream status: {status}")
-        self._buffer.extend(indata.copy().flatten())
+        flat = indata.copy().flatten()
+        with self._buffer_lock:
+            self._buffer.extend(flat)
 
     def start(self):
         """Starts the audio input stream, closing any previous stream first."""
@@ -29,13 +76,15 @@ class AudioRecorder:
             self._stream.close()
             self._stream = None
 
-        self._buffer = []
+        with self._buffer_lock:
+            self._buffer = []
         try:
             self._stream = sd.InputStream(
                 samplerate=self.sample_rate,
                 channels=self.channels,
                 callback=self._audio_callback,
-                dtype='float32'
+                dtype='float32',
+                device=self.device,
             )
             self._stream.start()
         except Exception as e:
@@ -51,15 +100,24 @@ class AudioRecorder:
 
     def get_buffer(self) -> np.ndarray:
         """Returns the captured audio as a float32 numpy array."""
-        return np.array(self._buffer, dtype='float32')
+        with self._buffer_lock:
+            return np.array(self._buffer, dtype='float32')
 
     def get_wav_bytes(self) -> bytes:
         """
         Returns the captured audio as WAV-format bytes (16-bit PCM, mono, 16kHz).
         This is the format expected by Whisper STT services.
         """
-        audio_array = np.array(self._buffer, dtype='float32')
-        pcm = (audio_array * 32767).clip(-32768, 32767).astype(np.int16)
+        with self._buffer_lock:
+            audio_array = np.array(self._buffer, dtype='float32')
+
+        pcm_float = audio_array * 32767
+        clipped = np.clip(pcm_float, -32768, 32767)
+        if audio_array.size > 0 and not np.array_equal(clipped, pcm_float):
+            logger.warning(
+                "Audio clipped during PCM conversion — input levels too high"
+            )
+        pcm = clipped.astype(np.int16)
 
         buf = io.BytesIO()
         with wave.open(buf, 'wb') as wf:

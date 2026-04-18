@@ -48,7 +48,12 @@ class DictationOrchestrator:
 
         # 4. Inject into target application
         if clean_text:
-            self.wedge.type_text(clean_text)
+            try:
+                self.wedge.type_text(clean_text)
+            except Exception as e:
+                # Never let a wedge failure crash the UI handler —
+                # the transcript is still returned for display
+                logger.error(f"Keyboard wedge failed: {e}")
 
         if self.profiler:
             self.profiler.stop("keyboard_wedge")

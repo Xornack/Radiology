@@ -16,6 +16,7 @@ dependencies = [
     "pynetdicom",
     "pydicom",
     "cryptography",
+    "faster-whisper",
 ]
 
 [project.optional-dependencies]

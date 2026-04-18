@@ -1,5 +1,6 @@
 import hid
 import threading
+import time
 from loguru import logger
 
 
@@ -39,15 +40,18 @@ class MicListener:
     def _poll_loop(self):
         """Continuously polls the HID device until stop() is called."""
         while self._running:
-            self._poll_once()
+            if not self._poll_once():
+                # Yield briefly when nothing was read to avoid pinning a core
+                time.sleep(0.001)
 
-    def _poll_once(self):
+    def _poll_once(self) -> bool:
         """
         Reads one HID report and fires on_trigger if the button state changed.
+        Returns True if data was read, False otherwise.
         Safe to call directly in tests (inject self.device before calling).
         """
         if not self.device:
-            return
+            return False
         try:
             data = self.device.read(64, timeout_ms=10)
             if data:
@@ -56,8 +60,11 @@ class MicListener:
                     self._button_pressed = pressed
                     if self.on_trigger:
                         self.on_trigger(pressed)
+                return True
+            return False
         except (IOError, ValueError, AttributeError) as e:
             logger.warning(f"HID read error: {e}")
+            return False
 
     def stop(self):
         """Stops the polling thread and closes the HID device."""
