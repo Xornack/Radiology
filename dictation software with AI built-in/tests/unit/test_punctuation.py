@@ -178,3 +178,32 @@ def test_collapses_triple_newlines():
         apply_punctuation("one new paragraph new paragraph two")
         == "One\n\nTwo"
     )
+
+
+def test_acceptance_full_dictation():
+    dictated = (
+        "the lungs are clear period no acute findings period "
+        "new paragraph impression colon normal chest x-ray period"
+    )
+    expected = (
+        "The lungs are clear. No acute findings.\n\n"
+        "Impression: normal chest x-ray."
+    )
+    assert apply_punctuation(dictated) == expected
+
+
+def test_acceptance_decimal_measurement():
+    dictated = "the mass measures 7.5 mm period"
+    assert apply_punctuation(dictated) == "The mass measures 7.5 mm."
+
+
+def test_acceptance_colon_mixed_usage():
+    dictated = (
+        "findings colon fluid in the distal colon period "
+        "new paragraph impression colon colitis period"
+    )
+    expected = (
+        "Findings: fluid in the distal colon.\n\n"
+        "Impression: colitis."
+    )
+    assert apply_punctuation(dictated) == expected
