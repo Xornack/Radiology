@@ -104,3 +104,27 @@ def test_chained_period_and_new_paragraph():
         apply_punctuation("sentence one period new paragraph sentence two period")
         == "Sentence one.\n\nsentence two."
     )
+
+
+def test_colon_as_punctuation():
+    assert apply_punctuation("findings colon one mass") == "Findings: one mass"
+
+
+def test_colon_anatomy_preceded_by_distal():
+    assert apply_punctuation("fluid in the distal colon") == "Fluid in the distal colon"
+
+
+def test_colon_anatomy_preceded_by_sigmoid():
+    assert apply_punctuation("mass in the sigmoid colon") == "Mass in the sigmoid colon"
+
+
+def test_colon_anatomy_followed_by_cancer():
+    assert apply_punctuation("colon cancer screening") == "Colon cancer screening"
+
+
+def test_colon_anatomy_followed_by_polyp():
+    assert apply_punctuation("the colon polyp was removed") == "The colon polyp was removed"
+
+
+def test_colon_at_start_not_anatomy_becomes_punctuation():
+    assert apply_punctuation("colon finding") == ": finding"

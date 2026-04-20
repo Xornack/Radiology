@@ -21,6 +21,20 @@ _MULTI_WORD_MAP = {
 }
 
 
+_COLON_ANATOMY_BEFORE = {
+    "transverse", "sigmoid", "ascending", "descending",
+    "distal", "proximal", "hepatic", "splenic",
+    "rectosigmoid", "right", "left", "entire", "intra",
+}
+
+_COLON_ANATOMY_AFTER = {
+    "cancer", "polyp", "polyps", "mass", "wall", "lumen",
+    "mucosa", "stricture", "diverticulosis", "diverticulitis",
+    "stenosis", "obstruction", "perforation", "resection",
+    "carcinoma", "neoplasm", "tumor", "tumour", "lesion", "lesions",
+}
+
+
 _SINGLE_WORD_MAP = {
     "period": ".",
     "comma": ",",
@@ -51,6 +65,15 @@ def _substitute_tokens(text: str) -> str:
                 i += 2
                 continue
         key = words[i].lower()
+        if key == "colon":
+            prev_word = words[i - 1].lower() if i > 0 else ""
+            next_word = words[i + 1].lower() if i + 1 < len(words) else ""
+            if prev_word in _COLON_ANATOMY_BEFORE or next_word in _COLON_ANATOMY_AFTER:
+                output.append(words[i])
+            else:
+                output.append(":")
+            i += 1
+            continue
         if key in _SINGLE_WORD_MAP:
             output.append(_SINGLE_WORD_MAP[key])
         else:
