@@ -17,22 +17,21 @@ Build a modular, secure, and high-performance radiology dictation platform that 
 ```text
 /radiology-dictation/
 ├── src/
-│   ├── app.py                  # Entry point
-│   ├── core/                   # Core Orchestrator
+│   ├── main.py                 # Entry point
+│   ├── core/                   # Core Orchestrator & live streaming
 │   ├── ui/                     # PyQt6 Window & Widgets
-│   ├── hardware/               # HID (SpeechMike/PowerMic)
-│   ├── engine/                 # Text Processing & Logic
-│   ├── ai/                     # AI Client (FastAPI/Whisper/Llama)
-│   ├── network/                # HL7 & DICOM (pynetdicom)
+│   ├── hardware/               # HID (SpeechMike/PowerMic) & audio capture
+│   ├── engine/                 # Keyboard wedge (Win32 SendInput)
+│   ├── ai/                     # Whisper (local & HTTP) + LLM client
+│   ├── network/                # DICOM (pynetdicom) — HL7 TBD
 │   ├── security/               # Encryption & De-identification
-│   └── utils/                  # Profiling, Logging, Config
-├── services/                   # AI Microservices (Docker/FastAPI)
+│   └── utils/                  # Profiling, Settings, PHI patterns
+├── services/                   # AI Microservices (Docker/FastAPI) — placeholder
 ├── tests/
 │   ├── unit/                   # Component-level tests
 │   └── integration/            # Multi-component tests
-├── docs/                       # API & Workflow Docs
-├── requirements.txt
-└── .env.example
+├── docs/                       # API & Workflow Docs — placeholder
+└── pyproject.toml              # Runtime & dev dependencies
 ```
 
 ---
@@ -294,6 +293,6 @@ failure cannot crash the Qt trigger handler.
 
 1.  **Script Size:** No Python file should exceed 150 lines. If it does, split it into smaller modules.
 2.  **Testing:** Every file in `src/` must have a corresponding file in `tests/`. Use `pytest`.
-3.  **Profiling:** Run `python -m cProfile src/app.py` weekly to check for performance regressions.
+3.  **Profiling:** Run `python -m cProfile -m src.main` weekly to check for performance regressions.
 4.  **GUI vs Logic:** The `ui/` folder should only handle `QSignals` and `QWidgets`. All calculation, networking, and AI must happen in `engine/` or `ai/`.
 5.  **Logging:** Use `loguru` or Python's `logging` for structured logs. No `print()` statements in production code.

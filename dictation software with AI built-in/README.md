@@ -20,8 +20,14 @@ findings. No PHI leaves the machine.
 ## Quick Start
 
 ```bash
-pip install -r requirements.txt
+pip install -e .
 python -m src.main
+```
+
+For development (adds `pytest`, `pytest-qt`):
+
+```bash
+pip install -e '.[dev]'
 ```
 
 The first launch downloads the default Whisper model (`base.en`, ~140 MB) from Hugging Face.
@@ -47,7 +53,7 @@ final transcript replaces the live partial and is typed into the foreground app.
 Easiest Windows path (no CUDA Toolkit install required):
 
 ```bash
-pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
+pip install -e '.[gpu]'
 $env:WHISPER_DEVICE="cuda"; $env:WHISPER_COMPUTE_TYPE="float16"; python -m src.main
 ```
 

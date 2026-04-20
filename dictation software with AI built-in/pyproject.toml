@@ -1,26 +1,47 @@
 [build-system]
-requires = ["setuptools>=42"]
+requires = ["setuptools>=64", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "proj"
+name = "radiology-dictation"
 version = "0.1.0"
+description = "Local, privacy-first AI dictation platform for radiology workflows."
+readme = "README.md"
 requires-python = ">=3.10"
+authors = [{ name = "Matthew Harwood, MD" }]
+license = { text = "Proprietary" }
+keywords = ["radiology", "dictation", "whisper", "asr", "llm", "dicom", "pacs"]
+
 dependencies = [
-    "PyQt6",
-    "loguru",
-    "requests",
-    "numpy",
-    "sounddevice",
-    "hidapi",
-    "pynetdicom",
-    "pydicom",
-    "cryptography",
-    "faster-whisper",
+    "PyQt6>=6.6",
+    "loguru>=0.7",
+    "requests>=2.31",
+    "numpy>=1.26",
+    "sounddevice>=0.4.6",
+    "hidapi>=0.14",
+    "pynetdicom>=2.1",
+    "pydicom>=2.4",
+    "cryptography>=41",
+    "faster-whisper>=1.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest",
-    "pytest-qt",
+    "pytest>=8",
+    "pytest-qt>=4.4",
 ]
+# Optional GPU acceleration: pip install -e '.[gpu]'
+gpu = [
+    "nvidia-cublas-cu12",
+    "nvidia-cudnn-cu12",
+]
+
+[project.scripts]
+radiology-dictation = "src.main:main"
+
+[tool.setuptools.packages.find]
+include = ["src*"]
+exclude = ["tests*", "services*", "docs*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
