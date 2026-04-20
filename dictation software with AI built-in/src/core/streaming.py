@@ -3,6 +3,8 @@ from typing import Optional
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 from loguru import logger
 
+from src.engine.punctuation import apply_punctuation
+
 
 class StreamingTranscriber(QObject):
     """
@@ -74,7 +76,7 @@ class StreamingTranscriber(QObject):
         try:
             text = self.whisper_client.transcribe(wav_bytes)
             if self._active and text:
-                self.partial_ready.emit(text)
+                self.partial_ready.emit(apply_punctuation(text))
         except Exception as e:
             logger.error(f"Streaming transcribe failed: {e}")
         finally:
