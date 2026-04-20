@@ -271,12 +271,23 @@ failure cannot crash the Qt trigger handler.
 
 ---
 
+## Phase 8: Dictation UX
+
+### Task 8.1: Spoken Punctuation Post-Processor ✅
+**Added:** `src/engine/punctuation.py` replaces Whisper's inferred punctuation
+with user-dictated tokens (PowerScribe-style). Handles `period`, `comma`,
+`question mark`, `exclamation point`, `colon`, `semicolon`, `new paragraph`,
+`new line`, parentheses, quotes, `hyphen`, and `dash`. Context-aware colon
+disambiguation: preserves `colon` as anatomy when neighbored by words like
+`distal`, `sigmoid`, `cancer`, `polyp`. Auto-capitalizes document start and
+first word after `.`, `?`, `!`, or a paragraph break. Called after PHI scrub
+in the orchestrator and before `partial_ready.emit` in the streaming
+transcriber so the UI preview matches the final output.
+
+---
+
 ## Known Issues & Next Steps
 
-- **Dictated punctuation** — Whisper's own inferred punctuation is imperfect
-  for clinical speech, and spoken commands ("comma", "period", "new paragraph")
-  are not recognized. Needs a post-processor that maps spoken tokens to
-  punctuation characters. *[Deferred]*
 - **Streaming on long dictations** — each tick re-transcribes the whole growing
   buffer, so recordings > ~30 s see ticks skipped. A VAD-based
   committed/in-flight split (whisper_streaming style) would give stable earlier
