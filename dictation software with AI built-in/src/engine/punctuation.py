@@ -86,6 +86,13 @@ def _substitute_tokens(text: str) -> str:
     return joined
 
 
+def _tidy_spacing(text: str) -> str:
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    text = "\n".join(line.strip() for line in text.split("\n"))
+    return text.strip()
+
+
 def _autocap(text: str) -> str:
     """Capitalize first alpha of document, and first alpha after ., ?, !, or blank line."""
     text = re.sub(
@@ -116,6 +123,6 @@ def apply_punctuation(text: str) -> str:
         return text
     text = _strip_whisper_punctuation(text)
     text = _substitute_tokens(text)
-    text = re.sub(r"[ \t]+", " ", text).strip()
+    text = _tidy_spacing(text)
     text = _autocap(text)
     return text

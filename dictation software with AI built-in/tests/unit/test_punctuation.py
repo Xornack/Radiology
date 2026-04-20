@@ -156,3 +156,25 @@ def test_autocap_after_exclamation():
         apply_punctuation("great exclamation point more to come period")
         == "Great! More to come."
     )
+
+
+def test_collapses_interior_whitespace():
+    assert apply_punctuation("hello    world   period") == "Hello world."
+
+
+def test_strips_leading_whitespace_per_line():
+    assert (
+        apply_punctuation("one period new paragraph    two period")
+        == "One.\n\nTwo."
+    )
+
+
+def test_no_space_before_punctuation():
+    assert apply_punctuation("word  comma  word  period") == "Word, word."
+
+
+def test_collapses_triple_newlines():
+    assert (
+        apply_punctuation("one new paragraph new paragraph two")
+        == "One\n\nTwo"
+    )
