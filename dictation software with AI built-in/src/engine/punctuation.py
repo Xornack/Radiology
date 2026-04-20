@@ -86,12 +86,24 @@ def _substitute_tokens(text: str) -> str:
     return joined
 
 
-def _autocap_first_letter(text: str) -> str:
-    return re.sub(
+def _autocap(text: str) -> str:
+    """Capitalize first alpha of document, and first alpha after ., ?, !, or blank line."""
+    text = re.sub(
         r"^(\s*)([a-z])",
         lambda m: m.group(1) + m.group(2).upper(),
         text,
     )
+    text = re.sub(
+        r"([.!?]\s+)([a-z])",
+        lambda m: m.group(1) + m.group(2).upper(),
+        text,
+    )
+    text = re.sub(
+        r"(\n\n+)([a-z])",
+        lambda m: m.group(1) + m.group(2).upper(),
+        text,
+    )
+    return text
 
 
 def apply_punctuation(text: str) -> str:
@@ -105,5 +117,5 @@ def apply_punctuation(text: str) -> str:
     text = _strip_whisper_punctuation(text)
     text = _substitute_tokens(text)
     text = re.sub(r"[ \t]+", " ", text).strip()
-    text = _autocap_first_letter(text)
+    text = _autocap(text)
     return text

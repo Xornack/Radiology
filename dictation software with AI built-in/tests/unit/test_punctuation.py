@@ -70,11 +70,11 @@ def test_token_exclamation_mark_variant():
 
 
 def test_token_new_paragraph():
-    assert apply_punctuation("first line new paragraph second line") == "First line\n\nsecond line"
+    assert apply_punctuation("first line new paragraph second line") == "First line\n\nSecond line"
 
 
 def test_token_next_paragraph_variant():
-    assert apply_punctuation("first line next paragraph second line") == "First line\n\nsecond line"
+    assert apply_punctuation("first line next paragraph second line") == "First line\n\nSecond line"
 
 
 def test_token_new_line():
@@ -102,7 +102,7 @@ def test_token_quotes():
 def test_chained_period_and_new_paragraph():
     assert (
         apply_punctuation("sentence one period new paragraph sentence two period")
-        == "Sentence one.\n\nsentence two."
+        == "Sentence one.\n\nSentence two."
     )
 
 
@@ -128,3 +128,31 @@ def test_colon_anatomy_followed_by_polyp():
 
 def test_colon_at_start_not_anatomy_becomes_punctuation():
     assert apply_punctuation("colon finding") == ": finding"
+
+
+def test_autocap_after_period():
+    assert (
+        apply_punctuation("first sentence period second sentence period")
+        == "First sentence. Second sentence."
+    )
+
+
+def test_autocap_after_new_paragraph():
+    assert (
+        apply_punctuation("sentence one period new paragraph sentence two period")
+        == "Sentence one.\n\nSentence two."
+    )
+
+
+def test_autocap_after_question_mark():
+    assert (
+        apply_punctuation("is it clear question mark yes period")
+        == "Is it clear? Yes."
+    )
+
+
+def test_autocap_after_exclamation():
+    assert (
+        apply_punctuation("great exclamation point more to come period")
+        == "Great! More to come."
+    )
