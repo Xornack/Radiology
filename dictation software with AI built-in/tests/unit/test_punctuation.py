@@ -31,3 +31,27 @@ def test_preserves_decimals():
 
 def test_preserves_apostrophes_in_contractions():
     assert apply_punctuation("it's normal") == "It's normal"
+
+
+def test_token_period():
+    assert apply_punctuation("lungs clear period") == "Lungs clear."
+
+
+def test_token_comma():
+    assert apply_punctuation("lungs comma heart comma kidneys") == "Lungs, heart, kidneys"
+
+
+def test_token_semicolon():
+    assert apply_punctuation("lungs clear semicolon heart normal") == "Lungs clear; heart normal"
+
+
+def test_token_semicolon_hyphenated_variant():
+    assert apply_punctuation("lungs clear semi-colon heart normal") == "Lungs clear; heart normal"
+
+
+def test_token_hyphen():
+    assert apply_punctuation("follow up hyphen imaging") == "Follow up - imaging"
+
+
+def test_token_dash():
+    assert apply_punctuation("finding dash incidental") == "Finding — incidental"
