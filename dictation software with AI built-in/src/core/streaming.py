@@ -53,16 +53,13 @@ class StreamingTranscriber(QObject):
         if self._in_flight or not self._active:
             return
         try:
-            audio = self.recorder.get_buffer()
-        except Exception as e:
-            logger.error(f"Streaming tick: could not read buffer: {e}")
-            return
-        if audio.size < int(self.sample_rate * self.min_audio_seconds):
-            return
-        try:
             wav_bytes = self.recorder.get_wav_bytes()
         except Exception as e:
             logger.error(f"Streaming tick: could not encode WAV: {e}")
+            return
+        # 44-byte RIFF header + 2 bytes per 16-bit mono sample
+        audio_samples = max(0, len(wav_bytes) - 44) // 2
+        if audio_samples < int(self.sample_rate * self.min_audio_seconds):
             return
 
         self._in_flight = True

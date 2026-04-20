@@ -26,6 +26,8 @@ def test_transcribe_audio_error_handling():
     mock_response.status_code = 500
     
     with patch('requests.post', return_value=mock_response):
-        client = WhisperClient(url="http://localhost:8000/transcribe")
+        client = WhisperClient(
+            url="http://localhost:8000/transcribe", retry_initial_delay=0
+        )
         result = client.transcribe(b"bad-data")
         assert result == ""

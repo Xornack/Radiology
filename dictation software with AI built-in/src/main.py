@@ -107,7 +107,7 @@ def main():
     window.on_mic_changed = on_mic_changed
     window.populate_microphones(list_input_devices(), selected_index=None)
 
-    # 5. Setup Hardware Listener (VID/PID from env or defaults)
+    # 6. Setup Hardware Listener (VID/PID from env or defaults)
     mic = MicListener(
         vendor_id=settings.speechmike_vid,
         product_id=settings.speechmike_pid,
@@ -120,7 +120,7 @@ def main():
     else:
         logger.warning("No medical microphone found. Using keyboard fallback (F4).")
 
-    # 6. Keyboard fallback — F4 toggles recording (always registered)
+    # 7. Keyboard fallback — F4 toggles recording (always registered)
     def f4_toggle():
         handle_trigger(not recording_state["active"])
 
@@ -128,7 +128,7 @@ def main():
     f4_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
     f4_shortcut.activated.connect(f4_toggle)
 
-    # 7. Wire the Generate Impression button
+    # 8. Wire the Generate Impression button
     def do_generate_impression():
         findings = window.get_findings().strip()
         if not findings:
@@ -149,7 +149,7 @@ def main():
 
     window.on_generate_impression = do_generate_impression
 
-    # 8. Shutdown cleanup — close HID and audio stream when app exits
+    # 9. Shutdown cleanup — close HID and audio stream when app exits
     def on_shutdown():
         logger.info("Shutting down...")
         try:

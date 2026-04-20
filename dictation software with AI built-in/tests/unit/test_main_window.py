@@ -1,4 +1,5 @@
 import pytest
+from unittest.mock import patch
 from PyQt6.QtCore import Qt
 from src.ui.main_window import MainWindow
 
@@ -15,15 +16,15 @@ def test_main_window_properties(qtbot):
     assert flags & Qt.WindowType.FramelessWindowHint
 
 
-def test_close_button_hides_window(qtbot):
-    """Clicking the × button must close the window."""
+def test_close_button_quits_application(qtbot):
+    """Clicking × must terminate the application, not just hide the window."""
     window = MainWindow()
     qtbot.addWidget(window)
     window.show()
-    assert window.isVisible()
 
-    window.close_btn.click()
-    assert not window.isVisible()
+    with patch("src.ui.main_window.QApplication.instance") as mock_instance:
+        window.close_btn.click()
+        mock_instance.return_value.quit.assert_called_once()
 
 
 def test_minimize_button_exists(qtbot):
