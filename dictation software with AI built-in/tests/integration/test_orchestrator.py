@@ -12,7 +12,7 @@ def test_full_dictation_pipeline_logic():
     mock_recorder.get_wav_bytes.return_value = b"fake-wav-audio"
 
     mock_whisper = MagicMock()
-    mock_whisper.transcribe.return_value = "Patient John Doe."
+    mock_whisper.transcribe.return_value = "Patient John Doe period"
 
     mock_wedge = MagicMock()
 

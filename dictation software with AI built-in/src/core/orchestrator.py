@@ -1,5 +1,6 @@
 from loguru import logger
 from src.security.scrubber import scrub_text
+from src.engine.punctuation import apply_punctuation
 
 
 class DictationOrchestrator:
@@ -42,6 +43,10 @@ class DictationOrchestrator:
 
         # 3. Scrub PHI
         clean_text = scrub_text(raw_text)
+
+        # 3b. Map spoken punctuation tokens (period, comma, new paragraph, ...).
+        clean_text = apply_punctuation(clean_text)
+
         if self.profiler:
             self.profiler.stop("scrubbing")
             self.profiler.start("keyboard_wedge")
