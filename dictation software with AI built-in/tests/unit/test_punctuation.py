@@ -55,3 +55,52 @@ def test_token_hyphen():
 
 def test_token_dash():
     assert apply_punctuation("finding dash incidental") == "Finding — incidental"
+
+
+def test_token_question_mark():
+    assert apply_punctuation("is it clear question mark") == "Is it clear?"
+
+
+def test_token_exclamation_point():
+    assert apply_punctuation("ouch exclamation point") == "Ouch!"
+
+
+def test_token_exclamation_mark_variant():
+    assert apply_punctuation("ouch exclamation mark") == "Ouch!"
+
+
+def test_token_new_paragraph():
+    assert apply_punctuation("first line new paragraph second line") == "First line\n\nsecond line"
+
+
+def test_token_next_paragraph_variant():
+    assert apply_punctuation("first line next paragraph second line") == "First line\n\nsecond line"
+
+
+def test_token_new_line():
+    assert apply_punctuation("line one new line line two") == "Line one\nline two"
+
+
+def test_token_parentheses():
+    assert apply_punctuation(
+        "incidental finding open paren likely benign close paren"
+    ) == "Incidental finding (likely benign)"
+
+
+def test_token_open_parenthesis_variant():
+    assert apply_punctuation(
+        "incidental finding open parenthesis likely benign close parenthesis"
+    ) == "Incidental finding (likely benign)"
+
+
+def test_token_quotes():
+    assert apply_punctuation(
+        "open quote normal close quote study"
+    ) == "\u201cnormal\u201d study"
+
+
+def test_chained_period_and_new_paragraph():
+    assert (
+        apply_punctuation("sentence one period new paragraph sentence two period")
+        == "Sentence one.\n\nsentence two."
+    )
