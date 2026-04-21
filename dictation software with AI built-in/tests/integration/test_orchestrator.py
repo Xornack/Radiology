@@ -28,7 +28,7 @@ def test_full_dictation_pipeline_logic():
         orch.handle_trigger_down()
         assert mock_recorder.start.called
 
-        orch.handle_trigger_up()
+        orch.handle_trigger_up(mode="wedge")
         assert mock_recorder.stop.called
         assert mock_whisper.transcribe.called
 

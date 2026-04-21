@@ -24,8 +24,15 @@ class DictationOrchestrator:
             self.profiler.start("audio_capture")
         self.recorder.start()
 
-    def handle_trigger_up(self) -> str:
-        """Called when the user releases the dictation button."""
+    def handle_trigger_up(self, mode: str = "inapp") -> str:
+        """
+        Process the recording and return the finalized text.
+
+        `mode` selects the output sink:
+          - "inapp":  text lands in the caller's UI editor (no external keystrokes).
+          - "wedge":  text is also typed into the externally focused window via SendInput.
+        The returned text is the same in both modes so the caller can display history.
+        """
         logger.info("Dictation stopped. Processing...")
         self.recorder.stop()
         if self.profiler:
@@ -51,8 +58,8 @@ class DictationOrchestrator:
             self.profiler.stop("scrubbing")
             self.profiler.start("keyboard_wedge")
 
-        # 4. Inject into target application
-        if clean_text:
+        # 4. Inject into external application only when explicitly requested
+        if mode == "wedge" and clean_text:
             try:
                 self.wedge.type_text(clean_text)
             except Exception as e:
