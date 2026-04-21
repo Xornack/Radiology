@@ -43,6 +43,9 @@ class MainWindow(QMainWindow):
         # [_partial_start, _partial_start + _partial_len] in place.
         self._partial_len: int = 0
 
+        # Optional profiler wired by main.py to track latency-critical operations
+        self.profiler = None
+
         # Format applied to every dictated run (partials and commits).
         self._dictation_format = QTextCharFormat()
         self._dictation_format.setForeground(QColor(self.DICTATION_COLOR))
@@ -263,6 +266,8 @@ class MainWindow(QMainWindow):
 
     def set_dictation_mode(self, mode: str):
         """Apply a dictation mode: locks the editor in Wedge, unlocks in In-app."""
+        if self.profiler:
+            self.profiler.start("mode_switch")
         if mode == "wedge":
             self.editor.setReadOnly(True)
         else:
@@ -275,6 +280,8 @@ class MainWindow(QMainWindow):
                     self.mode_combo.setCurrentIndex(i)
                     self.mode_combo.blockSignals(False)
                 break
+        if self.profiler:
+            self.profiler.stop("mode_switch")
 
     def _on_mode_combo_changed(self, idx: int):
         if idx < 0:
@@ -347,6 +354,8 @@ class MainWindow(QMainWindow):
         """
         if self._partial_start < 0:
             return
+        if self.profiler:
+            self.profiler.start("partial_replace")
         cursor = self.editor.textCursor()
         cursor.setPosition(self._partial_start)
         cursor.setPosition(
@@ -357,6 +366,8 @@ class MainWindow(QMainWindow):
         cursor.insertText(text, self._dictation_format)
         self._partial_len = len(text)
         self.editor.ensureCursorVisible()
+        if self.profiler:
+            self.profiler.stop("partial_replace")
 
     def commit_partial(self, text: str):
         """Replace the live partial region with the final text and end streaming.

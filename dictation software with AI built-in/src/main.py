@@ -62,6 +62,7 @@ def main():
 
     # 3. Setup UI
     window = MainWindow()
+    window.profiler = profiler
     window.show()
 
     # 4. Streaming live-partial transcriber — ticks every 1.5s during recording
