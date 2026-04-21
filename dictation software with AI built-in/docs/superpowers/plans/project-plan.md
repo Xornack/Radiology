@@ -284,6 +284,18 @@ first word after `.`, `?`, `!`, or a paragraph break. Called after PHI scrub
 in the orchestrator and before `partial_ready.emit` in the streaming
 transcriber so the UI preview matches the final output.
 
+### Task 8.2: Editable Transcript + Insert-at-Cursor + Mode Toggle ✅
+**Added:** In-app transcript is now editable with insert-at-cursor streaming
+dictation. Dictated text renders in a distinct teal color against typed text
+in default color. Single Record toggle replaces the Record/Stop pair. Window
+is resizable via a bottom-right QSizeGrip. New mode toggle at the top of the
+window: **In-app** (default; dictation lands in the editor) vs **Wedge**
+(dictation routes to the focused external window via SendInput; the editor
+becomes a read-only scrolling history). Orchestrator grows a `mode` parameter
+that gates the keyboard wedge call. Streaming partials are not started in
+Wedge mode. Spec: `docs/superpowers/specs/2026-04-21-editable-transcript-design.md`.
+Plan: `docs/superpowers/plans/2026-04-21-editable-transcript.md`.
+
 ---
 
 ## Known Issues & Next Steps
