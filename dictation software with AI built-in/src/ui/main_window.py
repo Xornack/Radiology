@@ -31,6 +31,7 @@ class MainWindow(QMainWindow):
         self.on_toggle_recording: Optional[Callable[[bool], None]] = None
         self.on_mic_changed: Optional[Callable[[Optional[int]], None]] = None
         self.on_refresh_devices: Optional[Callable[[], None]] = None
+        self.on_mode_changed: Optional[Callable[[str], None]] = None
 
         # Tracks whether a recording session is currently active.
         self._recording: bool = False
@@ -90,6 +91,30 @@ class MainWindow(QMainWindow):
         self.status_label = QLabel("● Ready")
         self.status_label.setObjectName("statusLabel")
         root.addWidget(self.status_label)
+
+        # Dictation mode row — In-app (default) or Wedge (send to focused external app)
+        mode_row = QWidget()
+        mode_row.setObjectName("modeRow")
+        mdr = QHBoxLayout(mode_row)
+        mdr.setContentsMargins(10, 4, 10, 0)
+        mdr.setSpacing(6)
+
+        mode_label = QLabel("Mode:")
+        mode_label.setObjectName("modeLabel")
+        mdr.addWidget(mode_label)
+
+        self.mode_combo = QComboBox()
+        self.mode_combo.setObjectName("modeCombo")
+        self.mode_combo.setToolTip(
+            "In-app: dictate into this editor. "
+            "Wedge: dictate into whatever external window has focus."
+        )
+        self.mode_combo.addItem("In-app", userData="inapp")
+        self.mode_combo.addItem("Wedge (any focused window)", userData="wedge")
+        self.mode_combo.currentIndexChanged.connect(self._on_mode_combo_changed)
+        mdr.addWidget(self.mode_combo, stretch=1)
+
+        root.addWidget(mode_row)
 
         # Microphone selector
         mic_row = QWidget()
@@ -221,6 +246,36 @@ class MainWindow(QMainWindow):
                     break
         self.mic_combo.blockSignals(False)
 
+    def current_mode(self) -> str:
+        """Return the active dictation mode: 'inapp' or 'wedge'."""
+        data = self.mode_combo.currentData()
+        return data if data else "inapp"
+
+    def set_dictation_mode(self, mode: str):
+        """Apply a dictation mode: locks the editor in Wedge, unlocks in In-app."""
+        if mode == "wedge":
+            self.editor.setReadOnly(True)
+        else:
+            self.editor.setReadOnly(False)
+        # Sync combo if called programmatically
+        for i in range(self.mode_combo.count()):
+            if self.mode_combo.itemData(i) == mode:
+                if self.mode_combo.currentIndex() != i:
+                    self.mode_combo.blockSignals(True)
+                    self.mode_combo.setCurrentIndex(i)
+                    self.mode_combo.blockSignals(False)
+                break
+
+    def _on_mode_combo_changed(self, idx: int):
+        if idx < 0:
+            return
+        mode = self.mode_combo.itemData(idx)
+        if not mode:
+            return
+        self.set_dictation_mode(mode)
+        if self.on_mode_changed is not None:
+            self.on_mode_changed(mode)
+
     def set_recording_state(self, recording: bool):
         """Reflect recording state: flip the single toggle and lock mic-row widgets."""
         self._recording = recording
@@ -238,6 +293,10 @@ class MainWindow(QMainWindow):
 
         self.mic_combo.setEnabled(not recording)
         self.refresh_btn.setEnabled(not recording)
+        self.mode_combo.setEnabled(not recording)
+        # Editor lock: always read-only while recording (prevents collision with
+        # the live partial region). When idle, read-only state follows the mode.
+        self.editor.setReadOnly(recording or self.current_mode() == "wedge")
 
     # Public API
 

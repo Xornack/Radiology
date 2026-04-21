@@ -250,3 +250,79 @@ def test_stop_btn_attribute_is_gone(qtbot):
     window = MainWindow()
     qtbot.addWidget(window)
     assert not hasattr(window, "stop_btn")
+
+
+def test_mode_toggle_defaults_to_inapp(qtbot):
+    """Fresh window must start in In-app mode."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+    assert window.current_mode() == "inapp"
+    assert not window.editor.isReadOnly()
+
+
+def test_set_dictation_mode_wedge_locks_editor(qtbot):
+    """Switching to Wedge mode makes the editor read-only."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.set_dictation_mode("wedge")
+    assert window.current_mode() == "wedge"
+    assert window.editor.isReadOnly()
+
+
+def test_set_dictation_mode_back_to_inapp_unlocks(qtbot):
+    """Switching Wedge → In-app unlocks the editor again."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.set_dictation_mode("wedge")
+    window.set_dictation_mode("inapp")
+    assert window.current_mode() == "inapp"
+    assert not window.editor.isReadOnly()
+
+
+def test_mode_toggle_disabled_during_recording(qtbot):
+    """The mode combo must be disabled while recording."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+    assert window.mode_combo.isEnabled()
+    window.set_recording_state(True)
+    assert not window.mode_combo.isEnabled()
+    window.set_recording_state(False)
+    assert window.mode_combo.isEnabled()
+
+
+def test_mode_combo_change_fires_callback(qtbot):
+    """Changing the combo selection emits the new mode string via on_mode_changed."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+    received = []
+    window.on_mode_changed = lambda m: received.append(m)
+    window.mode_combo.setCurrentIndex(1)   # Wedge
+    assert received == ["wedge"]
+
+
+def test_editor_is_read_only_during_recording_in_inapp_mode(qtbot):
+    """Spec: editor is locked during recording in In-app mode, editable when idle."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+    assert window.current_mode() == "inapp"
+    assert not window.editor.isReadOnly()
+
+    window.set_recording_state(True)
+    assert window.editor.isReadOnly()
+
+    window.set_recording_state(False)
+    assert not window.editor.isReadOnly()
+
+
+def test_editor_stays_read_only_across_recording_in_wedge_mode(qtbot):
+    """In Wedge mode, the editor is read-only whether recording or idle."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.set_dictation_mode("wedge")
+    assert window.editor.isReadOnly()
+
+    window.set_recording_state(True)
+    assert window.editor.isReadOnly()
+
+    window.set_recording_state(False)
+    assert window.editor.isReadOnly()
