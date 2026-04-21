@@ -326,3 +326,12 @@ def test_editor_stays_read_only_across_recording_in_wedge_mode(qtbot):
 
     window.set_recording_state(False)
     assert window.editor.isReadOnly()
+
+
+def test_window_has_size_grip(qtbot):
+    """A QSizeGrip must be present for frameless resize."""
+    from PyQt6.QtWidgets import QSizeGrip
+    window = MainWindow()
+    qtbot.addWidget(window)
+    grips = window.findChildren(QSizeGrip)
+    assert len(grips) >= 1

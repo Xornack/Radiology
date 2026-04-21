@@ -1,7 +1,7 @@
 from typing import Callable, Optional
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QTextEdit, QVBoxLayout, QHBoxLayout,
-    QWidget, QLabel, QPushButton, QComboBox,
+    QWidget, QLabel, QPushButton, QComboBox, QSizeGrip,
 )
 from PyQt6.QtCore import Qt, QPoint
 from PyQt6.QtGui import QColor, QTextCharFormat, QTextCursor
@@ -176,6 +176,16 @@ class MainWindow(QMainWindow):
         ab.addWidget(self.impression_btn)
 
         root.addWidget(action_bar)
+
+        # Frameless windows lack native resize handles; a QSizeGrip in the
+        # bottom-right provides a visible drag target without re-enabling the frame.
+        grip = QSizeGrip(root_widget)
+        grip.setFixedSize(14, 14)
+        grip_row = QHBoxLayout()
+        grip_row.setContentsMargins(0, 0, 2, 2)
+        grip_row.addStretch()
+        grip_row.addWidget(grip)
+        root.addLayout(grip_row)
 
         self._apply_styles()
         self.set_status("Ready")
