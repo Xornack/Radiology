@@ -208,3 +208,45 @@ def test_commit_empty_partial_leaves_document_intact(qtbot):
     window.commit_partial("")
 
     assert window.editor.toPlainText() == "keep me"
+
+
+def test_single_record_button_label_starts_at_record(qtbot):
+    """Before recording, the toggle button shows 'Record'."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+    assert "Record" in window.record_btn.text()
+
+
+def test_single_record_button_flips_label_while_recording(qtbot):
+    """set_recording_state(True) flips the toggle to the Stop label."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.set_recording_state(True)
+    assert "Stop" in window.record_btn.text()
+    window.set_recording_state(False)
+    assert "Record" in window.record_btn.text()
+
+
+def test_single_record_button_fires_correct_boolean(qtbot):
+    """Clicking toggles between True and False via on_toggle_recording."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    fired = []
+    window.on_toggle_recording = lambda pressed: fired.append(pressed)
+
+    # Idle -> click emits True
+    window.record_btn.click()
+    assert fired == [True]
+
+    # Recording -> click emits False
+    window.set_recording_state(True)
+    window.record_btn.click()
+    assert fired == [True, False]
+
+
+def test_stop_btn_attribute_is_gone(qtbot):
+    """The separate stop_btn must be removed — the single record_btn handles both states."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+    assert not hasattr(window, "stop_btn")

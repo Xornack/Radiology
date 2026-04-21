@@ -32,6 +32,9 @@ class MainWindow(QMainWindow):
         self.on_mic_changed: Optional[Callable[[Optional[int]], None]] = None
         self.on_refresh_devices: Optional[Callable[[], None]] = None
 
+        # Tracks whether a recording session is currently active.
+        self._recording: bool = False
+
         # Cursor position where the current streaming partial begins.
         # -1 means no active streaming session.
         self._partial_start: int = -1
@@ -126,18 +129,12 @@ class MainWindow(QMainWindow):
         ab.setContentsMargins(8, 6, 8, 8)
         ab.setSpacing(6)
 
+        # Single toggle — text/tooltip/objectName flip based on recording state.
         self.record_btn = QPushButton("● Record")
         self.record_btn.setObjectName("recordBtn")
         self.record_btn.setToolTip("Start recording (F4)")
-        self.record_btn.clicked.connect(self._on_record_clicked)
+        self.record_btn.clicked.connect(self._on_record_toggle_clicked)
         ab.addWidget(self.record_btn)
-
-        self.stop_btn = QPushButton("■ Stop")
-        self.stop_btn.setObjectName("stopBtn")
-        self.stop_btn.setToolTip("Stop recording (F4)")
-        self.stop_btn.setEnabled(False)
-        self.stop_btn.clicked.connect(self._on_stop_clicked)
-        ab.addWidget(self.stop_btn)
 
         self.clear_btn = QPushButton("Clear")
         self.clear_btn.setObjectName("clearBtn")
@@ -185,13 +182,10 @@ class MainWindow(QMainWindow):
         if self.on_generate_impression is not None:
             self.on_generate_impression()
 
-    def _on_record_clicked(self):
+    def _on_record_toggle_clicked(self):
+        """Single toggle: emits True if currently idle, False if currently recording."""
         if self.on_toggle_recording is not None:
-            self.on_toggle_recording(True)
-
-    def _on_stop_clicked(self):
-        if self.on_toggle_recording is not None:
-            self.on_toggle_recording(False)
+            self.on_toggle_recording(not self._recording)
 
     def _on_refresh_clicked(self):
         if self.on_refresh_devices is not None:
@@ -228,9 +222,20 @@ class MainWindow(QMainWindow):
         self.mic_combo.blockSignals(False)
 
     def set_recording_state(self, recording: bool):
-        """Reflect recording state in the Record/Stop buttons and lock the mic picker."""
-        self.record_btn.setEnabled(not recording)
-        self.stop_btn.setEnabled(recording)
+        """Reflect recording state: flip the single toggle and lock mic-row widgets."""
+        self._recording = recording
+        if recording:
+            self.record_btn.setText("■ Stop")
+            self.record_btn.setToolTip("Stop recording (F4)")
+            self.record_btn.setObjectName("stopBtn")
+        else:
+            self.record_btn.setText("● Record")
+            self.record_btn.setToolTip("Start recording (F4)")
+            self.record_btn.setObjectName("recordBtn")
+        # Re-apply stylesheet so the objectName-based rule refreshes.
+        self.record_btn.style().unpolish(self.record_btn)
+        self.record_btn.style().polish(self.record_btn)
+
         self.mic_combo.setEnabled(not recording)
         self.refresh_btn.setEnabled(not recording)
 
