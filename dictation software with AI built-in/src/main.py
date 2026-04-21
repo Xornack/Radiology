@@ -77,24 +77,37 @@ def main():
         if pressed == recording_state["active"]:
             return
         recording_state["active"] = pressed
+        mode = window.current_mode()
         window.set_recording_state(pressed)
+
         if pressed:
-            window.set_status("Recording...", "#f38ba8")   # red
-            window.begin_streaming()
-            orchestrator.handle_trigger_down()
-            streaming.start()
-        else:
-            window.set_status("Processing...", "#fab387")  # orange
-            streaming.stop()
-            result = orchestrator.handle_trigger_up()
-            if result:
-                window.commit_partial(result)
-                window.set_status("Ready")
+            if mode == "wedge":
+                window.set_status("Recording (Wedge)...", "#f38ba8")
+                orchestrator.handle_trigger_down()
+                # No streaming in Wedge mode: partials have nowhere to render.
             else:
-                # Empty result covers both "no speech detected" and
-                # "STT failed after retries" — logs have the specifics.
-                window.commit_partial("")
-                window.set_status("No text recognized", "#f9e2af")
+                window.set_status("Recording...", "#f38ba8")
+                window.begin_streaming()
+                orchestrator.handle_trigger_down()
+                streaming.start()
+        else:
+            window.set_status("Processing...", "#fab387")
+            if mode == "inapp":
+                streaming.stop()
+            result = orchestrator.handle_trigger_up(mode=mode)
+            if mode == "wedge":
+                if result:
+                    window.append_text(result)
+                    window.set_status("Ready")
+                else:
+                    window.set_status("No text recognized", "#f9e2af")
+            else:
+                if result:
+                    window.commit_partial(result)
+                    window.set_status("Ready")
+                else:
+                    window.commit_partial("")
+                    window.set_status("No text recognized", "#f9e2af")
 
     # Wire the Record/Stop buttons to the same toggle path
     window.on_toggle_recording = handle_trigger
@@ -106,6 +119,21 @@ def main():
         recorder.set_device(device_index)
 
     window.on_mic_changed = on_mic_changed
+
+    def on_mode_changed(mode: str):
+        # Ignore mid-recording (the UI also disables the combo, but guard here too).
+        if recording_state["active"]:
+            return
+        if mode == "wedge":
+            window.set_status(
+                "Wedge mode — click into the target window, then hold the mic",
+                "#89b4fa",
+            )
+        else:
+            window.set_status("Ready")
+        logger.info(f"Dictation mode: {mode}")
+
+    window.on_mode_changed = on_mode_changed
     window.populate_microphones(list_input_devices(), selected_index=None)
 
     def on_refresh_devices():
