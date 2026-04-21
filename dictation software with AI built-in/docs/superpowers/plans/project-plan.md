@@ -297,6 +297,11 @@ transcriber so the UI preview matches the final output.
   implemented but no cache exists to consume it.
 - **Profiler export (Phase 5 Step 3)** — latencies are logged per-run but not
   persisted for weekly bottleneck review.
+- **main_window.py size budget exceeded** — After the editable-transcript slice
+  (2026-04-21), main_window.py is ~535 lines, over the 150-line per-file budget.
+  Next slice should extract a `DictationEditor` widget class that owns the
+  partial-tracking state and the dictation_format, leaving MainWindow as a pure
+  layout/wiring shell.
 
 ---
 

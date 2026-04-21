@@ -117,9 +117,6 @@ def test_editor_is_editable_on_construction(qtbot):
     assert not window.editor.isReadOnly()
 
 
-DICTATION_COLOR = "#94e2d5"   # keep in sync with MainWindow.DICTATION_COLOR
-
-
 def test_dictated_text_uses_dictation_color(qtbot):
     """commit_partial must apply the dictation_format foreground color."""
     window = MainWindow()
@@ -133,7 +130,7 @@ def test_dictated_text_uses_dictation_color(qtbot):
     cursor.setPosition(0)
     cursor.movePosition(QTextCursor.MoveOperation.Right, QTextCursor.MoveMode.KeepAnchor)
     fmt = cursor.charFormat()
-    assert fmt.foreground().color() == QColor(DICTATION_COLOR)
+    assert fmt.foreground().color() == QColor(MainWindow.DICTATION_COLOR)
 
 
 def test_typing_after_commit_uses_default_color(qtbot):
@@ -152,7 +149,7 @@ def test_typing_after_commit_uses_default_color(qtbot):
     # Position is now at the end; step back one char and inspect format
     cursor.movePosition(QTextCursor.MoveOperation.Left, QTextCursor.MoveMode.KeepAnchor)
     fmt = cursor.charFormat()
-    assert fmt.foreground().color() != QColor(DICTATION_COLOR)
+    assert fmt.foreground().color() != QColor(MainWindow.DICTATION_COLOR)
 
 
 def test_insert_at_cursor_preserves_trailing_text(qtbot):

@@ -25,7 +25,7 @@ class MainWindow(QMainWindow):
         self.resize(460, 310)
         self._drag_pos: Optional[QPoint] = None
         # Hooks set by main.py. `on_toggle_recording` is called with True/False
-        # when the Record/Stop buttons are clicked. `on_mic_changed` fires when
+        # when the Record/Stop toggle is clicked. `on_mic_changed` fires when
         # the user picks a different microphone from the dropdown.
         self.on_generate_impression: Optional[Callable[[], None]] = None
         self.on_toggle_recording: Optional[Callable[[bool], None]] = None
@@ -262,10 +262,12 @@ class MainWindow(QMainWindow):
     def current_mode(self) -> str:
         """Return the active dictation mode: 'inapp' or 'wedge'."""
         data = self.mode_combo.currentData()
-        return data if data else "inapp"
+        return data if data is not None else "inapp"
 
     def set_dictation_mode(self, mode: str):
         """Apply a dictation mode: locks the editor in Wedge, unlocks in In-app."""
+        if self._recording:
+            return
         if self.profiler:
             self.profiler.start("mode_switch")
         if mode == "wedge":
@@ -510,6 +512,22 @@ class MainWindow(QMainWindow):
             #refreshBtn:hover { background: #45475a; }
             #refreshBtn:disabled { background: #1e1e2e; color: #7f849c; }
             #micCombo QAbstractItemView {
+                background: #181825;
+                color: #cdd6f4;
+                selection-background-color: #45475a;
+            }
+            #modeRow { background: #1e1e2e; }
+            #modeLabel { color: #a6adc8; font-size: 11px; }
+            #modeCombo {
+                background: #313244;
+                color: #cdd6f4;
+                border: 1px solid #45475a;
+                border-radius: 4px;
+                padding: 3px 6px;
+                font-size: 11px;
+            }
+            #modeCombo:disabled { background: #1e1e2e; color: #7f849c; }
+            #modeCombo QAbstractItemView {
                 background: #181825;
                 color: #cdd6f4;
                 selection-background-color: #45475a;
