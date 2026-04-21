@@ -314,6 +314,17 @@ Plan: `docs/superpowers/plans/2026-04-21-editable-transcript.md`.
   Next slice should extract a `DictationEditor` widget class that owns the
   partial-tracking state and the dictation_format, leaving MainWindow as a pure
   layout/wiring shell.
+- **Clear / Generate Impression buttons not locked during recording** — Task 8.2
+  locked the editor, mic combo, refresh button, and mode combo during recording.
+  `clear_btn` and `impression_btn` are still clickable. Clearing mid-recording
+  would invalidate `_partial_start` and silently corrupt the next
+  `update_partial`. Fix: add `self.clear_btn.setEnabled(not recording)` and
+  `self.impression_btn.setEnabled(not recording)` in `set_recording_state`.
+- **No try/except around `handle_trigger_up` in main.py** — If Whisper raises
+  (local-model failure, HTTP timeout), the exception escapes the button click
+  handler and the status stays stuck at "Processing...". Wrap the Stop-path
+  processing in try/except that logs, sets a failure status, and ensures
+  `commit_partial("")` runs in In-app mode so `_partial_start` is reset.
 
 ---
 
