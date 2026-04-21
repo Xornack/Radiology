@@ -27,6 +27,7 @@ class MainWindow(QMainWindow):
         self.on_generate_impression: Optional[Callable[[], None]] = None
         self.on_toggle_recording: Optional[Callable[[bool], None]] = None
         self.on_mic_changed: Optional[Callable[[Optional[int]], None]] = None
+        self.on_refresh_devices: Optional[Callable[[], None]] = None
 
         # Cursor position where the current streaming partial begins.
         # -1 means no active streaming session.
@@ -92,6 +93,13 @@ class MainWindow(QMainWindow):
         self.mic_combo.setToolTip("Select the audio input device")
         self.mic_combo.currentIndexChanged.connect(self._on_mic_combo_changed)
         mr.addWidget(self.mic_combo, stretch=1)
+
+        self.refresh_btn = QPushButton("↻")   # ↻
+        self.refresh_btn.setObjectName("refreshBtn")
+        self.refresh_btn.setFixedSize(26, 26)
+        self.refresh_btn.setToolTip("Refresh device list")
+        self.refresh_btn.clicked.connect(self._on_refresh_clicked)
+        mr.addWidget(self.refresh_btn)
 
         root.addWidget(mic_row)
 
@@ -175,6 +183,10 @@ class MainWindow(QMainWindow):
         if self.on_toggle_recording is not None:
             self.on_toggle_recording(False)
 
+    def _on_refresh_clicked(self):
+        if self.on_refresh_devices is not None:
+            self.on_refresh_devices()
+
     def _on_mic_combo_changed(self, idx: int):
         if self.on_mic_changed is None or idx < 0:
             return
@@ -210,6 +222,7 @@ class MainWindow(QMainWindow):
         self.record_btn.setEnabled(not recording)
         self.stop_btn.setEnabled(recording)
         self.mic_combo.setEnabled(not recording)
+        self.refresh_btn.setEnabled(not recording)
 
     # Public API
 
@@ -377,6 +390,15 @@ class MainWindow(QMainWindow):
                 font-size: 11px;
             }
             #micCombo:disabled { background: #1e1e2e; color: #7f849c; }
+            #refreshBtn {
+                background: #313244;
+                color: #cdd6f4;
+                border: 1px solid #45475a;
+                border-radius: 4px;
+                font-size: 14px;
+            }
+            #refreshBtn:hover { background: #45475a; }
+            #refreshBtn:disabled { background: #1e1e2e; color: #7f849c; }
             #micCombo QAbstractItemView {
                 background: #181825;
                 color: #cdd6f4;

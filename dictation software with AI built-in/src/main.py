@@ -1,5 +1,6 @@
 import sys
 import threading
+import sounddevice as sd
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QKeySequence, QShortcut
 from PyQt6.QtWidgets import QApplication
@@ -106,6 +107,25 @@ def main():
 
     window.on_mic_changed = on_mic_changed
     window.populate_microphones(list_input_devices(), selected_index=None)
+
+    def on_refresh_devices():
+        # Force PortAudio to re-enumerate so hot-plugged mics appear.
+        # Safe here because the refresh button is disabled during recording.
+        try:
+            sd._terminate()
+            sd._initialize()
+        except Exception as e:
+            logger.warning(f"Audio device re-enumeration failed: {e}")
+        devices = list_input_devices()
+        window.populate_microphones(devices, selected_index=recorder.device)
+        # Retry the HID medical mic if it wasn't connected at startup.
+        if mic.device is None:
+            if mic.start():
+                logger.info("Medical microphone connected on refresh.")
+        logger.info(f"Device list refreshed ({len(devices)} input devices).")
+        window.set_status("Devices refreshed")
+
+    window.on_refresh_devices = on_refresh_devices
 
     # 6. Setup Hardware Listener (VID/PID from env or defaults)
     mic = MicListener(
