@@ -105,7 +105,6 @@ class MainWindow(QMainWindow):
 
         # Transcript editor
         self.editor = QTextEdit()
-        self.editor.setReadOnly(True)
         self.editor.setPlaceholderText("Dictation transcript appears here...")
         root.addWidget(self.editor)
 

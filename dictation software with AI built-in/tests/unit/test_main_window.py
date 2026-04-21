@@ -107,3 +107,10 @@ def test_populate_microphones_preserves_selection(qtbot):
     devices.append({"index": 3, "name": "New Mic", "hostapi_name": "WASAPI", "is_default": False})
     window.populate_microphones(devices, selected_index=2)
     assert window.mic_combo.currentData() == 2
+
+
+def test_editor_is_editable_on_construction(qtbot):
+    """The transcript editor must accept user input by default (In-app mode)."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+    assert not window.editor.isReadOnly()
