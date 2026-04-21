@@ -12,6 +12,9 @@ class MainWindow(QMainWindow):
     Frameless floating dictation window.
     Stays on top of other applications and is draggable via the title bar.
     """
+
+    DICTATION_COLOR = "#94e2d5"   # teal, distinct from the #cdd6f4 default text
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle("AI Dictation Platform")
@@ -32,6 +35,14 @@ class MainWindow(QMainWindow):
         # Cursor position where the current streaming partial begins.
         # -1 means no active streaming session.
         self._partial_start: int = -1
+        # Tracks the live partial's length so update_partial can replace
+        # [_partial_start, _partial_start + _partial_len] in place.
+        self._partial_len: int = 0
+
+        # Format applied to every dictated run (partials and commits).
+        self._dictation_format = QTextCharFormat()
+        self._dictation_format.setForeground(QColor(self.DICTATION_COLOR))
+        self._dictation_format.setFontItalic(False)
 
         # Root layout
         root_widget = QWidget()
@@ -267,25 +278,33 @@ class MainWindow(QMainWindow):
         self.editor.ensureCursorVisible()
 
     def commit_partial(self, text: str):
-        """Replace the streaming partial with the final text and end streaming."""
+        """Replace the live partial region with the final text and end streaming.
+
+        After insertion the editor's current char format is reset to the default
+        so subsequent user typing is not inadvertently rendered in the dictation color.
+        """
         if self._partial_start < 0:
-            # No active streaming session — just append as a new line
             if text:
                 self.append_text(text)
             return
+
         cursor = self.editor.textCursor()
         cursor.setPosition(self._partial_start)
-        cursor.movePosition(
-            QTextCursor.MoveOperation.End,
+        cursor.setPosition(
+            self._partial_start + self._partial_len,
             QTextCursor.MoveMode.KeepAnchor,
         )
         cursor.removeSelectedText()
         if text:
-            fmt = QTextCharFormat()
-            fmt.setFontItalic(False)
-            fmt.setForeground(QColor("#cdd6f4"))   # same as stylesheet default
-            cursor.insertText(text + "\n", fmt)
+            cursor.insertText(text, self._dictation_format)
+
+        self.editor.setTextCursor(cursor)
+        # Reset the editor's current char format so subsequent user typing
+        # reverts to the default color instead of inheriting the dictation format.
+        self.editor.setCurrentCharFormat(QTextCharFormat())
+
         self._partial_start = -1
+        self._partial_len = 0
         self.editor.ensureCursorVisible()
 
     # Styling

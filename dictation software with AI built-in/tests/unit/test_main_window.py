@@ -1,6 +1,7 @@
 import pytest
 from unittest.mock import patch
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor, QTextCursor
 from src.ui.main_window import MainWindow
 
 
@@ -114,3 +115,41 @@ def test_editor_is_editable_on_construction(qtbot):
     window = MainWindow()
     qtbot.addWidget(window)
     assert not window.editor.isReadOnly()
+
+
+DICTATION_COLOR = "#94e2d5"   # keep in sync with MainWindow.DICTATION_COLOR
+
+
+def test_dictated_text_uses_dictation_color(qtbot):
+    """commit_partial must apply the dictation_format foreground color."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.begin_streaming()
+    window.commit_partial("hello")
+
+    # Inspect the format at position 0 of the inserted run
+    cursor = window.editor.textCursor()
+    cursor.setPosition(0)
+    cursor.movePosition(QTextCursor.MoveOperation.Right, QTextCursor.MoveMode.KeepAnchor)
+    fmt = cursor.charFormat()
+    assert fmt.foreground().color() == QColor(DICTATION_COLOR)
+
+
+def test_typing_after_commit_uses_default_color(qtbot):
+    """After commit_partial, the editor's current char format must revert to default,
+    so user-typed text renders in the normal color, not the dictation color."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.begin_streaming()
+    window.commit_partial("dictated ")
+
+    # Simulate user typing after the committed run
+    cursor = window.editor.textCursor()
+    cursor.insertText("typed")
+
+    # Position is now at the end; step back one char and inspect format
+    cursor.movePosition(QTextCursor.MoveOperation.Left, QTextCursor.MoveMode.KeepAnchor)
+    fmt = cursor.charFormat()
+    assert fmt.foreground().color() != QColor(DICTATION_COLOR)
