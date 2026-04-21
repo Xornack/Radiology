@@ -153,3 +153,58 @@ def test_typing_after_commit_uses_default_color(qtbot):
     cursor.movePosition(QTextCursor.MoveOperation.Left, QTextCursor.MoveMode.KeepAnchor)
     fmt = cursor.charFormat()
     assert fmt.foreground().color() != QColor(DICTATION_COLOR)
+
+
+def test_insert_at_cursor_preserves_trailing_text(qtbot):
+    """Streaming partials inserted mid-document must not eat the text that follows them."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    # Seed the editor with "foo  bar" and position cursor between "foo " and "bar"
+    window.editor.setPlainText("foo  bar")
+    cursor = window.editor.textCursor()
+    cursor.setPosition(4)   # between the two spaces
+    window.editor.setTextCursor(cursor)
+
+    window.begin_streaming()
+    window.update_partial("one")
+    window.update_partial("one two")
+    window.commit_partial("one two three")
+
+    assert window.editor.toPlainText() == "foo one two three bar"
+
+
+def test_update_partial_shrinks_region_when_text_gets_shorter(qtbot):
+    """If Whisper returns a shorter partial than the previous one, the replacement must
+    leave no leftover characters from the longer previous partial."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.editor.setPlainText("prefix suffix")
+    cursor = window.editor.textCursor()
+    cursor.setPosition(7)   # between "prefix " and "suffix"
+    window.editor.setTextCursor(cursor)
+
+    window.begin_streaming()
+    window.update_partial("alpha beta gamma")
+    window.update_partial("alpha")
+    window.commit_partial("alpha")
+
+    assert window.editor.toPlainText() == "prefix alphasuffix"
+
+
+def test_commit_empty_partial_leaves_document_intact(qtbot):
+    """Empty final transcription must remove the partial region and restore surrounding text."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.editor.setPlainText("keep me")
+    cursor = window.editor.textCursor()
+    cursor.setPosition(4)
+    window.editor.setTextCursor(cursor)
+
+    window.begin_streaming()
+    window.update_partial("junk that will go away")
+    window.commit_partial("")
+
+    assert window.editor.toPlainText() == "keep me"

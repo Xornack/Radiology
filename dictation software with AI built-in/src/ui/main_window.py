@@ -254,27 +254,34 @@ class MainWindow(QMainWindow):
     # Streaming partial-transcript support
 
     def begin_streaming(self):
-        """Mark the current end-of-document as the start of a streaming partial."""
+        """Anchor a streaming partial region at the current cursor position.
+
+        From this call until commit_partial, the range
+        [_partial_start, _partial_start + _partial_len] is treated as the live
+        partial. Everything outside that range is untouched.
+        """
         cursor = self.editor.textCursor()
-        cursor.movePosition(QTextCursor.MoveOperation.End)
         self._partial_start = cursor.position()
-        self.editor.setTextCursor(cursor)
+        self._partial_len = 0
 
     def update_partial(self, text: str):
-        """Replace the current streaming partial with the latest live transcript."""
+        """Replace the current streaming partial with the latest live transcript.
+
+        The replacement range is [_partial_start, _partial_start + _partial_len],
+        so text before and after the partial is preserved regardless of how the
+        partial grows or shrinks.
+        """
         if self._partial_start < 0:
             return
         cursor = self.editor.textCursor()
         cursor.setPosition(self._partial_start)
-        cursor.movePosition(
-            QTextCursor.MoveOperation.End,
+        cursor.setPosition(
+            self._partial_start + self._partial_len,
             QTextCursor.MoveMode.KeepAnchor,
         )
         cursor.removeSelectedText()
-        fmt = QTextCharFormat()
-        fmt.setForeground(QColor("#7f849c"))   # muted gray
-        fmt.setFontItalic(True)
-        cursor.insertText(text, fmt)
+        cursor.insertText(text, self._dictation_format)
+        self._partial_len = len(text)
         self.editor.ensureCursorVisible()
 
     def commit_partial(self, text: str):
