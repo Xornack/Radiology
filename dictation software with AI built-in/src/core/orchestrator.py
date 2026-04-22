@@ -1,6 +1,25 @@
+import ctypes
 from loguru import logger
 from src.security.scrubber import scrub_text
 from src.engine.punctuation import apply_punctuation
+
+
+def _foreground_window_title() -> str:
+    """Best-effort retrieval of the currently-focused window title.
+
+    Used only for diagnostic logging of the Wedge-mode SendInput target.
+    Returns an empty string on any failure so logging never disrupts flow.
+    """
+    try:
+        hwnd = ctypes.windll.user32.GetForegroundWindow()
+        if not hwnd:
+            return ""
+        length = ctypes.windll.user32.GetWindowTextLengthW(hwnd)
+        buf = ctypes.create_unicode_buffer(length + 1)
+        ctypes.windll.user32.GetWindowTextW(hwnd, buf, length + 1)
+        return buf.value
+    except Exception:
+        return ""
 
 
 class DictationOrchestrator:
@@ -60,6 +79,11 @@ class DictationOrchestrator:
 
         # 4. Inject into external application only when explicitly requested
         if mode == "wedge" and clean_text:
+            target = _foreground_window_title()
+            logger.info(
+                f"Wedge mode: sending {len(clean_text)} chars via SendInput. "
+                f"Foreground window: {target!r}"
+            )
             try:
                 self.wedge.type_text(clean_text)
             except Exception as e:
