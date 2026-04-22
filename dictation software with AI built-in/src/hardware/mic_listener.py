@@ -22,9 +22,6 @@ class MicListener(QObject):
         self.vendor_id = vendor_id
         self.product_id = product_id
         self.device = None
-        # Legacy direct-callback hook. Kept for tests and any non-Qt caller;
-        # new code should `mic.trigger_changed.connect(slot)` instead.
-        self.on_trigger = None
         self._running = False
         self._thread = None
         self._button_pressed = False
@@ -56,7 +53,7 @@ class MicListener(QObject):
 
     def _poll_once(self) -> bool:
         """
-        Reads one HID report and fires on_trigger if the button state changed.
+        Reads one HID report and emits trigger_changed on state transitions.
         Returns True if data was read, False otherwise.
         Safe to call directly in tests (inject self.device before calling).
         """
@@ -68,12 +65,9 @@ class MicListener(QObject):
                 pressed = any(b > 0 for b in data)
                 if pressed != self._button_pressed:
                     self._button_pressed = pressed
-                    # Qt signal: queued to the GUI thread. Safe to call from
-                    # this polling thread.
+                    # Queued to the GUI thread by AutoConnection — safe to
+                    # emit from this polling thread.
                     self.trigger_changed.emit(pressed)
-                    # Legacy direct-callback for tests and non-Qt callers.
-                    if self.on_trigger:
-                        self.on_trigger(pressed)
                 return True
             return False
         except (IOError, ValueError, AttributeError) as e:
@@ -85,6 +79,10 @@ class MicListener(QObject):
         self._running = False
         if self._thread:
             self._thread.join(timeout=1.0)
+            if self._thread.is_alive():
+                # Daemon thread will exit with the process; warn so we notice
+                # if device.read() starts blocking indefinitely.
+                logger.warning("HID poll thread did not exit within 1s")
         if self.device:
             try:
                 self.device.close()

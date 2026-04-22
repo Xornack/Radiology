@@ -69,7 +69,9 @@ def _substitute_tokens(text: str) -> str:
             prev_word = words[i - 1].lower() if i > 0 else ""
             next_word = words[i + 1].lower() if i + 1 < len(words) else ""
             if prev_word in _COLON_ANATOMY_BEFORE or next_word in _COLON_ANATOMY_AFTER:
-                output.append(words[i])
+                # Normalize case so mid-sentence "Colon" from Whisper doesn't
+                # leak a stray capital; _autocap restores it at sentence starts.
+                output.append(key)
             else:
                 output.append(":")
             i += 1
@@ -93,13 +95,37 @@ def _tidy_spacing(text: str) -> str:
     return text.strip()
 
 
-def _autocap(text: str) -> str:
-    """Capitalize first alpha of document, and first alpha after ., ?, !, or blank line."""
-    text = re.sub(
-        r"^(\s*)([a-z])",
-        lambda m: m.group(1) + m.group(2).upper(),
-        text,
-    )
+def _enforce_punctuation_spacing(text: str) -> str:
+    """Guarantee a space follows . , ? when directly adjacent to a letter.
+
+    The letter-only lookahead preserves decimals (7.5) and thousands
+    separators (3,000). Runs after _substitute_tokens so dictated-token
+    punctuation is untouched (already spaced), but protects against any
+    path that leaves punctuation hugging the next word.
+    """
+    return re.sub(r"([.,?])(?=[A-Za-z])", r"\1 ", text)
+
+
+def _autocap(text: str, capitalize_first: bool = True) -> str:
+    """Capitalize alpha after ., ?, !, or blank line.
+
+    When `capitalize_first` is True, also capitalize the first alpha of the
+    string. When False, actively lowercase the first alpha so a mid-sentence
+    continuation doesn't inherit Whisper's stray capital (e.g. "And" → "and"
+    when appended after "the patient was examined").
+    """
+    if capitalize_first:
+        text = re.sub(
+            r"^(\s*)([a-z])",
+            lambda m: m.group(1) + m.group(2).upper(),
+            text,
+        )
+    else:
+        text = re.sub(
+            r"^(\s*)([A-Z])",
+            lambda m: m.group(1) + m.group(2).lower(),
+            text,
+        )
     text = re.sub(
         r"([.!?]\s+)([a-z])",
         lambda m: m.group(1) + m.group(2).upper(),
@@ -113,16 +139,22 @@ def _autocap(text: str) -> str:
     return text
 
 
-def apply_punctuation(text: str) -> str:
+def apply_punctuation(text: str, capitalize_first: bool = True) -> str:
     """
     PowerScribe-style post-processor. Strips Whisper's auto-punctuation and
     replaces dictated tokens (period, comma, new paragraph, colon, ...) with
     the matching characters. Pure function; safe to call on live partials.
+
+    `capitalize_first=False` disables the start-of-text capital so callers
+    that treat this as a mid-sentence continuation (e.g. click-off/click-on
+    dictation where the previous session didn't end with a terminator) can
+    keep the first letter lowercase.
     """
     if not text:
         return text
     text = _strip_whisper_punctuation(text)
     text = _substitute_tokens(text)
     text = _tidy_spacing(text)
-    text = _autocap(text)
+    text = _enforce_punctuation_spacing(text)
+    text = _autocap(text, capitalize_first=capitalize_first)
     return text

@@ -1,4 +1,4 @@
-from src.engine.punctuation import apply_punctuation
+from src.engine.punctuation import apply_punctuation, _enforce_punctuation_spacing
 
 
 def test_empty_input_returns_empty():
@@ -207,3 +207,50 @@ def test_acceptance_colon_mixed_usage():
         "Impression: colitis."
     )
     assert apply_punctuation(dictated) == expected
+
+
+def test_enforce_spacing_period_adjacent_to_letter():
+    assert _enforce_punctuation_spacing("one.two") == "one. two"
+
+
+def test_enforce_spacing_comma_adjacent_to_letter():
+    assert _enforce_punctuation_spacing("one,two") == "one, two"
+
+
+def test_enforce_spacing_question_mark_adjacent_to_letter():
+    assert _enforce_punctuation_spacing("ok?yes") == "ok? yes"
+
+
+def test_enforce_spacing_preserves_decimals():
+    assert _enforce_punctuation_spacing("7.5 mm") == "7.5 mm"
+
+
+def test_enforce_spacing_preserves_thousands_separators():
+    assert _enforce_punctuation_spacing("3,000 ml") == "3,000 ml"
+
+
+def test_enforce_spacing_leaves_already_spaced_untouched():
+    assert _enforce_punctuation_spacing("one. two, three? four") == "one. two, three? four"
+
+
+def test_autocap_follows_inserted_space():
+    # After enforcement adds a space, _autocap sees ". n" and capitalizes.
+    # (First letter also gets capitalized by _autocap's start-of-doc rule.)
+    from src.engine.punctuation import _autocap
+    assert _autocap(_enforce_punctuation_spacing("sentence.next")) == "Sentence. Next"
+
+
+def test_capitalize_first_false_keeps_first_letter_lowercase():
+    """apply_punctuation(capitalize_first=False) suppresses the start-of-text cap
+    but still capitalizes after a sentence terminator."""
+    assert apply_punctuation("hello period world", capitalize_first=False) == "hello. World"
+
+
+def test_capitalize_first_false_on_plain_text():
+    """Mid-sentence continuation with no terminator stays lowercase."""
+    assert apply_punctuation("and no abnormalities", capitalize_first=False) == "and no abnormalities"
+
+
+def test_capitalize_first_default_true_preserves_legacy_behavior():
+    """Default behavior is unchanged for callers that don't pass the flag."""
+    assert apply_punctuation("hello period world") == "Hello. World"

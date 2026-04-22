@@ -356,3 +356,125 @@ def test_window_has_size_grip(qtbot):
     qtbot.addWidget(window)
     grips = window.findChildren(QSizeGrip)
     assert len(grips) >= 1
+
+
+def test_first_dictation_at_document_start_has_no_leading_space(qtbot):
+    """Session 1 on an empty editor commits text, capitalized, no leading space."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.begin_streaming()
+    window.update_partial("hello")
+    window.commit_partial("hello.")
+
+    assert window.editor.toPlainText() == "Hello."
+
+
+def test_second_dictation_after_terminator_gets_leading_space_and_caps(qtbot):
+    """Session 2 anchored after a period must get a leading space AND have its
+    first letter capitalized, producing 'Clear. No findings.' not 'clear.no findings.'."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.begin_streaming()
+    window.commit_partial("clear.")    # session 1 returns lowercase from orch
+
+    window.begin_streaming()
+    window.update_partial("no acute")
+    window.commit_partial("no acute findings.")
+
+    assert window.editor.toPlainText() == "Clear. No acute findings."
+
+
+def test_mid_sentence_continuation_stays_lowercase(qtbot):
+    """Session 2 anchored after a non-terminator character must NOT capitalize,
+    so continuing a sentence doesn't yield 'The patient was examined And no abnormalities'."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.begin_streaming()
+    window.commit_partial("the patient was examined")   # no terminator
+
+    window.begin_streaming()
+    window.commit_partial("and no abnormalities")
+
+    assert window.editor.toPlainText() == "The patient was examined and no abnormalities"
+
+
+def test_dictation_after_existing_whitespace_inserts_no_extra_space(qtbot):
+    """If the cursor is already after whitespace, no leading space is added —
+    a single separator is enough."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.editor.setPlainText("Clear. ")
+    cursor = window.editor.textCursor()
+    cursor.movePosition(QTextCursor.MoveOperation.End)
+    window.editor.setTextCursor(cursor)
+
+    window.begin_streaming()
+    window.commit_partial("no findings.")
+
+    assert window.editor.toPlainText() == "Clear. No findings."
+
+
+def test_dictation_after_newline_caps_but_no_leading_space(qtbot):
+    """Newline counts as whitespace → no leading space. A terminator before the
+    newline still counts → capitalize the next sentence."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.editor.setPlainText("Clear.\n")
+    cursor = window.editor.textCursor()
+    cursor.movePosition(QTextCursor.MoveOperation.End)
+    window.editor.setTextCursor(cursor)
+
+    window.begin_streaming()
+    window.commit_partial("next line.")
+
+    assert window.editor.toPlainText() == "Clear.\nNext line."
+
+
+def test_leading_space_visible_during_streaming_partial(qtbot):
+    """The separator + cap takes effect as soon as the first partial arrives."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.begin_streaming()
+    window.commit_partial("clear.")
+
+    window.begin_streaming()
+    window.update_partial("no")
+
+    assert window.editor.toPlainText() == "Clear. No"
+
+
+def test_streaming_partial_respects_mid_sentence_context(qtbot):
+    """Mid-sentence continuation: partial text arriving capitalized from the
+    streaming transcriber gets its first letter lowered to match context."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.begin_streaming()
+    window.commit_partial("the patient was examined")
+
+    window.begin_streaming()
+    # Streaming transcriber emits apply_punctuation output (cap-first=True by default)
+    window.update_partial("And")
+
+    assert window.editor.toPlainText() == "The patient was examined and"
+
+
+def test_empty_commit_after_leading_space_anchor_leaves_no_stray_space(qtbot):
+    """If the user starts session 2 but dictates nothing, no orphan space remains."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.begin_streaming()
+    window.commit_partial("clear.")
+
+    window.begin_streaming()
+    window.update_partial("junk")
+    window.commit_partial("")
+
+    assert window.editor.toPlainText() == "Clear."

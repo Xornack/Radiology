@@ -13,44 +13,36 @@ def test_mic_listener_no_device_found():
         assert result is False
 
 
-def test_mic_listener_triggers_callback():
-    """Callback must fire when a button-press HID report is detected."""
+def test_mic_listener_triggers_callback(qtbot):
+    """Signal must fire when a button-press HID report is detected."""
     mock_device = MagicMock()
     mock_device.read.return_value = [0x00, 0x01]  # Non-zero byte = pressed
 
-    callback_called = False
-    def my_callback(state):
-        nonlocal callback_called
-        callback_called = True
-
+    received: list[bool] = []
     listener = MicListener(vendor_id=0x0555, product_id=0x1234)
     listener.device = mock_device   # Inject mock device directly
-    listener.on_trigger = my_callback
+    listener.trigger_changed.connect(received.append)
 
     listener._poll_once()
 
-    assert callback_called is True
+    assert received == [True]
 
 
-def test_mic_listener_callback_fires_on_state_change_only():
-    """Callback must only fire when the button state changes, not on every poll."""
+def test_mic_listener_callback_fires_on_state_change_only(qtbot):
+    """Signal must only fire when the button state changes, not on every poll."""
     mock_device = MagicMock()
     mock_device.read.return_value = [0x00, 0x01]  # Always pressed
 
-    call_count = 0
-    def my_callback(state):
-        nonlocal call_count
-        call_count += 1
-
+    received: list[bool] = []
     listener = MicListener(vendor_id=0x0555, product_id=0x1234)
     listener.device = mock_device
-    listener.on_trigger = my_callback
+    listener.trigger_changed.connect(received.append)
 
     listener._poll_once()  # State: False -> True  (fires)
     listener._poll_once()  # State: True -> True   (no change, no fire)
     listener._poll_once()  # State: True -> True   (no change, no fire)
 
-    assert call_count == 1
+    assert received == [True]
 
 
 def test_mic_listener_starts_polling_thread():

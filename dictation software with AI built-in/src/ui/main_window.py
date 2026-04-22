@@ -42,6 +42,15 @@ class MainWindow(QMainWindow):
         # Tracks the live partial's length so update_partial can replace
         # [_partial_start, _partial_start + _partial_len] in place.
         self._partial_len: int = 0
+        # Set in begin_streaming when the anchor sits after non-whitespace text:
+        # successive click-on/click-off dictation sessions get a leading space
+        # so the previous sentence's terminator doesn't hug the new one.
+        self._needs_leading_space: bool = False
+        # Set in begin_streaming: True when the dictation starts a new sentence
+        # (document start, or preceding text ends with . ? !). False means the
+        # session is a mid-sentence continuation and the first letter must stay
+        # lowercase.
+        self._capitalize_first: bool = True
 
         # Optional profiler wired by main.py to track latency-critical operations
         self.profiler = None
@@ -336,6 +345,17 @@ class MainWindow(QMainWindow):
 
     # Streaming partial-transcript support
 
+    def _apply_first_letter_case(self, text: str) -> str:
+        """Uppercase or lowercase the first letter per the session's cap-first flag.
+
+        Normalizes text from either source (orchestrator output, which may be
+        uncapitalized in-app, or streaming partials, which cap by default) so
+        the first letter matches editor context.
+        """
+        if self._capitalize_first:
+            return text[0].upper() + text[1:]
+        return text[0].lower() + text[1:]
+
     def begin_streaming(self):
         """Anchor a streaming partial region at the current cursor position.
 
@@ -351,6 +371,21 @@ class MainWindow(QMainWindow):
             self.editor.setTextCursor(cursor)
         self._partial_start = cursor.position()
         self._partial_len = 0
+        doc_text = self.editor.toPlainText()
+        cursor_pos = cursor.position()
+        self._needs_leading_space = (
+            cursor_pos > 0
+            and not doc_text[cursor_pos - 1].isspace()
+        )
+        # Capitalize the first letter of this session only if it starts a new
+        # sentence: either nothing meaningful precedes the cursor, or the
+        # preceding text ends with a sentence terminator. Mid-sentence
+        # continuations (session after "the patient was") stay lowercase.
+        stripped_prefix = doc_text[:cursor_pos].rstrip()
+        self._capitalize_first = (
+            not stripped_prefix
+            or stripped_prefix[-1] in ".?!"
+        )
 
     def update_partial(self, text: str):
         """Replace the current streaming partial with the latest live transcript.
@@ -363,6 +398,10 @@ class MainWindow(QMainWindow):
             return
         if self.profiler:
             self.profiler.start("partial_replace")
+        if text:
+            text = self._apply_first_letter_case(text)
+            if self._needs_leading_space:
+                text = " " + text
         cursor = self.editor.textCursor()
         cursor.setPosition(self._partial_start)
         cursor.setPosition(
@@ -387,6 +426,11 @@ class MainWindow(QMainWindow):
                 self.append_text(text)
             return
 
+        if text:
+            text = self._apply_first_letter_case(text)
+            if self._needs_leading_space:
+                text = " " + text
+
         cursor = self.editor.textCursor()
         cursor.setPosition(self._partial_start)
         cursor.setPosition(
@@ -404,6 +448,8 @@ class MainWindow(QMainWindow):
 
         self._partial_start = -1
         self._partial_len = 0
+        self._needs_leading_space = False
+        self._capitalize_first = True
         self.editor.ensureCursorVisible()
 
     # Styling
