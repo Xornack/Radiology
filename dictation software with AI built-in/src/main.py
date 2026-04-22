@@ -98,8 +98,10 @@ def main():
                 streaming.stop()
             result = orchestrator.handle_trigger_up(mode=mode)
             if mode == "wedge":
+                # Do NOT append to the in-app editor — Wedge mode's destination
+                # is the externally focused window. Audit trail goes to the log.
                 if result:
-                    window.append_text(result)
+                    logger.info(f"Wedge sent: {result!r}")
                     window.set_status("Ready")
                 else:
                     window.set_status("No text recognized", "#f9e2af")
