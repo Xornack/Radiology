@@ -39,6 +39,16 @@ def _build_stt_client(backend: str):
             device="cuda",
             compute_type="float16",
         )
+    if backend == "whisper-turbo-gpu":
+        # Whisper large-v3-turbo: same large-v3 encoder, trimmed decoder (~4
+        # layers vs 32). ~8x faster than large-v3 at comparable accuracy for
+        # English; GPU-only because the model is still ~1.5 GB.
+        logger.info("STT: Whisper Turbo (large-v3-turbo, cuda/float16)")
+        return LocalWhisperClient(
+            model_size="large-v3-turbo",
+            device="cuda",
+            compute_type="float16",
+        )
     if backend in ("moonshine-tiny", "moonshine-base"):
         # The ONNX-flavored package imports as `moonshine_onnx`; the torch
         # flavor as `moonshine`. Accept either so Python 3.13 users (where
@@ -72,6 +82,18 @@ def _build_stt_client(backend: str):
         from src.ai.parakeet_stt_client import ParakeetSTTClient
         logger.info(f"STT: Parakeet-TDT ({settings.parakeet_model})")
         return ParakeetSTTClient(model=settings.parakeet_model)
+    if backend == "sensevoice":
+        try:
+            import funasr  # noqa: F401
+        except ImportError as e:
+            raise ImportError(
+                "SenseVoice STT requires the [sensevoice] extra "
+                f"(missing: {getattr(e, 'name', None) or e}). "
+                "Install with: pip install -e '.[sensevoice]'"
+            ) from e
+        from src.ai.sensevoice_stt_client import SenseVoiceSTTClient
+        logger.info("STT: SenseVoice (iic/SenseVoiceSmall)")
+        return SenseVoiceSTTClient()
     if backend == "vosk":
         try:
             import vosk  # noqa: F401
@@ -147,23 +169,30 @@ def main():
     if hasattr(stt, "warm"):
         threading.Thread(target=stt.warm, daemon=True).start()
 
-    # 2. Setup Orchestrator (LLM client wired in for impression generation)
+    # 2. Setup UI
+    window = MainWindow()
+    window.profiler = profiler
+    window.show()
+
+    # 3. Streaming live-partial transcriber — ticks every 1.5s during recording.
+    # Constructed before the orchestrator so the orchestrator can be wired to
+    # read its committed-snapshot on Stop.
+    streaming = StreamingTranscriber(recorder, stt, interval_ms=1500)
+    streaming.partial_ready.connect(window.update_partial)
+    streaming.commit_ready.connect(window.on_commit)
+
+    # 4. Setup Orchestrator (LLM client wired in for impression generation).
+    # `streaming` handle enables the commit-aware Stop path: in-app mode
+    # reads committed chunks and only transcribes the remaining partial
+    # region instead of re-doing the whole buffer.
     orchestrator = DictationOrchestrator(
         recorder=recorder,
         stt_client=stt,
         wedge=wedge,
         profiler=profiler,
         llm_client=llm,
+        streaming=streaming,
     )
-
-    # 3. Setup UI
-    window = MainWindow()
-    window.profiler = profiler
-    window.show()
-
-    # 4. Streaming live-partial transcriber — ticks every 1.5s during recording
-    streaming = StreamingTranscriber(recorder, stt, interval_ms=1500)
-    streaming.partial_ready.connect(window.update_partial)
 
     # 5. Dictation trigger handler — shared by HID mic, F4, and Record/Stop buttons
     recording_state = {"active": False}
@@ -274,6 +303,15 @@ def main():
 
     window.on_stt_changed = on_stt_changed
     window.set_stt_backend(settings.stt_backend)
+
+    def on_radiology_mode_changed(enabled: bool):
+        orchestrator.radiology_mode = enabled
+        window.set_status(f"Radiology vocabulary: {'on' if enabled else 'off'}")
+        logger.info(f"Radiology vocabulary correction: {enabled}")
+
+    window.on_radiology_mode_changed = on_radiology_mode_changed
+    orchestrator.radiology_mode = settings.radiology_mode
+    window.set_radiology_mode(settings.radiology_mode)
     window.populate_microphones(list_input_devices(), selected_index=None)
 
     def on_refresh_devices():
