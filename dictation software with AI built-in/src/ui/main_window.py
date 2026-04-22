@@ -32,6 +32,9 @@ class MainWindow(QMainWindow):
         self.on_mic_changed: Optional[Callable[[Optional[int]], None]] = None
         self.on_refresh_devices: Optional[Callable[[], None]] = None
         self.on_mode_changed: Optional[Callable[[str], None]] = None
+        # Fires with the new STT backend key when the user picks a different
+        # engine from the dropdown (e.g. "whisper-local" → "gemma-e2b").
+        self.on_stt_changed: Optional[Callable[[str], None]] = None
 
         # Tracks whether a recording session is currently active.
         self._recording: bool = False
@@ -127,6 +130,43 @@ class MainWindow(QMainWindow):
         mdr.addWidget(self.mode_combo, stretch=1)
 
         root.addWidget(mode_row)
+
+        # STT engine selector — pick which model transcribes the audio.
+        # Whisper is fast enough for live streaming partials; Gemma runs the
+        # final transcription only (slower, more capable multimodal LLM).
+        stt_row = QWidget()
+        stt_row.setObjectName("sttRow")
+        sr_layout = QHBoxLayout(stt_row)
+        sr_layout.setContentsMargins(10, 4, 10, 0)
+        sr_layout.setSpacing(6)
+
+        stt_label = QLabel("STT:")
+        stt_label.setObjectName("sttLabel")
+        sr_layout.addWidget(stt_label)
+
+        self.stt_combo = QComboBox()
+        self.stt_combo.setObjectName("sttCombo")
+        self.stt_combo.setToolTip(
+            "Speech-to-text engine. Whisper: fast, live partials. "
+            "Gemma 4: multimodal LLM, final transcription only (slower)."
+        )
+        self.stt_combo.addItem("Whisper (local, CPU)", userData="whisper-local-cpu")
+        self.stt_combo.addItem("Whisper (local, GPU)", userData="whisper-local-gpu")
+        # "whisper-http" backend is intentionally NOT exposed in the dropdown:
+        # on a single workstation it always connection-refuses. Available via
+        # STT_BACKEND=whisper-http env var for remote/containerized deployments.
+        self.stt_combo.addItem("Moonshine tiny", userData="moonshine-tiny")
+        self.stt_combo.addItem("Moonshine base", userData="moonshine-base")
+        self.stt_combo.addItem("Parakeet-TDT (NVIDIA)", userData="parakeet-tdt")
+        self.stt_combo.addItem("Vosk (offline)", userData="vosk")
+        self.stt_combo.addItem("Gemma 4 E2B-it", userData="gemma-e2b")
+        self.stt_combo.addItem("Gemma 4 E2B-it (4-bit)", userData="gemma-e2b-4bit")
+        self.stt_combo.addItem("Gemma 4 E4B-it", userData="gemma-e4b")
+        self.stt_combo.addItem("Gemma 4 E4B-it (4-bit)", userData="gemma-e4b-4bit")
+        self.stt_combo.currentIndexChanged.connect(self._on_stt_combo_changed)
+        sr_layout.addWidget(self.stt_combo, stretch=1)
+
+        root.addWidget(stt_row)
 
         # Microphone selector
         mic_row = QWidget()
@@ -304,6 +344,29 @@ class MainWindow(QMainWindow):
         if self.on_mode_changed is not None:
             self.on_mode_changed(mode)
 
+    def current_stt_backend(self) -> str:
+        """Return the key of the currently-selected STT engine."""
+        data = self.stt_combo.currentData()
+        return data if data is not None else "whisper-local-cpu"
+
+    def set_stt_backend(self, backend: str):
+        """Sync the combo to a backend key without firing on_stt_changed."""
+        for i in range(self.stt_combo.count()):
+            if self.stt_combo.itemData(i) == backend:
+                if self.stt_combo.currentIndex() != i:
+                    self.stt_combo.blockSignals(True)
+                    self.stt_combo.setCurrentIndex(i)
+                    self.stt_combo.blockSignals(False)
+                return
+
+    def _on_stt_combo_changed(self, idx: int):
+        if self._recording or idx < 0:
+            return
+        backend = self.stt_combo.itemData(idx)
+        if not backend or self.on_stt_changed is None:
+            return
+        self.on_stt_changed(backend)
+
     def set_recording_state(self, recording: bool):
         """Reflect recording state: flip the single toggle and lock mic-row widgets."""
         self._recording = recording
@@ -322,6 +385,12 @@ class MainWindow(QMainWindow):
         self.mic_combo.setEnabled(not recording)
         self.refresh_btn.setEnabled(not recording)
         self.mode_combo.setEnabled(not recording)
+        self.stt_combo.setEnabled(not recording)
+        # Clear/Impression would race the streaming partial: Clear drops the
+        # editor contents and invalidates _partial_start; Impression reads
+        # mid-dictation text and fires an LLM call that overlaps the session.
+        self.clear_btn.setEnabled(not recording)
+        self.impression_btn.setEnabled(not recording)
         # Editor lock: always read-only while recording (prevents collision with
         # the live partial region). When idle, read-only state follows the mode.
         self.editor.setReadOnly(recording or self.current_mode() == "wedge")
@@ -579,6 +648,22 @@ class MainWindow(QMainWindow):
             }
             #modeCombo:disabled { background: #1e1e2e; color: #7f849c; }
             #modeCombo QAbstractItemView {
+                background: #181825;
+                color: #cdd6f4;
+                selection-background-color: #45475a;
+            }
+            #sttRow { background: #1e1e2e; }
+            #sttLabel { color: #a6adc8; font-size: 11px; }
+            #sttCombo {
+                background: #313244;
+                color: #cdd6f4;
+                border: 1px solid #45475a;
+                border-radius: 4px;
+                padding: 3px 6px;
+                font-size: 11px;
+            }
+            #sttCombo:disabled { background: #1e1e2e; color: #7f849c; }
+            #sttCombo QAbstractItemView {
                 background: #181825;
                 color: #cdd6f4;
                 selection-background-color: #45475a;

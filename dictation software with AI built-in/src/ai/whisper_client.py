@@ -7,6 +7,9 @@ class WhisperClient:
     """
     Client for interacting with a local Whisper STT microservice.
     """
+    # HTTP Whisper is fast enough to drive 1.5s streaming ticks.
+    supports_streaming: bool = True
+
     def __init__(self, url: str, max_retries: int = 2, retry_initial_delay: float = 0.5):
         self.url = url
         self.max_retries = max_retries

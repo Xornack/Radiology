@@ -10,7 +10,7 @@ def _make_orch(transcription: str = "hello world"):
     mock_wedge = MagicMock()
     return DictationOrchestrator(
         recorder=mock_recorder,
-        whisper_client=mock_whisper,
+        stt_client=mock_whisper,
         wedge=mock_wedge,
     )
 
@@ -66,7 +66,7 @@ def test_wedge_second_session_prepends_space_separator():
         orch.handle_trigger_up(mode="wedge")
 
     # Swap in new text for the second session
-    orch.whisper_client.transcribe.return_value = "No acute findings period"
+    orch.stt_client.transcribe.return_value = "No acute findings period"
     with patch("src.core.orchestrator.scrub_text", side_effect=lambda x: x):
         orch.handle_trigger_up(mode="wedge")
 
@@ -82,7 +82,7 @@ def test_wedge_empty_second_session_does_not_flip_continuation_flag():
         orch.handle_trigger_up(mode="wedge")
     orch.wedge.type_text.assert_not_called()
 
-    orch.whisper_client.transcribe.return_value = "Hello period"
+    orch.stt_client.transcribe.return_value = "Hello period"
     with patch("src.core.orchestrator.scrub_text", side_effect=lambda x: x):
         orch.handle_trigger_up(mode="wedge")
     # Still the "first" typed call — no leading space.
@@ -95,7 +95,7 @@ def test_wedge_mid_sentence_continuation_does_not_capitalize():
     with patch("src.core.orchestrator.scrub_text", side_effect=lambda x: x):
         orch.handle_trigger_up(mode="wedge")
 
-    orch.whisper_client.transcribe.return_value = "and no abnormalities"
+    orch.stt_client.transcribe.return_value = "and no abnormalities"
     with patch("src.core.orchestrator.scrub_text", side_effect=lambda x: x):
         orch.handle_trigger_up(mode="wedge")
 
@@ -109,7 +109,7 @@ def test_wedge_after_terminator_capitalizes_next_session():
     with patch("src.core.orchestrator.scrub_text", side_effect=lambda x: x):
         orch.handle_trigger_up(mode="wedge")
 
-    orch.whisper_client.transcribe.return_value = "no acute findings period"
+    orch.stt_client.transcribe.return_value = "no acute findings period"
     with patch("src.core.orchestrator.scrub_text", side_effect=lambda x: x):
         orch.handle_trigger_up(mode="wedge")
 
@@ -123,7 +123,7 @@ def test_wedge_after_question_mark_capitalizes_next_session():
     with patch("src.core.orchestrator.scrub_text", side_effect=lambda x: x):
         orch.handle_trigger_up(mode="wedge")
 
-    orch.whisper_client.transcribe.return_value = "yes period"
+    orch.stt_client.transcribe.return_value = "yes period"
     with patch("src.core.orchestrator.scrub_text", side_effect=lambda x: x):
         orch.handle_trigger_up(mode="wedge")
 

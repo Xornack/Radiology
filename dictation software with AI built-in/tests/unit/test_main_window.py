@@ -311,6 +311,105 @@ def test_mode_toggle_disabled_during_recording(qtbot):
     assert window.mode_combo.isEnabled()
 
 
+def test_clear_button_disabled_during_recording(qtbot):
+    """Clear would drop editor contents and invalidate _partial_start mid-session.
+
+    Must be locked while recording, re-enabled when idle.
+    """
+    window = MainWindow()
+    qtbot.addWidget(window)
+    assert window.clear_btn.isEnabled()
+    window.set_recording_state(True)
+    assert not window.clear_btn.isEnabled()
+    window.set_recording_state(False)
+    assert window.clear_btn.isEnabled()
+
+
+def test_impression_button_disabled_during_recording(qtbot):
+    """Impression triggers an LLM call reading in-progress text — lock during recording."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+    assert window.impression_btn.isEnabled()
+    window.set_recording_state(True)
+    assert not window.impression_btn.isEnabled()
+    window.set_recording_state(False)
+    assert window.impression_btn.isEnabled()
+
+
+def test_stt_combo_defaults_to_whisper_local_cpu(qtbot):
+    """Fresh window exposes Whisper local CPU as the active STT engine."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+    assert window.current_stt_backend() == "whisper-local-cpu"
+
+
+def test_stt_combo_contains_all_user_facing_backends(qtbot):
+    """Dropdown lists every backend a single-workstation user would pick.
+    whisper-http is intentionally hidden (no local server exists); it's still
+    reachable via the STT_BACKEND env var for remote deployments."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+    keys = [window.stt_combo.itemData(i) for i in range(window.stt_combo.count())]
+    assert set(keys) == {
+        "whisper-local-cpu",
+        "whisper-local-gpu",
+        "moonshine-tiny",
+        "moonshine-base",
+        "parakeet-tdt",
+        "vosk",
+        "gemma-e2b",
+        "gemma-e2b-4bit",
+        "gemma-e4b",
+        "gemma-e4b-4bit",
+    }
+
+
+def test_stt_combo_does_not_expose_whisper_http(qtbot):
+    """whisper-http in the dropdown is a foot-gun on a single workstation —
+    always connection-refuses. Keep it env-var-only."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+    keys = [window.stt_combo.itemData(i) for i in range(window.stt_combo.count())]
+    assert "whisper-http" not in keys
+
+
+def test_stt_combo_change_fires_callback(qtbot):
+    """Picking a different engine fires on_stt_changed with the new backend key."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+    received = []
+    window.on_stt_changed = lambda backend: received.append(backend)
+    # Find the Gemma E2B index and switch to it
+    for i in range(window.stt_combo.count()):
+        if window.stt_combo.itemData(i) == "gemma-e2b":
+            window.stt_combo.setCurrentIndex(i)
+            break
+    assert received == ["gemma-e2b"]
+
+
+def test_stt_combo_disabled_during_recording(qtbot):
+    """STT engine cannot be swapped mid-session — that would orphan the recorder."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+    assert window.stt_combo.isEnabled()
+    window.set_recording_state(True)
+    assert not window.stt_combo.isEnabled()
+    window.set_recording_state(False)
+    assert window.stt_combo.isEnabled()
+
+
+def test_set_stt_backend_syncs_combo_without_firing_callback(qtbot):
+    """Programmatic set_stt_backend() updates the combo without re-triggering the callback
+    (used to reflect the initial settings-driven backend at startup)."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+    received = []
+    window.on_stt_changed = lambda backend: received.append(backend)
+    window.set_stt_backend("gemma-e4b")
+    assert window.current_stt_backend() == "gemma-e4b"
+    assert received == []
+
+
 def test_mode_combo_change_fires_callback(qtbot):
     """Changing the combo selection emits the new mode string via on_mode_changed."""
     window = MainWindow()

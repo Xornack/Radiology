@@ -21,7 +21,7 @@ def test_full_dictation_pipeline_logic():
 
         orch = DictationOrchestrator(
             recorder=mock_recorder,
-            whisper_client=mock_whisper,
+            stt_client=mock_whisper,
             wedge=mock_wedge
         )
 
@@ -47,7 +47,7 @@ def test_orchestrator_generate_impression():
 
     orch = DictationOrchestrator(
         recorder=MagicMock(),
-        whisper_client=MagicMock(),
+        stt_client=MagicMock(),
         wedge=MagicMock(),
         llm_client=mock_llm
     )
@@ -62,7 +62,7 @@ def test_orchestrator_generate_impression_no_llm_client():
     """If no LLM client is configured, generate_impression must return empty string."""
     orch = DictationOrchestrator(
         recorder=MagicMock(),
-        whisper_client=MagicMock(),
+        stt_client=MagicMock(),
         wedge=MagicMock()
     )
     result = orch.generate_impression("Some findings.")

@@ -13,6 +13,9 @@ class LocalWhisperClient:
     The model loads lazily on first transcribe() call; call warm() to preload
     it in a background thread so the first dictation isn't delayed.
     """
+    # Whisper is fast enough to drive 1.5s streaming ticks.
+    supports_streaming: bool = True
+
     def __init__(
         self,
         model_size: str = "base.en",

@@ -20,7 +20,7 @@ class StreamingTranscriber(QObject):
     def __init__(
         self,
         recorder,
-        whisper_client,
+        stt_client,
         interval_ms: int = 1500,
         min_audio_seconds: float = 0.5,
         sample_rate: int = 16000,
@@ -28,7 +28,7 @@ class StreamingTranscriber(QObject):
     ):
         super().__init__(parent)
         self.recorder = recorder
-        self.whisper_client = whisper_client
+        self.stt_client = stt_client
         self.interval_ms = interval_ms
         self.min_audio_seconds = min_audio_seconds
         self.sample_rate = sample_rate
@@ -74,7 +74,7 @@ class StreamingTranscriber(QObject):
 
     def _transcribe_worker(self, wav_bytes: bytes):
         try:
-            text = self.whisper_client.transcribe(wav_bytes)
+            text = self.stt_client.transcribe(wav_bytes)
             if self._active and text:
                 self.partial_ready.emit(apply_punctuation(text))
         except Exception as e:

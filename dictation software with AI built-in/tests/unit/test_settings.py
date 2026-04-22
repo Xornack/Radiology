@@ -43,3 +43,16 @@ def test_settings_reads_decimal_hid_ids(monkeypatch):
     s = Settings()
     assert s.speechmike_vid == 2322
     assert s.speechmike_pid == 3100
+
+
+def test_settings_default_stt_backend_is_whisper_local_cpu():
+    """STT defaults to local Whisper on CPU — zero-setup on any machine."""
+    s = Settings()
+    assert s.stt_backend == "whisper-local-cpu"
+
+
+def test_settings_stt_backend_env_override(monkeypatch):
+    """STT_BACKEND env var selects a different backend (case-insensitive)."""
+    monkeypatch.setenv("STT_BACKEND", "Gemma-E2B")
+    s = Settings()
+    assert s.stt_backend == "gemma-e2b"

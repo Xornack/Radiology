@@ -28,9 +28,9 @@ class DictationOrchestrator:
     HID Trigger -> Audio Recording -> Whisper STT -> PHI Scrubbing -> Keyboard Wedge.
     Optional LLM client enables AI impression generation on demand.
     """
-    def __init__(self, recorder, whisper_client, wedge, profiler=None, llm_client=None):
+    def __init__(self, recorder, stt_client, wedge, profiler=None, llm_client=None):
         self.recorder = recorder
-        self.whisper_client = whisper_client
+        self.stt_client = stt_client
         self.wedge = wedge
         self.profiler = profiler
         self.llm_client = llm_client
@@ -70,7 +70,7 @@ class DictationOrchestrator:
         audio_bytes = self.recorder.get_wav_bytes()
 
         # 2. Transcribe
-        raw_text = self.whisper_client.transcribe(audio_bytes)
+        raw_text = self.stt_client.transcribe(audio_bytes)
         logger.debug(f"Whisper raw: {raw_text!r}")
         if self.profiler:
             self.profiler.stop("whisper_stt")
