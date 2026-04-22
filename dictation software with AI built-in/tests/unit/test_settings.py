@@ -9,8 +9,8 @@ def test_settings_default_values():
     assert s.llm_url == "http://localhost:8001/v1/completions"
     assert isinstance(s.speechmike_vid, int)
     assert isinstance(s.speechmike_pid, int)
-    assert s.speechmike_vid == 0x0911
-    assert s.speechmike_pid == 0x0c1c
+    assert s.speechmike_vid == 0x0554   # Nuance PowerMic II-NS
+    assert s.speechmike_pid == 0x1001
 
 
 def test_settings_reads_whisper_url_from_env(monkeypatch):

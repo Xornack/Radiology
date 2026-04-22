@@ -34,11 +34,15 @@ class Settings:
         self.llm_url: str = os.getenv(
             "LLM_URL", "http://localhost:8001/v1/completions"
         )
+        # Default targets Nuance PowerMic II-NS (VID 0x0554 / PID 0x1001).
+        # For other mics, override via SPEECHMIKE_VID / SPEECHMIKE_PID env vars.
+        # Use `python tools/hid_probe.py list` to find the IDs for your device.
+        # Known alternates: Philips SpeechMike → 0x0911 / 0x0c1c.
         self.speechmike_vid: int = _safe_int(
-            os.getenv("SPEECHMIKE_VID", "0x0911"), 0x0911, "SPEECHMIKE_VID"
+            os.getenv("SPEECHMIKE_VID", "0x0554"), 0x0554, "SPEECHMIKE_VID"
         )
         self.speechmike_pid: int = _safe_int(
-            os.getenv("SPEECHMIKE_PID", "0x0c1c"), 0x0c1c, "SPEECHMIKE_PID"
+            os.getenv("SPEECHMIKE_PID", "0x1001"), 0x1001, "SPEECHMIKE_PID"
         )
 
 
