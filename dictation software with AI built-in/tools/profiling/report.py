@@ -25,7 +25,6 @@ class ScenarioResult:
     params: dict
     timings_ms: dict[str, list[float]]
     html_trace_relpath: Optional[str] = None
-    notes: str = ""
 
 
 def _percentile(samples: list[float], pct: float) -> float:
@@ -106,9 +105,6 @@ def write_report(
         if r.params:
             params_str = ", ".join(f"`{k}={v}`" for k, v in r.params.items())
             lines.append(f"**Params:** {params_str}")
-            lines.append("")
-        if r.notes:
-            lines.append(r.notes)
             lines.append("")
         if r.html_trace_relpath:
             lines.append(f"[pyinstrument trace]({r.html_trace_relpath})")

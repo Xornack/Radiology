@@ -39,14 +39,6 @@ _DISCOVERY_SCENARIOS = {
 }
 
 
-def _default_output_dir() -> Path:
-    return Path("docs/superpowers/profiling")
-
-
-def _default_clips_dir() -> Path:
-    return Path("benchmarks")
-
-
 def _build_stt_factory(dry_run: bool):
     if dry_run:
         return lambda: FixedLatencySTT(latency_ms=200, warm_latency_ms=50)
@@ -97,12 +89,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--clips-dir",
         type=Path,
-        default=_default_clips_dir(),
+        default=Path("benchmarks"),
     )
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=_default_output_dir(),
+        default=Path("docs/superpowers/profiling"),
     )
     args = parser.parse_args(argv)
 
