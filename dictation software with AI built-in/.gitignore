@@ -21,3 +21,8 @@ build/
 .vscode/
 .idea/
 *.swp
+
+# Profiling harness
+benchmarks/
+docs/superpowers/profiling/*/
+!docs/superpowers/profiling/*.md
