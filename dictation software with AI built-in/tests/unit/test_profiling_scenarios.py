@@ -126,3 +126,14 @@ def test_full_pipeline_inapp_mode_smoke(tmp_path: Path):
     from tools.profiling.scenarios import scenario_full_pipeline
     result = scenario_full_pipeline(_ctx(tmp_path, iterations=1))
     assert result.name == "full_pipeline"
+
+
+def test_scenario_streaming_commit_runs_three_buffer_sizes(tmp_path):
+    from tools.profiling.scenarios import scenario_streaming_commit
+    result = scenario_streaming_commit(_ctx(tmp_path, iterations=2))
+    assert result.name == "streaming_commit"
+    assert "5s" in result.timings_ms
+    assert "15s" in result.timings_ms
+    assert "30s" in result.timings_ms
+    for samples in result.timings_ms.values():
+        assert len(samples) == 2

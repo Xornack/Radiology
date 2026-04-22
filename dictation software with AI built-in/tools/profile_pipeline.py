@@ -24,6 +24,7 @@ from tools.profiling.scenarios import (
     scenario_full_pipeline,
     scenario_sensevoice_warm,
     scenario_stt_hot_path,
+    scenario_streaming_commit,
     scenario_streaming_tick,
     scenario_text_post_processing,
 )
@@ -35,6 +36,7 @@ _DISCOVERY_SCENARIOS = {
     "stt_hot_path",
     "full_pipeline",
     "streaming_tick",
+    "streaming_commit",
     "text_post_processing",
 }
 
@@ -124,6 +126,7 @@ def main(argv: list[str] | None = None) -> int:
         ("stt_hot_path", scenario_stt_hot_path, args.iterations),
         ("full_pipeline", scenario_full_pipeline, args.iterations),
         ("streaming_tick", scenario_streaming_tick, args.iterations),
+        ("streaming_commit", scenario_streaming_commit, args.iterations),
         ("text_post_processing", scenario_text_post_processing, args.iterations_text),
     ]
     if args.quick:

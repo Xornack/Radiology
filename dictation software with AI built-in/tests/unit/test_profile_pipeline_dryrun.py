@@ -56,6 +56,7 @@ def test_profile_pipeline_dry_run_end_to_end(tmp_path: Path):
         "stt_hot_path",
         "full_pipeline",
         "streaming_tick",
+        "streaming_commit",
         "text_post_processing",
     ):
         assert name in content, f"{name} missing from report"

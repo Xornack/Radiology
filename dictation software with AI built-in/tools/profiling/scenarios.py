@@ -192,3 +192,123 @@ def scenario_streaming_tick(ctx: ProfilingContext) -> ScenarioResult:
         params={"iterations_per_size": ctx.iterations},
         timings_ms=spans,
     )
+
+
+def _tone_silence_pattern(total_s: float) -> bytes:
+    """Synthesize a tone-silence-tone-... pattern WAV.
+
+    440 Hz sine at amplitude 0.3, alternating 2.5 s tones with 600 ms
+    silences, clipped to `total_s`. Ensures VAD has commit points to
+    find roughly every 3 s.
+    """
+    import io
+
+    import numpy as np
+
+    sr = 16000
+    chunks: list[np.ndarray] = []
+    remaining = total_s
+    tone_len = 2.5
+    silence_len = 0.6
+    t = np.arange(int(sr * tone_len)) / sr
+    tone = (0.3 * np.sin(2 * np.pi * 440 * t)).astype(np.float32)
+    silence = np.zeros(int(sr * silence_len), dtype=np.float32)
+    while remaining > 0:
+        if remaining >= tone_len:
+            chunks.append(tone)
+            remaining -= tone_len
+        else:
+            partial = (0.3 * np.sin(2 * np.pi * 440 * np.arange(int(sr * remaining)) / sr)).astype(np.float32)
+            chunks.append(partial)
+            remaining = 0
+            break
+        if remaining >= silence_len:
+            chunks.append(silence)
+            remaining -= silence_len
+        else:
+            chunks.append(np.zeros(int(sr * remaining), dtype=np.float32))
+            remaining = 0
+    all_samples = np.concatenate(chunks) if chunks else np.zeros(0, dtype=np.float32)
+    pcm = (all_samples * 32767).astype(np.int16)
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(sr)
+        wf.writeframes(pcm.tobytes())
+    return buf.getvalue()
+
+
+def _wav_sample_count(wav_bytes: bytes) -> int:
+    import io
+
+    with wave.open(io.BytesIO(wav_bytes)) as wf:
+        return wf.getnframes()
+
+
+def _wav_slice(wav_bytes: bytes, start_sample: int, end_sample: int) -> bytes:
+    import io
+
+    with wave.open(io.BytesIO(wav_bytes)) as wf:
+        if start_sample < 0 or end_sample < start_sample or end_sample > wf.getnframes():
+            raise ValueError(f"bad slice [{start_sample}, {end_sample}]")
+        wf.setpos(start_sample)
+        frames = wf.readframes(end_sample - start_sample)
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as out:
+        out.setnchannels(1)
+        out.setsampwidth(2)
+        out.setframerate(16000)
+        out.writeframes(frames)
+    return buf.getvalue()
+
+
+class _WavBackedRecorder:
+    """Recorder shim for scenario_streaming_commit.
+
+    Wraps a pre-rendered WAV so `get_sample_count` and
+    `get_wav_bytes_slice` act on a fixed buffer. Uses real methods (not
+    lambdas) so CommitSplitter's hasattr checks and error paths behave
+    naturally.
+    """
+
+    def __init__(self, wav_bytes: bytes):
+        self._wav = wav_bytes
+
+    def get_sample_count(self) -> int:
+        return _wav_sample_count(self._wav)
+
+    def get_wav_bytes_slice(self, start: int, end: int) -> bytes:
+        return _wav_slice(self._wav, start, end)
+
+
+def scenario_streaming_commit(ctx: ProfilingContext) -> ScenarioResult:
+    """Per-tick cost of the NEW streaming path (CommitSplitter).
+
+    Uses a tone-silence-tone audio pattern so VAD has commit points to
+    find. Measures one `process_tick()` call per iteration on 5 / 15 /
+    30 s buffers. Paired with `scenario_streaming_tick` for before/after
+    comparison in the report.
+    """
+    from src.core.commit_splitter import CommitSplitter
+
+    stt = ctx.stt_factory()
+    if hasattr(stt, "warm"):
+        stt.warm()
+
+    spans: dict[str, list[float]] = {"5s": [], "15s": [], "30s": []}
+    for label, duration_s in (("5s", 5.0), ("15s", 15.0), ("30s", 30.0)):
+        wav = _tone_silence_pattern(duration_s)
+        for _ in range(ctx.iterations):
+            # Fresh recorder + splitter per iteration: a commit from the
+            # previous iteration mustn't shrink the next tick's partial.
+            recorder = _WavBackedRecorder(wav)
+            splitter = CommitSplitter(recorder=recorder, stt_client=stt)
+            t0 = time.perf_counter()
+            splitter.process_tick()
+            spans[label].append((time.perf_counter() - t0) * 1000)
+    return ScenarioResult(
+        name="streaming_commit",
+        params={"iterations_per_size": ctx.iterations},
+        timings_ms=spans,
+    )
