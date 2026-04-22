@@ -282,28 +282,81 @@ class _WavBackedRecorder:
         return _wav_slice(self._wav, start, end)
 
 
-def scenario_streaming_commit(ctx: ProfilingContext) -> ScenarioResult:
-    """Per-tick cost of the NEW streaming path (CommitSplitter).
+class _GrowingWavRecorder:
+    """Recorder shim whose sample count grows under test control.
 
-    Uses a tone-silence-tone audio pattern so VAD has commit points to
-    find. Measures one `process_tick()` call per iteration on 5 / 15 /
-    30 s buffers. Paired with `scenario_streaming_tick` for before/after
-    comparison in the report.
+    Used during scenario_streaming_commit priming so process_tick sees a
+    progressively larger buffer — matching how a real recording
+    accumulates samples between ticks.
+    """
+
+    def __init__(self, full_wav: bytes):
+        self._wav = full_wav
+        self._sample_count = 0
+
+    def set_sample_count(self, n: int) -> None:
+        self._sample_count = max(0, min(n, _wav_sample_count(self._wav)))
+
+    def get_sample_count(self) -> int:
+        return self._sample_count
+
+    def get_wav_bytes_slice(self, start: int, end: int) -> bytes:
+        if end > self._sample_count:
+            raise ValueError(
+                f"slice [{start}, {end}] exceeds current sample count "
+                f"{self._sample_count}"
+            )
+        return _wav_slice(self._wav, start, end)
+
+
+def _prime_splitter_to(full_wav: bytes, duration_s: float, stt):
+    """Return a CommitSplitter whose state reflects the dictation having
+    already ticked up to ~(duration_s - 1.5 s).
+
+    Runs process_tick at 3 s, 6 s, ... so VAD/commit advances commit_
+    sample_idx the same way real recording would. Skips measurement —
+    the goal is state, not timing.
     """
     from src.core.commit_splitter import CommitSplitter
 
+    priming_recorder = _GrowingWavRecorder(full_wav)
+    splitter = CommitSplitter(recorder=priming_recorder, stt_client=stt)
+
+    step_s = 3.0
+    total_samples = _wav_sample_count(full_wav)
+    target_s = max(0.0, duration_s - 1.5)
+    now_s = 0.0
+    while now_s + step_s <= target_s:
+        now_s += step_s
+        priming_recorder.set_sample_count(min(total_samples, int(now_s * 16000)))
+        splitter.process_tick()
+    return splitter
+
+
+def scenario_streaming_commit(ctx: ProfilingContext) -> ScenarioResult:
+    """Steady-state per-tick cost of the NEW streaming path (CommitSplitter).
+
+    Uses a tone-silence-tone audio pattern so VAD has commit points. For
+    each buffer size, we prime the splitter by running ticks as the
+    buffer grows from 3 s up to just before the target — those ticks
+    populate `_commit_sample_idx` just as real usage would — and then
+    measure ONE additional tick at the full buffer size. That captures
+    the steady-state cost (short remainder only), which is the
+    measurement that matters: in real recording, each tick past the
+    first with a commit pays only for the audio since the last commit,
+    not the whole buffer.
+    """
     stt = ctx.stt_factory()
     if hasattr(stt, "warm"):
         stt.warm()
 
     spans: dict[str, list[float]] = {"5s": [], "15s": [], "30s": []}
     for label, duration_s in (("5s", 5.0), ("15s", 15.0), ("30s", 30.0)):
-        wav = _tone_silence_pattern(duration_s)
+        full_wav = _tone_silence_pattern(duration_s)
         for _ in range(ctx.iterations):
-            # Fresh recorder + splitter per iteration: a commit from the
-            # previous iteration mustn't shrink the next tick's partial.
-            recorder = _WavBackedRecorder(wav)
-            splitter = CommitSplitter(recorder=recorder, stt_client=stt)
+            splitter = _prime_splitter_to(full_wav, duration_s, stt)
+            # Swap in a full-buffer recorder for the measured tick.
+            splitter.recorder = _WavBackedRecorder(full_wav)
             t0 = time.perf_counter()
             splitter.process_tick()
             spans[label].append((time.perf_counter() - t0) * 1000)
