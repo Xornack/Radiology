@@ -312,7 +312,7 @@ def test_mode_toggle_disabled_during_recording(qtbot):
 
 
 def test_clear_button_disabled_during_recording(qtbot):
-    """Clear would drop editor contents and invalidate _partial_start mid-session.
+    """Clear would drop editor contents and invalidate _committed_end mid-session.
 
     Must be locked while recording, re-enabled when idle.
     """
@@ -344,18 +344,19 @@ def test_stt_combo_defaults_to_whisper_local_cpu(qtbot):
 
 
 def test_stt_combo_contains_all_user_facing_backends(qtbot):
-    """Dropdown lists every backend a single-workstation user would pick.
-    whisper-http is intentionally hidden (no local server exists); it's still
-    reachable via the STT_BACKEND env var for remote deployments."""
+    """Dropdown lists every backend a single-workstation user can safely pick.
+    whisper-http and parakeet-tdt are intentionally hidden; see the
+    does-not-expose tests below. Both are still reachable via STT_BACKEND."""
     window = MainWindow()
     qtbot.addWidget(window)
     keys = [window.stt_combo.itemData(i) for i in range(window.stt_combo.count())]
     assert set(keys) == {
         "whisper-local-cpu",
         "whisper-local-gpu",
+        "whisper-turbo-gpu",
         "moonshine-tiny",
         "moonshine-base",
-        "parakeet-tdt",
+        "sensevoice",
         "vosk",
         "gemma-e2b",
         "gemma-e2b-4bit",
@@ -371,6 +372,58 @@ def test_stt_combo_does_not_expose_whisper_http(qtbot):
     qtbot.addWidget(window)
     keys = [window.stt_combo.itemData(i) for i in range(window.stt_combo.count())]
     assert "whisper-http" not in keys
+
+
+def test_stt_combo_does_not_expose_parakeet(qtbot):
+    """Parakeet (NeMo) hard-crashes the process on Python 3.13 Windows with
+    no recoverable exception. Kept out of the dropdown so a click can't brick
+    the session; still reachable via STT_BACKEND=parakeet-tdt."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+    keys = [window.stt_combo.itemData(i) for i in range(window.stt_combo.count())]
+    assert "parakeet-tdt" not in keys
+
+
+def test_radiology_check_defaults_on(qtbot):
+    """Fresh window shows radiology vocabulary enabled."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+    assert window.current_radiology_mode() is True
+
+
+def test_radiology_toggle_fires_callback(qtbot):
+    """Clicking the checkbox emits the new bool state through on_radiology_mode_changed."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+    received = []
+    window.on_radiology_mode_changed = lambda v: received.append(v)
+    window.radiology_check.setChecked(False)
+    assert received == [False]
+    window.radiology_check.setChecked(True)
+    assert received == [False, True]
+
+
+def test_set_radiology_mode_does_not_refire_callback(qtbot):
+    """Programmatic sync (e.g., applying settings at startup) must not re-emit."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+    received = []
+    window.on_radiology_mode_changed = lambda v: received.append(v)
+    window.set_radiology_mode(False)
+    assert window.current_radiology_mode() is False
+    assert received == []
+
+
+def test_radiology_check_disabled_during_recording(qtbot):
+    """Toggling mid-session would make early partials corrected and later ones not —
+    the checkbox is locked while recording, same as the other runtime controls."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+    assert window.radiology_check.isEnabled()
+    window.set_recording_state(True)
+    assert not window.radiology_check.isEnabled()
+    window.set_recording_state(False)
+    assert window.radiology_check.isEnabled()
 
 
 def test_stt_combo_change_fires_callback(qtbot):
@@ -577,3 +630,59 @@ def test_empty_commit_after_leading_space_anchor_leaves_no_stray_space(qtbot):
     window.commit_partial("")
 
     assert window.editor.toPlainText() == "Clear."
+
+
+# ----- on_commit slot (streaming commit/split) -----
+
+def test_on_commit_locks_in_partial_region(qtbot):
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.show()
+
+    window.begin_streaming()
+    window.update_partial("first chunk")
+    window.on_commit("first chunk")
+    window.update_partial("second")
+    text = window.editor.toPlainText()
+    assert text == "First chunksecond"
+
+
+def test_on_commit_with_differing_text_replaces_and_locks(qtbot):
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.show()
+
+    window.begin_streaming()
+    window.update_partial("the patient has a")
+    window.on_commit("the patient has a cough")
+    window.update_partial("and")
+    text = window.editor.toPlainText()
+    assert text == "The patient has a coughand"
+
+
+def test_commit_partial_after_on_commit_replaces_only_trailing(qtbot):
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.show()
+
+    window.begin_streaming()
+    window.update_partial("locked")
+    window.on_commit("locked")
+    window.update_partial("tail-partial")
+    window.commit_partial("final")
+    text = window.editor.toPlainText()
+    assert text == "Lockedfinal"
+
+
+def test_commit_partial_empty_clears_trailing_only_after_on_commit(qtbot):
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.show()
+
+    window.begin_streaming()
+    window.update_partial("locked")
+    window.on_commit("locked")
+    window.update_partial("to-be-removed")
+    window.commit_partial("")
+    text = window.editor.toPlainText()
+    assert text == "Locked"

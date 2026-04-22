@@ -1,7 +1,7 @@
 from typing import Callable, Optional
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QTextEdit, QVBoxLayout, QHBoxLayout,
-    QWidget, QLabel, QPushButton, QComboBox, QSizeGrip,
+    QWidget, QLabel, QPushButton, QComboBox, QSizeGrip, QCheckBox,
 )
 from PyQt6.QtCore import Qt, QPoint
 from PyQt6.QtGui import QColor, QTextCharFormat, QTextCursor
@@ -35,16 +35,21 @@ class MainWindow(QMainWindow):
         # Fires with the new STT backend key when the user picks a different
         # engine from the dropdown (e.g. "whisper-local" → "gemma-e2b").
         self.on_stt_changed: Optional[Callable[[str], None]] = None
+        # Fires with True/False when the user flips the radiology-vocabulary
+        # checkbox. main.py wires this to orchestrator.radiology_mode.
+        self.on_radiology_mode_changed: Optional[Callable[[bool], None]] = None
 
         # Tracks whether a recording session is currently active.
         self._recording: bool = False
 
-        # Cursor position where the current streaming partial begins.
-        # -1 means no active streaming session.
-        self._partial_start: int = -1
-        # Tracks the live partial's length so update_partial can replace
-        # [_partial_start, _partial_start + _partial_len] in place.
-        self._partial_len: int = 0
+        # Bounds of the live region that spans committed + partial text.
+        # `_committed_end` is the insertion anchor; up to that position,
+        # text is locked in and not rewritten by update_partial. Between
+        # `_committed_end` and `_partial_end` is the live partial region
+        # that update_partial replaces in place. Both are -1 when no
+        # streaming session is active.
+        self._committed_end: int = -1
+        self._partial_end: int = -1
         # Set in begin_streaming when the anchor sits after non-whitespace text:
         # successive click-on/click-off dictation sessions get a leading space
         # so the previous sentence's terminator doesn't hug the new one.
@@ -152,12 +157,18 @@ class MainWindow(QMainWindow):
         )
         self.stt_combo.addItem("Whisper (local, CPU)", userData="whisper-local-cpu")
         self.stt_combo.addItem("Whisper (local, GPU)", userData="whisper-local-gpu")
+        self.stt_combo.addItem("Whisper Turbo (GPU)", userData="whisper-turbo-gpu")
         # "whisper-http" backend is intentionally NOT exposed in the dropdown:
         # on a single workstation it always connection-refuses. Available via
         # STT_BACKEND=whisper-http env var for remote/containerized deployments.
         self.stt_combo.addItem("Moonshine tiny", userData="moonshine-tiny")
         self.stt_combo.addItem("Moonshine base", userData="moonshine-base")
-        self.stt_combo.addItem("Parakeet-TDT (NVIDIA)", userData="parakeet-tdt")
+        self.stt_combo.addItem("SenseVoice (Alibaba)", userData="sensevoice")
+        # Parakeet-TDT (NeMo) is intentionally NOT exposed in the dropdown:
+        # NeMo's import chain (torch-distributed / Megatron / pytorch-lightning)
+        # hard-crashes on Python 3.13 Windows during ASRModel.from_pretrained,
+        # with no recoverable Python exception — the whole process dies. Still
+        # reachable via STT_BACKEND=parakeet-tdt if someone wants to debug.
         self.stt_combo.addItem("Vosk (offline)", userData="vosk")
         self.stt_combo.addItem("Gemma 4 E2B-it", userData="gemma-e2b")
         self.stt_combo.addItem("Gemma 4 E2B-it (4-bit)", userData="gemma-e2b-4bit")
@@ -165,6 +176,19 @@ class MainWindow(QMainWindow):
         self.stt_combo.addItem("Gemma 4 E4B-it (4-bit)", userData="gemma-e4b-4bit")
         self.stt_combo.currentIndexChanged.connect(self._on_stt_combo_changed)
         sr_layout.addWidget(self.stt_combo, stretch=1)
+
+        # Radiology vocabulary toggle — applies a fuzzy-match correction pass
+        # against a curated radiology term list after punctuation. Flip off
+        # for non-radiology dictation so "plural" stays "plural" etc.
+        self.radiology_check = QCheckBox("Radiology")
+        self.radiology_check.setObjectName("radiologyCheck")
+        self.radiology_check.setToolTip(
+            "When on, corrects near-miss spellings to their radiology form "
+            "(e.g. 'plural' → 'pleural'). Turn off for non-radiology dictation."
+        )
+        self.radiology_check.setChecked(True)
+        self.radiology_check.toggled.connect(self._on_radiology_toggled)
+        sr_layout.addWidget(self.radiology_check)
 
         root.addWidget(stt_row)
 
@@ -367,6 +391,22 @@ class MainWindow(QMainWindow):
             return
         self.on_stt_changed(backend)
 
+    def current_radiology_mode(self) -> bool:
+        """Return the current state of the radiology-vocabulary toggle."""
+        return self.radiology_check.isChecked()
+
+    def set_radiology_mode(self, enabled: bool):
+        """Sync the checkbox programmatically without firing on_radiology_mode_changed."""
+        if self.radiology_check.isChecked() == enabled:
+            return
+        self.radiology_check.blockSignals(True)
+        self.radiology_check.setChecked(enabled)
+        self.radiology_check.blockSignals(False)
+
+    def _on_radiology_toggled(self, checked: bool):
+        if self.on_radiology_mode_changed is not None:
+            self.on_radiology_mode_changed(checked)
+
     def set_recording_state(self, recording: bool):
         """Reflect recording state: flip the single toggle and lock mic-row widgets."""
         self._recording = recording
@@ -386,8 +426,11 @@ class MainWindow(QMainWindow):
         self.refresh_btn.setEnabled(not recording)
         self.mode_combo.setEnabled(not recording)
         self.stt_combo.setEnabled(not recording)
+        # Locking the vocab toggle avoids a confusing mid-session switch
+        # where early partials are corrected and later ones aren't.
+        self.radiology_check.setEnabled(not recording)
         # Clear/Impression would race the streaming partial: Clear drops the
-        # editor contents and invalidates _partial_start; Impression reads
+        # editor contents and invalidates _committed_end; Impression reads
         # mid-dictation text and fires an LLM call that overlaps the session.
         self.clear_btn.setEnabled(not recording)
         self.impression_btn.setEnabled(not recording)
@@ -426,44 +469,36 @@ class MainWindow(QMainWindow):
         return text[0].lower() + text[1:]
 
     def begin_streaming(self):
-        """Anchor a streaming partial region at the current cursor position.
+        """Anchor a streaming session at the current cursor position.
 
         If there is an active selection, the selected text is removed first so
-        dictation replaces it (standard "type over selection" behavior). From
-        this call until commit_partial, the range
-        [_partial_start, _partial_start + _partial_len] is treated as the live
-        partial. Everything outside that range is untouched.
+        dictation replaces it (standard "type over selection" behavior). Until
+        commit_partial, the range [_committed_end, _partial_end] is the live
+        partial region that update_partial replaces in place. Below
+        _committed_end is locked-in text (initially empty; grows as on_commit
+        fires during the session).
         """
         cursor = self.editor.textCursor()
         if cursor.hasSelection():
             cursor.removeSelectedText()
             self.editor.setTextCursor(cursor)
-        self._partial_start = cursor.position()
-        self._partial_len = 0
+        pos = cursor.position()
+        self._committed_end = pos
+        self._partial_end = pos
         doc_text = self.editor.toPlainText()
-        cursor_pos = cursor.position()
         self._needs_leading_space = (
-            cursor_pos > 0
-            and not doc_text[cursor_pos - 1].isspace()
+            pos > 0
+            and not doc_text[pos - 1].isspace()
         )
-        # Capitalize the first letter of this session only if it starts a new
-        # sentence: either nothing meaningful precedes the cursor, or the
-        # preceding text ends with a sentence terminator. Mid-sentence
-        # continuations (session after "the patient was") stay lowercase.
-        stripped_prefix = doc_text[:cursor_pos].rstrip()
+        stripped_prefix = doc_text[:pos].rstrip()
         self._capitalize_first = (
             not stripped_prefix
             or stripped_prefix[-1] in ".?!"
         )
 
     def update_partial(self, text: str):
-        """Replace the current streaming partial with the latest live transcript.
-
-        The replacement range is [_partial_start, _partial_start + _partial_len],
-        so text before and after the partial is preserved regardless of how the
-        partial grows or shrinks.
-        """
-        if self._partial_start < 0:
+        """Replace [_committed_end, _partial_end] with `text`."""
+        if self._committed_end < 0:
             return
         if self.profiler:
             self.profiler.start("partial_replace")
@@ -472,17 +507,45 @@ class MainWindow(QMainWindow):
             if self._needs_leading_space:
                 text = " " + text
         cursor = self.editor.textCursor()
-        cursor.setPosition(self._partial_start)
-        cursor.setPosition(
-            self._partial_start + self._partial_len,
-            QTextCursor.MoveMode.KeepAnchor,
-        )
+        cursor.setPosition(self._committed_end)
+        cursor.setPosition(self._partial_end, QTextCursor.MoveMode.KeepAnchor)
         cursor.removeSelectedText()
         cursor.insertText(text, self._dictation_format)
-        self._partial_len = len(text)
+        self._partial_end = self._committed_end + len(text)
         self.editor.ensureCursorVisible()
         if self.profiler:
             self.profiler.stop("partial_replace")
+
+    def on_commit(self, text: str):
+        """Lock the current partial region as committed.
+
+        Replaces [_committed_end, _partial_end] with `text` (the commit
+        transcription, which can differ from the last displayed partial since
+        the STT has more audio context), then advances _committed_end so
+        subsequent update_partial calls don't overwrite the locked text.
+
+        After the first commit, subsequent updates are mid-dictation-session:
+        no leading space is needed, and the session-start capitalization has
+        already been applied to the text that preceded this commit.
+        """
+        if self._committed_end < 0:
+            return
+        if text:
+            text = self._apply_first_letter_case(text)
+            if self._needs_leading_space:
+                text = " " + text
+        cursor = self.editor.textCursor()
+        cursor.setPosition(self._committed_end)
+        cursor.setPosition(self._partial_end, QTextCursor.MoveMode.KeepAnchor)
+        cursor.removeSelectedText()
+        cursor.insertText(text, self._dictation_format)
+        new_end = self._committed_end + len(text)
+        self._committed_end = new_end
+        self._partial_end = new_end
+        # Subsequent partials/commits are mid-session continuations.
+        self._needs_leading_space = False
+        self._capitalize_first = False
+        self.editor.ensureCursorVisible()
 
     def commit_partial(self, text: str):
         """Replace the live partial region with the final text and end streaming.
@@ -490,7 +553,7 @@ class MainWindow(QMainWindow):
         After insertion the editor's current char format is reset to the default
         so subsequent user typing is not inadvertently rendered in the dictation color.
         """
-        if self._partial_start < 0:
+        if self._committed_end < 0:
             if text:
                 self.append_text(text)
             return
@@ -501,22 +564,17 @@ class MainWindow(QMainWindow):
                 text = " " + text
 
         cursor = self.editor.textCursor()
-        cursor.setPosition(self._partial_start)
-        cursor.setPosition(
-            self._partial_start + self._partial_len,
-            QTextCursor.MoveMode.KeepAnchor,
-        )
+        cursor.setPosition(self._committed_end)
+        cursor.setPosition(self._partial_end, QTextCursor.MoveMode.KeepAnchor)
         cursor.removeSelectedText()
         if text:
             cursor.insertText(text, self._dictation_format)
 
         self.editor.setTextCursor(cursor)
-        # Reset the editor's current char format so subsequent user typing
-        # reverts to the default color instead of inheriting the dictation format.
         self.editor.setCurrentCharFormat(QTextCharFormat())
 
-        self._partial_start = -1
-        self._partial_len = 0
+        self._committed_end = -1
+        self._partial_end = -1
         self._needs_leading_space = False
         self._capitalize_first = True
         self.editor.ensureCursorVisible()
