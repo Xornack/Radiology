@@ -1,74 +1,44 @@
 """Keyboard wedge — types text into the currently focused Windows window.
 
-Implementation uses KEYEVENTF_UNICODE for every character and batches the
-entire string into a single SendInput call. This is the approach used by
-mature input-simulation tools (AutoHotkey's SendText, nircmd) because:
+Uses PostMessageW(WM_CHAR, ...) against the focused child control of the
+foreground app, one UTF-16 code unit at a time. This bypasses:
 
-  - Unicode input maps directly to WM_CHAR messages, bypassing the keyboard
-    layout translation that scan-code input goes through. Modern Windows 11
-    apps (Notepad WinUI, Chrome, Outlook, Electron surfaces) need WM_CHAR;
-    scancode-only input was unreliable against them.
-  - Batching N events into one SendInput call delivers them atomically as a
-    single input frame, which modern apps consume reliably. One-call-per-key
-    at 50k+ chars/sec caused dropped characters in the old path.
-  - No shift emulation needed — the Unicode codepoint encodes case directly.
+  - The global raw-input queue (where Win11 text surfaces were silently
+    truncating batched KEYEVENTF_UNICODE frames mid-stream).
+  - Low-level keyboard hooks (WH_KEYBOARD_LL) installed by AV/EDR, medical
+    dictation drivers, remappers, etc. — these can translate synthetic
+    KEYEVENTF_UNICODE events into virtual-key events and lose the keyup,
+    producing stuck-key runs like ".........." at the end of a dictation.
+
+WM_CHAR + PostMessage is the canonical accessibility-tool pattern for
+typing into classic edit controls (Notepad, Word, Outlook) and most web
+text fields (Chrome, Edge, Electron) that accept keyboard-style text
+entry. Apps that only consume raw input (games, some kiosks) won't
+receive it — those aren't targets for this wedge.
 """
 import ctypes
 from ctypes import wintypes
 from loguru import logger
 
-# Win32 constants
-INPUT_KEYBOARD = 1
-KEYEVENTF_UNICODE = 0x0004
-KEYEVENTF_KEYUP = 0x0002
-
-# ULONG_PTR: pointer-sized unsigned int (8B on 64-bit, 4B on 32-bit).
-# wintypes has no ULONG_PTR, and ctypes.c_ulong is 4B on Win64 (LLP64) — so
-# using c_ulong for dwExtraInfo would under-size KEYBDINPUT/MOUSEINPUT.
-ULONG_PTR = ctypes.c_size_t
-
-
-class KEYBDINPUT(ctypes.Structure):
-    _fields_ = [("wVk", wintypes.WORD),
-                ("wScan", wintypes.WORD),
-                ("dwFlags", wintypes.DWORD),
-                ("time", wintypes.DWORD),
-                ("dwExtraInfo", ULONG_PTR)]
-
-
-class MOUSEINPUT(ctypes.Structure):
-    _fields_ = [("dx", wintypes.LONG),
-                ("dy", wintypes.LONG),
-                ("mouseData", wintypes.DWORD),
-                ("dwFlags", wintypes.DWORD),
-                ("time", wintypes.DWORD),
-                ("dwExtraInfo", ULONG_PTR)]
-
-
-class HARDWAREINPUT(ctypes.Structure):
-    _fields_ = [("uMsg", wintypes.DWORD),
-                ("wParamL", wintypes.WORD),
-                ("wParamH", wintypes.WORD)]
-
-
-# MOUSEINPUT/HARDWAREINPUT must be the real types (not c_byte placeholders):
-# SendInput validates cbSize == sizeof(INPUT) and rejects mismatches with
-# ERROR_INVALID_PARAMETER. On 64-bit, the real MOUSEINPUT is 32B — a 24B
-# placeholder makes sizeof(INPUT) = 32 instead of 40, and every call fails.
-class INPUT_I(ctypes.Union):
-    _fields_ = [("ki", KEYBDINPUT),
-                ("mi", MOUSEINPUT),
-                ("hi", HARDWAREINPUT)]
-
-
-class INPUT(ctypes.Structure):
-    _fields_ = [("type", wintypes.DWORD),
-                ("ii", INPUT_I)]
-
+WM_CHAR = 0x0102
 
 _user32 = ctypes.windll.user32
-_user32.SendInput.argtypes = [wintypes.UINT, ctypes.c_void_p, ctypes.c_int]
-_user32.SendInput.restype = wintypes.UINT
+_kernel32 = ctypes.windll.kernel32
+
+_user32.GetForegroundWindow.restype = wintypes.HWND
+_user32.GetWindowThreadProcessId.argtypes = [
+    wintypes.HWND, ctypes.POINTER(wintypes.DWORD)
+]
+_user32.GetWindowThreadProcessId.restype = wintypes.DWORD
+_user32.AttachThreadInput.argtypes = [
+    wintypes.DWORD, wintypes.DWORD, wintypes.BOOL
+]
+_user32.AttachThreadInput.restype = wintypes.BOOL
+_user32.GetFocus.restype = wintypes.HWND
+_user32.PostMessageW.argtypes = [
+    wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM
+]
+_user32.PostMessageW.restype = wintypes.BOOL
 
 
 def _to_utf16_code_units(text: str) -> list[int]:
@@ -79,39 +49,59 @@ def _to_utf16_code_units(text: str) -> list[int]:
         if cp <= 0xFFFF:
             units.append(cp)
         else:
-            # Supplementary-plane char: encode as surrogate pair
             cp -= 0x10000
             units.append(0xD800 + (cp >> 10))
             units.append(0xDC00 + (cp & 0x3FF))
     return units
 
 
-def type_text(text: str):
-    """Simulate keyboard input by typing `text` into the focused Windows window.
+def _focused_hwnd() -> int:
+    """Return the HWND of the focused control within the foreground app, or 0.
 
-    Batches all key-down/key-up events into a single SendInput call using
-    KEYEVENTF_UNICODE so delivery is atomic and compatible with modern apps.
+    GetFocus only reports focus within the calling thread's input queue, so
+    we temporarily attach to the target's thread input to read its focus.
+    AttachThreadInput can disrupt focus if left attached, so the detach is
+    in a finally block.
+    """
+    hwnd_fg = _user32.GetForegroundWindow()
+    if not hwnd_fg:
+        return 0
+    our_tid = _kernel32.GetCurrentThreadId()
+    target_tid = _user32.GetWindowThreadProcessId(hwnd_fg, None)
+    if not target_tid or target_tid == our_tid:
+        return hwnd_fg
+    if not _user32.AttachThreadInput(our_tid, target_tid, True):
+        # If we can't attach (different desktop, elevated target, etc.),
+        # fall back to the top-level foreground window. Classic apps will
+        # route WM_CHAR to their focused child via default window procs.
+        return hwnd_fg
+    try:
+        focused = _user32.GetFocus()
+    finally:
+        _user32.AttachThreadInput(our_tid, target_tid, False)
+    return focused or hwnd_fg
+
+
+def type_text(text: str):
+    """Simulate text entry into the currently focused Windows window.
+
+    Delivers each UTF-16 code unit as a WM_CHAR message posted directly to
+    the target's message queue. Ordering is preserved because a window's
+    message queue is strictly FIFO within a single posting thread.
     """
     if not text:
         return
 
-    code_units = _to_utf16_code_units(text)
-    n_events = 2 * len(code_units)   # down + up per unit
+    target = _focused_hwnd()
+    if not target:
+        logger.error(f"Wedge: no focused window; cannot post {text!r}")
+        return
 
-    InputArray = INPUT * n_events
-    arr = InputArray()
-
-    for i, unit in enumerate(code_units):
-        for j, key_up in enumerate((False, True)):
-            flags = KEYEVENTF_UNICODE | (KEYEVENTF_KEYUP if key_up else 0)
-            idx = 2 * i + j
-            arr[idx].type = INPUT_KEYBOARD
-            arr[idx].ii.ki = KEYBDINPUT(0, unit, flags, 0, 0)
-
-    sent = _user32.SendInput(n_events, ctypes.byref(arr), ctypes.sizeof(INPUT))
-    if sent != n_events:
-        err = ctypes.windll.kernel32.GetLastError()
-        logger.error(
-            f"SendInput delivered {sent}/{n_events} events for {text!r} "
-            f"(GetLastError={err})"
-        )
+    for unit in _to_utf16_code_units(text):
+        if not _user32.PostMessageW(target, WM_CHAR, unit, 0):
+            err = _kernel32.GetLastError()
+            logger.error(
+                f"PostMessageW(hwnd={target:#x}, WM_CHAR, U+{unit:04X}) "
+                f"failed (GetLastError={err}); remainder of {text!r} not posted"
+            )
+            return

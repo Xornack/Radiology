@@ -63,6 +63,7 @@ class DictationOrchestrator:
 
         # 2. Transcribe
         raw_text = self.whisper_client.transcribe(audio_bytes)
+        logger.debug(f"Whisper raw: {raw_text!r}")
         if self.profiler:
             self.profiler.stop("whisper_stt")
             self.profiler.start("scrubbing")
@@ -72,6 +73,7 @@ class DictationOrchestrator:
 
         # 3b. Map spoken punctuation tokens (period, comma, new paragraph, ...).
         clean_text = apply_punctuation(clean_text)
+        logger.debug(f"Final text to send: {clean_text!r}")
 
         if self.profiler:
             self.profiler.stop("scrubbing")
@@ -81,7 +83,7 @@ class DictationOrchestrator:
         if mode == "wedge" and clean_text:
             target = _foreground_window_title()
             logger.info(
-                f"Wedge mode: sending {len(clean_text)} chars via SendInput. "
+                f"Wedge mode: posting {len(clean_text)} chars to focused window. "
                 f"Foreground window: {target!r}"
             )
             try:
