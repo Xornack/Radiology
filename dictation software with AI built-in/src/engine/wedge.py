@@ -1,47 +1,28 @@
+"""Keyboard wedge — types text into the currently focused Windows window.
+
+Implementation uses KEYEVENTF_UNICODE for every character and batches the
+entire string into a single SendInput call. This is the approach used by
+mature input-simulation tools (AutoHotkey's SendText, nircmd) because:
+
+  - Unicode input maps directly to WM_CHAR messages, bypassing the keyboard
+    layout translation that scan-code input goes through. Modern Windows 11
+    apps (Notepad WinUI, Chrome, Outlook, Electron surfaces) need WM_CHAR;
+    scancode-only input was unreliable against them.
+  - Batching N events into one SendInput call delivers them atomically as a
+    single input frame, which modern apps consume reliably. One-call-per-key
+    at 50k+ chars/sec caused dropped characters in the old path.
+  - No shift emulation needed — the Unicode codepoint encodes case directly.
+"""
 import ctypes
 from ctypes import wintypes
 from loguru import logger
 
-# Win32 Constants
+# Win32 constants
 INPUT_KEYBOARD = 1
-KEYEVENTF_SCANCODE = 0x0008
-KEYEVENTF_KEYUP = 0x0002
 KEYEVENTF_UNICODE = 0x0004
-SCAN_SHIFT = 0x2A  # Left Shift
-
-# Direct scan codes — no modifier needed
-SCAN_CODES = {
-    # Digits
-    '1': 0x02, '2': 0x03, '3': 0x04, '4': 0x05, '5': 0x06,
-    '6': 0x07, '7': 0x08, '8': 0x09, '9': 0x0A, '0': 0x0B,
-    # Letters (lowercase only — uppercase handled via shift)
-    'q': 0x10, 'w': 0x11, 'e': 0x12, 'r': 0x13, 't': 0x14,
-    'y': 0x15, 'u': 0x16, 'i': 0x17, 'o': 0x18, 'p': 0x19,
-    'a': 0x1E, 's': 0x1F, 'd': 0x20, 'f': 0x21, 'g': 0x22,
-    'h': 0x23, 'j': 0x24, 'k': 0x25, 'l': 0x26,
-    'z': 0x2C, 'x': 0x2D, 'c': 0x2E, 'v': 0x2F, 'b': 0x30,
-    'n': 0x31, 'm': 0x32,
-    # Whitespace & navigation
-    ' ': 0x39, '\n': 0x1C, '\t': 0x0F,
-    # Punctuation / symbol keys (no shift required)
-    '-': 0x0C, '=': 0x0D,
-    '[': 0x1A, ']': 0x1B,
-    ';': 0x27, "'": 0x28, '`': 0x29, '\\': 0x2B,
-    ',': 0x33, '.': 0x34, '/': 0x35,
-}
-
-# Characters that require Shift + base key scan code
-SHIFT_SCAN_CODES = {
-    '!': 0x02, '@': 0x03, '#': 0x04, '$': 0x05, '%': 0x06,
-    '^': 0x07, '&': 0x08, '*': 0x09, '(': 0x0A, ')': 0x0B,
-    '_': 0x0C, '+': 0x0D,
-    '{': 0x1A, '}': 0x1B,
-    ':': 0x27, '"': 0x28, '~': 0x29, '|': 0x2B,
-    '<': 0x33, '>': 0x34, '?': 0x35,
-}
+KEYEVENTF_KEYUP = 0x0002
 
 
-# Win32 Structures
 class KEYBDINPUT(ctypes.Structure):
     _fields_ = [("wVk", wintypes.WORD),
                 ("wScan", wintypes.WORD),
@@ -61,78 +42,54 @@ class INPUT(ctypes.Structure):
                 ("ii", INPUT_I)]
 
 
-def _send_key(scan_code: int, key_up: bool = False):
-    """Core Win32 SendInput call using scan codes for maximum app compatibility."""
-    flags = KEYEVENTF_SCANCODE
-    if key_up:
-        flags |= KEYEVENTF_KEYUP
-
-    extra = ctypes.c_ulong(0)
-    ii_ = INPUT_I()
-    ii_.ki = KEYBDINPUT(0, scan_code, flags, 0, ctypes.pointer(extra))
-    input_obj = INPUT(INPUT_KEYBOARD, ii_)
-    ctypes.windll.user32.SendInput(1, ctypes.pointer(input_obj), ctypes.sizeof(input_obj))
-
-
-def _send_shifted(scan_code: int):
-    """Sends Shift + key + release Shift."""
-    _send_key(SCAN_SHIFT)
-    _send_key(scan_code)
-    _send_key(scan_code, key_up=True)
-    _send_key(SCAN_SHIFT, key_up=True)
-
-
-def _send_unicode_codepoint(code_unit: int):
-    """Sends a single UTF-16 code unit via SendInput with KEYEVENTF_UNICODE."""
-    for down_flags in (KEYEVENTF_UNICODE, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP):
-        extra = ctypes.c_ulong(0)
-        ii_ = INPUT_I()
-        # Virtual key must be 0 when using KEYEVENTF_UNICODE; code unit goes in wScan
-        ii_.ki = KEYBDINPUT(0, code_unit, down_flags, 0, ctypes.pointer(extra))
-        input_obj = INPUT(INPUT_KEYBOARD, ii_)
-        ctypes.windll.user32.SendInput(
-            1, ctypes.pointer(input_obj), ctypes.sizeof(input_obj)
-        )
-
-
-def _send_unicode_char(char: str):
-    """
-    Sends an arbitrary Unicode character, handling BMP and surrogate pairs.
-    Used as a fallback for characters without a direct scan code mapping.
-    """
-    cp = ord(char)
-    if cp <= 0xFFFF:
-        _send_unicode_codepoint(cp)
-    else:
-        # Encode supplementary-plane char as UTF-16 surrogate pair
-        cp -= 0x10000
-        hi = 0xD800 + (cp >> 10)
-        lo = 0xDC00 + (cp & 0x3FF)
-        _send_unicode_codepoint(hi)
-        _send_unicode_codepoint(lo)
+def _to_utf16_code_units(text: str) -> list[int]:
+    """Flatten a Python str into UTF-16 code units (surrogate pairs for SMP)."""
+    units: list[int] = []
+    for char in text:
+        cp = ord(char)
+        if cp <= 0xFFFF:
+            units.append(cp)
+        else:
+            # Supplementary-plane char: encode as surrogate pair
+            cp -= 0x10000
+            units.append(0xD800 + (cp >> 10))
+            units.append(0xDC00 + (cp & 0x3FF))
+    return units
 
 
 def type_text(text: str):
+    """Simulate keyboard input by typing `text` into the focused Windows window.
+
+    Batches all key-down/key-up events into a single SendInput call using
+    KEYEVENTF_UNICODE so delivery is atomic and compatible with modern apps.
     """
-    Simulates keyboard input into the currently focused window.
-    Handles lowercase, uppercase, digits, and a full set of punctuation/symbols.
-    Falls back to KEYEVENTF_UNICODE for any character without a scan code mapping
-    so no data is silently dropped (em-dash, curly quotes, °, ±, µ, etc.).
-    """
-    for char in text:  # Process original case — do NOT lowercase
-        if char in SCAN_CODES:
-            code = SCAN_CODES[char]
-            _send_key(code)
-            _send_key(code, key_up=True)
-        elif char in SHIFT_SCAN_CODES:
-            _send_shifted(SHIFT_SCAN_CODES[char])
-        elif char.isupper() and char.lower() in SCAN_CODES:
-            _send_shifted(SCAN_CODES[char.lower()])
-        else:
-            # Unicode fallback — preserves characters a scan-code map can't cover
-            try:
-                _send_unicode_char(char)
-            except Exception as e:
-                logger.warning(
-                    f"Failed to send character {char!r} via Unicode: {e}"
-                )
+    if not text:
+        return
+
+    code_units = _to_utf16_code_units(text)
+    n_events = 2 * len(code_units)   # down + up per unit
+
+    InputArray = INPUT * n_events
+    arr = InputArray()
+    # Keep the c_ulong extras alive for the duration of the SendInput call
+    # (KEYBDINPUT holds a pointer into these objects).
+    extras = [ctypes.c_ulong(0) for _ in range(n_events)]
+
+    for i, unit in enumerate(code_units):
+        for j, key_up in enumerate((False, True)):
+            flags = KEYEVENTF_UNICODE | (KEYEVENTF_KEYUP if key_up else 0)
+            idx = 2 * i + j
+            arr[idx].type = INPUT_KEYBOARD
+            arr[idx].ii.ki = KEYBDINPUT(
+                0, unit, flags, 0, ctypes.pointer(extras[idx])
+            )
+
+    sent = ctypes.windll.user32.SendInput(
+        n_events, ctypes.byref(arr), ctypes.sizeof(INPUT)
+    )
+    if sent != n_events:
+        err = ctypes.windll.kernel32.GetLastError()
+        logger.warning(
+            f"SendInput delivered {sent}/{n_events} events for {text!r} "
+            f"(GetLastError={err})"
+        )
