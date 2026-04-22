@@ -339,11 +339,16 @@ class MainWindow(QMainWindow):
     def begin_streaming(self):
         """Anchor a streaming partial region at the current cursor position.
 
-        From this call until commit_partial, the range
+        If there is an active selection, the selected text is removed first so
+        dictation replaces it (standard "type over selection" behavior). From
+        this call until commit_partial, the range
         [_partial_start, _partial_start + _partial_len] is treated as the live
         partial. Everything outside that range is untouched.
         """
         cursor = self.editor.textCursor()
+        if cursor.hasSelection():
+            cursor.removeSelectedText()
+            self.editor.setTextCursor(cursor)
         self._partial_start = cursor.position()
         self._partial_len = 0
 

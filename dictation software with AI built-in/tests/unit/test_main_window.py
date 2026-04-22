@@ -152,6 +152,30 @@ def test_typing_after_commit_uses_default_color(qtbot):
     assert fmt.foreground().color() != QColor(MainWindow.DICTATION_COLOR)
 
 
+def test_dictation_replaces_selected_text(qtbot):
+    """Dictating while text is selected must replace the selection, not append to it.
+
+    Matches standard "type over selection" behavior — if the user highlights
+    "word" and dictates "replacement", the result should be "replacement", not
+    "wordreplacement".
+    """
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.editor.setPlainText("foo word bar")
+    cursor = window.editor.textCursor()
+    cursor.setPosition(4)                                                # before "word"
+    cursor.setPosition(8, QTextCursor.MoveMode.KeepAnchor)               # through "word"
+    window.editor.setTextCursor(cursor)
+    assert window.editor.textCursor().hasSelection()
+
+    window.begin_streaming()
+    window.update_partial("replacement")
+    window.commit_partial("replacement")
+
+    assert window.editor.toPlainText() == "foo replacement bar"
+
+
 def test_insert_at_cursor_preserves_trailing_text(qtbot):
     """Streaming partials inserted mid-document must not eat the text that follows them."""
     window = MainWindow()
