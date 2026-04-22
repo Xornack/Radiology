@@ -22,24 +22,53 @@ INPUT_KEYBOARD = 1
 KEYEVENTF_UNICODE = 0x0004
 KEYEVENTF_KEYUP = 0x0002
 
+# ULONG_PTR: pointer-sized unsigned int (8B on 64-bit, 4B on 32-bit).
+# wintypes has no ULONG_PTR, and ctypes.c_ulong is 4B on Win64 (LLP64) — so
+# using c_ulong for dwExtraInfo would under-size KEYBDINPUT/MOUSEINPUT.
+ULONG_PTR = ctypes.c_size_t
+
 
 class KEYBDINPUT(ctypes.Structure):
     _fields_ = [("wVk", wintypes.WORD),
                 ("wScan", wintypes.WORD),
                 ("dwFlags", wintypes.DWORD),
                 ("time", wintypes.DWORD),
-                ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong))]
+                ("dwExtraInfo", ULONG_PTR)]
 
 
+class MOUSEINPUT(ctypes.Structure):
+    _fields_ = [("dx", wintypes.LONG),
+                ("dy", wintypes.LONG),
+                ("mouseData", wintypes.DWORD),
+                ("dwFlags", wintypes.DWORD),
+                ("time", wintypes.DWORD),
+                ("dwExtraInfo", ULONG_PTR)]
+
+
+class HARDWAREINPUT(ctypes.Structure):
+    _fields_ = [("uMsg", wintypes.DWORD),
+                ("wParamL", wintypes.WORD),
+                ("wParamH", wintypes.WORD)]
+
+
+# MOUSEINPUT/HARDWAREINPUT must be the real types (not c_byte placeholders):
+# SendInput validates cbSize == sizeof(INPUT) and rejects mismatches with
+# ERROR_INVALID_PARAMETER. On 64-bit, the real MOUSEINPUT is 32B — a 24B
+# placeholder makes sizeof(INPUT) = 32 instead of 40, and every call fails.
 class INPUT_I(ctypes.Union):
     _fields_ = [("ki", KEYBDINPUT),
-                ("mi", ctypes.c_byte * 24),
-                ("hi", ctypes.c_byte * 24)]
+                ("mi", MOUSEINPUT),
+                ("hi", HARDWAREINPUT)]
 
 
 class INPUT(ctypes.Structure):
     _fields_ = [("type", wintypes.DWORD),
                 ("ii", INPUT_I)]
+
+
+_user32 = ctypes.windll.user32
+_user32.SendInput.argtypes = [wintypes.UINT, ctypes.c_void_p, ctypes.c_int]
+_user32.SendInput.restype = wintypes.UINT
 
 
 def _to_utf16_code_units(text: str) -> list[int]:
@@ -71,25 +100,18 @@ def type_text(text: str):
 
     InputArray = INPUT * n_events
     arr = InputArray()
-    # Keep the c_ulong extras alive for the duration of the SendInput call
-    # (KEYBDINPUT holds a pointer into these objects).
-    extras = [ctypes.c_ulong(0) for _ in range(n_events)]
 
     for i, unit in enumerate(code_units):
         for j, key_up in enumerate((False, True)):
             flags = KEYEVENTF_UNICODE | (KEYEVENTF_KEYUP if key_up else 0)
             idx = 2 * i + j
             arr[idx].type = INPUT_KEYBOARD
-            arr[idx].ii.ki = KEYBDINPUT(
-                0, unit, flags, 0, ctypes.pointer(extras[idx])
-            )
+            arr[idx].ii.ki = KEYBDINPUT(0, unit, flags, 0, 0)
 
-    sent = ctypes.windll.user32.SendInput(
-        n_events, ctypes.byref(arr), ctypes.sizeof(INPUT)
-    )
+    sent = _user32.SendInput(n_events, ctypes.byref(arr), ctypes.sizeof(INPUT))
     if sent != n_events:
         err = ctypes.windll.kernel32.GetLastError()
-        logger.warning(
+        logger.error(
             f"SendInput delivered {sent}/{n_events} events for {text!r} "
             f"(GetLastError={err})"
         )
