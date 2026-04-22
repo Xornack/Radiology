@@ -64,3 +64,65 @@ def test_streaming_tick_runs_three_buffer_sizes(tmp_path: Path):
     assert "30s" in result.timings_ms
     for samples in result.timings_ms.values():
         assert len(samples) == 2
+
+
+# ----- sensevoice_warm -----
+
+def test_sensevoice_warm_returns_result(tmp_path: Path):
+    from tools.profiling.scenarios import scenario_sensevoice_warm
+    result = scenario_sensevoice_warm(_ctx(tmp_path, iterations=2))
+    assert result.name == "sensevoice_warm"
+    assert "warm" in result.timings_ms
+    assert len(result.timings_ms["warm"]) == 2
+
+
+def test_sensevoice_warm_builds_fresh_client_each_iteration(tmp_path: Path):
+    from tools.profiling.scenarios import scenario_sensevoice_warm
+
+    builds = {"n": 0}
+
+    def factory():
+        builds["n"] += 1
+        return FixedLatencySTT(latency_ms=1, warm_latency_ms=5)
+
+    ctx = _ctx(tmp_path, iterations=3)
+    ctx = ProfilingContext(
+        clips_dir=ctx.clips_dir,
+        iterations=ctx.iterations,
+        stt_factory=factory,
+        output_dir=ctx.output_dir,
+    )
+    scenario_sensevoice_warm(ctx)
+    assert builds["n"] == 3
+
+
+# ----- stt_hot_path -----
+
+def test_stt_hot_path_runs_three_clip_lengths(tmp_path: Path):
+    from tools.profiling.scenarios import scenario_stt_hot_path
+    result = scenario_stt_hot_path(_ctx(tmp_path, iterations=2))
+    assert result.name == "stt_hot_path"
+    assert "short" in result.timings_ms
+    assert "medium" in result.timings_ms
+    assert "long" in result.timings_ms
+    for samples in result.timings_ms.values():
+        assert len(samples) == 2
+
+
+# ----- full_pipeline -----
+
+def test_full_pipeline_runs_each_clip_length(tmp_path: Path):
+    from tools.profiling.scenarios import scenario_full_pipeline
+    result = scenario_full_pipeline(_ctx(tmp_path, iterations=2))
+    assert result.name == "full_pipeline"
+    assert "short" in result.timings_ms
+    assert "medium" in result.timings_ms
+    assert "long" in result.timings_ms
+    for samples in result.timings_ms.values():
+        assert len(samples) == 2
+
+
+def test_full_pipeline_inapp_mode_smoke(tmp_path: Path):
+    from tools.profiling.scenarios import scenario_full_pipeline
+    result = scenario_full_pipeline(_ctx(tmp_path, iterations=1))
+    assert result.name == "full_pipeline"

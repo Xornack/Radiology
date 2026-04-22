@@ -87,6 +87,83 @@ def _silence_wav_bytes(duration_s: float) -> bytes:
     return buf.getvalue()
 
 
+def scenario_sensevoice_warm(ctx: ProfilingContext) -> ScenarioResult:
+    """Measures cold-load time by building a fresh client each iteration.
+
+    Calling `stt_factory()` per iteration is what makes the "warm"
+    measurement valid — an already-warmed instance would trivially
+    return near-zero.
+    """
+    samples: list[float] = []
+    for _ in range(ctx.iterations):
+        stt = ctx.stt_factory()
+        t0 = time.perf_counter()
+        if hasattr(stt, "warm"):
+            stt.warm()
+        samples.append((time.perf_counter() - t0) * 1000)
+    return ScenarioResult(
+        name="sensevoice_warm",
+        params={"iterations": ctx.iterations},
+        timings_ms={"warm": samples},
+    )
+
+
+def scenario_stt_hot_path(ctx: ProfilingContext) -> ScenarioResult:
+    """`transcribe()` on each clip length after a single warm."""
+    stt = ctx.stt_factory()
+    if hasattr(stt, "warm"):
+        stt.warm()
+
+    spans: dict[str, list[float]] = {"short": [], "medium": [], "long": []}
+    for label in ("short", "medium", "long"):
+        wav = _read_wav_bytes(ctx.clips_dir / f"{label}.wav")
+        # Discard iteration primes any per-length caches inside the STT.
+        stt.transcribe(wav)
+        for _ in range(ctx.iterations):
+            t0 = time.perf_counter()
+            stt.transcribe(wav)
+            spans[label].append((time.perf_counter() - t0) * 1000)
+    return ScenarioResult(
+        name="stt_hot_path",
+        params={"iterations_per_clip": ctx.iterations},
+        timings_ms=spans,
+    )
+
+
+def scenario_full_pipeline(ctx: ProfilingContext) -> ScenarioResult:
+    """End-to-end orchestrator round-trip per clip length, in-app mode."""
+    from src.core.orchestrator import DictationOrchestrator
+    from tools.profiling.mocks import MockRecorder, MockWedge
+
+    stt = ctx.stt_factory()
+    if hasattr(stt, "warm"):
+        stt.warm()
+
+    spans: dict[str, list[float]] = {"short": [], "medium": [], "long": []}
+    for label in ("short", "medium", "long"):
+        wav = _read_wav_bytes(ctx.clips_dir / f"{label}.wav")
+        recorder = MockRecorder(audio_bytes=wav)
+        wedge = MockWedge()
+        orch = DictationOrchestrator(
+            recorder=recorder,
+            stt_client=stt,
+            wedge=wedge,
+        )
+        # Discard iteration so we don't capture one-shot pipeline setup.
+        orch.handle_trigger_down()
+        orch.handle_trigger_up(mode="inapp")
+        for _ in range(ctx.iterations):
+            t0 = time.perf_counter()
+            orch.handle_trigger_down()
+            orch.handle_trigger_up(mode="inapp")
+            spans[label].append((time.perf_counter() - t0) * 1000)
+    return ScenarioResult(
+        name="full_pipeline",
+        params={"iterations_per_clip": ctx.iterations, "mode": "inapp"},
+        timings_ms=spans,
+    )
+
+
 def scenario_streaming_tick(ctx: ProfilingContext) -> ScenarioResult:
     """Per-tick work the StreamingTranscriber does, at 5/15/30 s buffers.
 
