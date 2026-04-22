@@ -96,6 +96,21 @@ Unit and integration tests cover the audio pipeline, HID listener, PHI scrubber,
 keyboard wedge, LLM client, PACS query (against a local DICOM SCP), and UI.
 51 tests currently passing.
 
+## Profiling
+
+Measure end-to-end pipeline latency on a fixed LibriSpeech workload:
+
+```bash
+python -m tools.profile_pipeline
+```
+
+First run downloads ~350 MB of LibriSpeech test-clean into `benchmarks/`
+(gitignored). Each run writes a timestamped report under
+`docs/superpowers/profiling/` with per-scenario `pyinstrument` HTML traces.
+
+Pass `--dry-run` to swap in a fixed-latency STT stub (no SenseVoice
+required); useful for smoke-testing the harness itself.
+
 ## Known Limitations
 
 - **Punctuation** — dictated commands like "comma", "period", "new paragraph" are not recognized. Relies on Whisper's own punctuation inference, which is imperfect for clinical speech. A spoken-punctuation post-processor would help.
