@@ -161,7 +161,11 @@ def main():
         vendor_id=settings.speechmike_vid,
         product_id=settings.speechmike_pid,
     )
-    mic.on_trigger = handle_trigger
+    # Signal emitted from the HID polling thread; AutoConnection queues it to
+    # the GUI thread so handle_trigger runs where it can safely touch Qt widgets
+    # and timers. Using the legacy on_trigger callback here crashes Qt because
+    # it invokes begin_streaming() / streaming.start() on the wrong thread.
+    mic.trigger_changed.connect(handle_trigger)
 
     mic_connected = mic.start()
     if mic_connected:

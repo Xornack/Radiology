@@ -2,18 +2,28 @@ import hid
 import threading
 import time
 from loguru import logger
+from PyQt6.QtCore import QObject, pyqtSignal
 
 
-class MicListener:
+class MicListener(QObject):
     """
     Background listener for medical microphones (SpeechMike, PowerMic, etc.).
-    Spawns a daemon polling thread on start() that fires on_trigger callbacks
+    Spawns a daemon polling thread on start() that emits `trigger_changed`
     whenever the button state changes (press or release).
+
+    The emit happens from the polling thread; receivers connected via the
+    default AutoConnection will have their slots dispatched on the owning
+    (GUI) thread, which is required for any Qt widget / timer access.
     """
-    def __init__(self, vendor_id: int, product_id: int):
+    trigger_changed = pyqtSignal(bool)
+
+    def __init__(self, vendor_id: int, product_id: int, parent=None):
+        super().__init__(parent)
         self.vendor_id = vendor_id
         self.product_id = product_id
         self.device = None
+        # Legacy direct-callback hook. Kept for tests and any non-Qt caller;
+        # new code should `mic.trigger_changed.connect(slot)` instead.
         self.on_trigger = None
         self._running = False
         self._thread = None
@@ -58,6 +68,10 @@ class MicListener:
                 pressed = any(b > 0 for b in data)
                 if pressed != self._button_pressed:
                     self._button_pressed = pressed
+                    # Qt signal: queued to the GUI thread. Safe to call from
+                    # this polling thread.
+                    self.trigger_changed.emit(pressed)
+                    # Legacy direct-callback for tests and non-Qt callers.
                     if self.on_trigger:
                         self.on_trigger(pressed)
                 return True
