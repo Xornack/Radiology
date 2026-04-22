@@ -29,6 +29,8 @@ dependencies = [
 dev = [
     "pytest>=8",
     "pytest-qt>=4.4",
+    "pyinstrument>=4.6",
+    "soundfile>=0.12",
 ]
 # Optional GPU acceleration: pip install -e '.[gpu]'
 gpu = [
