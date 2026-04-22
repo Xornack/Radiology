@@ -137,3 +137,119 @@ def test_inapp_result_is_lowercased_first_letter():
     with patch("src.core.orchestrator.scrub_text", side_effect=lambda x: x):
         result = orch.handle_trigger_up(mode="inapp")
     assert result == "clear."
+
+
+def test_radiology_mode_corrects_plural_to_pleural():
+    """When radiology_mode is on, 'plural' in the transcript becomes 'pleural'."""
+    orch = _make_orch("large plural effusion period")
+    orch.radiology_mode = True
+    with patch("src.core.orchestrator.scrub_text", side_effect=lambda x: x):
+        result = orch.handle_trigger_up(mode="inapp")
+    assert "pleural" in result
+    assert "plural" not in result
+
+
+def test_radiology_mode_off_leaves_text_untouched_by_lexicon():
+    """When radiology_mode is off, near-miss radiology words pass through verbatim."""
+    orch = _make_orch("large plural effusion period")
+    orch.radiology_mode = False
+    with patch("src.core.orchestrator.scrub_text", side_effect=lambda x: x):
+        result = orch.handle_trigger_up(mode="inapp")
+    # Should still produce "plural" (not corrected) because the vocab pass is off.
+    assert "plural" in result
+
+
+def test_radiology_mode_defaults_on():
+    """A fresh orchestrator runs with radiology mode on — user is a radiologist."""
+    orch = _make_orch("")
+    assert orch.radiology_mode is True
+
+
+class FakeStreamingHandle:
+    """Stand-in for StreamingTranscriber's snapshot accessor only."""
+
+    def __init__(self, committed_text: list, commit_sample_idx: int):
+        self._committed_text = committed_text
+        self._commit_sample_idx = commit_sample_idx
+
+    def get_committed_snapshot(self):
+        return list(self._committed_text), self._commit_sample_idx
+
+
+def _mk_orch_with_streaming(
+    committed: list,
+    commit_idx: int,
+    remaining_transcription: str = "and no fever",
+    buffer_end_sample: int = 100000,
+):
+    recorder = MagicMock()
+    recorder.get_sample_count.return_value = buffer_end_sample
+    recorder.get_wav_bytes_slice.return_value = b"remaining-wav-bytes"
+    recorder.get_wav_bytes.return_value = b"whole-buffer-wav-bytes"
+    stt = MagicMock()
+    stt.transcribe.return_value = remaining_transcription
+    wedge = MagicMock()
+    streaming = FakeStreamingHandle(committed, commit_idx)
+    orch = DictationOrchestrator(
+        recorder=recorder,
+        stt_client=stt,
+        wedge=wedge,
+        streaming=streaming,
+    )
+    orch.radiology_mode = False
+    return orch, recorder, stt, wedge
+
+
+def test_stop_with_commits_slices_and_concatenates():
+    orch, recorder, stt, _ = _mk_orch_with_streaming(
+        committed=["The patient has a cough"],
+        commit_idx=47000,
+        remaining_transcription="and no fever",
+    )
+    with patch("src.core.orchestrator.scrub_text", side_effect=lambda x: x):
+        result = orch.handle_trigger_up(mode="inapp")
+    recorder.get_wav_bytes_slice.assert_called_once_with(47000, 100000)
+    stt.transcribe.assert_called_once_with(b"remaining-wav-bytes")
+    assert "cough" in result
+    assert "no fever" in result
+
+
+def test_stop_without_commits_falls_through_to_whole_buffer():
+    orch, recorder, stt, _ = _mk_orch_with_streaming(
+        committed=[],
+        commit_idx=0,
+        remaining_transcription="The whole thing",
+    )
+    with patch("src.core.orchestrator.scrub_text", side_effect=lambda x: x):
+        result = orch.handle_trigger_up(mode="inapp")
+    recorder.get_wav_bytes.assert_called_once()
+    recorder.get_wav_bytes_slice.assert_not_called()
+    assert "whole thing" in result
+
+
+def test_stop_wedge_mode_ignores_streaming_handle():
+    orch, recorder, stt, wedge = _mk_orch_with_streaming(
+        committed=["prior chunk"],
+        commit_idx=50000,
+        remaining_transcription="wedge transcription",
+    )
+    with patch("src.core.orchestrator.scrub_text", side_effect=lambda x: x):
+        orch.handle_trigger_up(mode="wedge")
+    recorder.get_wav_bytes.assert_called_once()
+    recorder.get_wav_bytes_slice.assert_not_called()
+    wedge.type_text.assert_called_once()
+
+
+def test_orchestrator_without_streaming_handle_works_as_today():
+    recorder = MagicMock()
+    recorder.get_wav_bytes.return_value = b"whole"
+    stt = MagicMock()
+    stt.transcribe.return_value = "hello"
+    wedge = MagicMock()
+    orch = DictationOrchestrator(
+        recorder=recorder, stt_client=stt, wedge=wedge,
+    )
+    orch.radiology_mode = False
+    with patch("src.core.orchestrator.scrub_text", side_effect=lambda x: x):
+        orch.handle_trigger_up(mode="inapp")
+    recorder.get_wav_bytes.assert_called_once()

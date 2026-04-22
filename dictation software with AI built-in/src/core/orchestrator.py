@@ -2,6 +2,7 @@ import ctypes
 from loguru import logger
 from src.security.scrubber import scrub_text
 from src.engine.punctuation import apply_punctuation
+from src.engine.lexicon import correct_radiology
 
 
 def _foreground_window_title() -> str:
@@ -28,12 +29,25 @@ class DictationOrchestrator:
     HID Trigger -> Audio Recording -> Whisper STT -> PHI Scrubbing -> Keyboard Wedge.
     Optional LLM client enables AI impression generation on demand.
     """
-    def __init__(self, recorder, stt_client, wedge, profiler=None, llm_client=None):
+    def __init__(
+        self,
+        recorder,
+        stt_client,
+        wedge,
+        profiler=None,
+        llm_client=None,
+        streaming=None,
+    ):
         self.recorder = recorder
         self.stt_client = stt_client
         self.wedge = wedge
         self.profiler = profiler
         self.llm_client = llm_client
+        # Optional streaming handle. When provided and in in-app mode,
+        # the Stop path reads committed chunks via
+        # `streaming.get_committed_snapshot()` and only transcribes the
+        # remaining partial region — avoids re-doing the whole buffer.
+        self.streaming = streaming
         # First wedge type of the process has no leading space; every
         # subsequent one gets a space prepended so click-on/click-off
         # dictation doesn't run sentences together in the target app.
@@ -42,6 +56,11 @@ class DictationOrchestrator:
         # terminator. True initially so the very first session capitalizes.
         # In-app mode doesn't consult this — the caller uses editor context.
         self._wedge_last_terminator = True
+        # When True, apply a radiology-vocabulary correction pass after
+        # punctuation so near-misses like "plural" → "pleural" are fixed.
+        # UI flips this via a checkbox; defaults on since the user is a
+        # radiologist by default.
+        self.radiology_mode = True
 
     def handle_trigger_down(self):
         """Called when the user presses the dictation button."""
@@ -66,11 +85,25 @@ class DictationOrchestrator:
             self.profiler.stop("audio_capture")
             self.profiler.start("whisper_stt")
 
-        # 1. Get WAV bytes (correct format for Whisper)
-        audio_bytes = self.recorder.get_wav_bytes()
+        # 1. Transcribe (commit-aware for in-app mode).
+        committed_text: list[str] = []
+        commit_idx = 0
+        if mode == "inapp" and self.streaming is not None:
+            committed_text, commit_idx = self.streaming.get_committed_snapshot()
 
-        # 2. Transcribe
-        raw_text = self.stt_client.transcribe(audio_bytes)
+        if committed_text and commit_idx > 0:
+            # In-app path with prior commits: transcribe only the remaining
+            # partial region, concatenate with the committed chunks.
+            end_sample = self.recorder.get_sample_count()
+            remainder_wav = self.recorder.get_wav_bytes_slice(commit_idx, end_sample)
+            remainder_raw = self.stt_client.transcribe(remainder_wav)
+            pieces = list(committed_text) + ([remainder_raw] if remainder_raw else [])
+            raw_text = " ".join(pieces)
+        else:
+            # Fallback: whole-buffer transcribe (wedge mode, or short
+            # dictations that never accumulated a commit).
+            audio_bytes = self.recorder.get_wav_bytes()
+            raw_text = self.stt_client.transcribe(audio_bytes)
         logger.debug(f"Whisper raw: {raw_text!r}")
         if self.profiler:
             self.profiler.stop("whisper_stt")
@@ -85,6 +118,10 @@ class DictationOrchestrator:
         # decide from editor context (cursor may have moved between sessions).
         cap_first = self._wedge_last_terminator if mode == "wedge" else False
         clean_text = apply_punctuation(clean_text, capitalize_first=cap_first)
+
+        # 3c. Optional radiology-vocabulary correction.
+        if self.radiology_mode:
+            clean_text = correct_radiology(clean_text)
         logger.debug(f"Final text to send: {clean_text!r}")
 
         if self.profiler:
