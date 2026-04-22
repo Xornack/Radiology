@@ -126,3 +126,40 @@ class AudioRecorder:
             wf.setframerate(self.sample_rate)
             wf.writeframes(pcm.tobytes())
         return buf.getvalue()
+
+    def get_sample_count(self) -> int:
+        """Current number of captured samples. Lock-safe cheap read."""
+        with self._buffer_lock:
+            return len(self._buffer)
+
+    def get_wav_bytes_slice(self, start_sample: int, end_sample: int) -> bytes:
+        """Encode buffer[start_sample:end_sample] as 16 kHz mono PCM WAV.
+
+        Raises ValueError for reversed or out-of-bounds ranges — silent
+        truncation would hide splitter bugs.
+        """
+        if start_sample < 0 or end_sample < start_sample:
+            raise ValueError(
+                f"Invalid slice range: [{start_sample}, {end_sample}]"
+            )
+        with self._buffer_lock:
+            buf_len = len(self._buffer)
+            if end_sample > buf_len:
+                raise ValueError(
+                    f"end_sample {end_sample} exceeds buffer length {buf_len}"
+                )
+            audio_array = np.array(
+                self._buffer[start_sample:end_sample], dtype="float32"
+            )
+
+        pcm_float = audio_array * 32767
+        clipped = np.clip(pcm_float, -32768, 32767)
+        pcm = clipped.astype(np.int16)
+
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as wf:
+            wf.setnchannels(self.channels)
+            wf.setsampwidth(2)
+            wf.setframerate(self.sample_rate)
+            wf.writeframes(pcm.tobytes())
+        return buf.getvalue()

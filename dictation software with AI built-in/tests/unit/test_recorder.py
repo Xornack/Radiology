@@ -87,3 +87,58 @@ def test_recorder_start_raises_on_device_failure():
         recorder = AudioRecorder()
         with pytest.raises(OSError):
             recorder.start()
+
+
+def _prime_recorder_buffer(rec: AudioRecorder, seconds: float) -> int:
+    """Fill the recorder's buffer directly (bypass the sounddevice stream)
+    for hermetic tests. Returns the sample count written."""
+    n = int(rec.sample_rate * seconds)
+    rec._buffer = list(np.zeros(n, dtype=np.float32))
+    return n
+
+
+def test_get_sample_count_matches_buffer_length():
+    rec = AudioRecorder()
+    _prime_recorder_buffer(rec, 1.5)
+    assert rec.get_sample_count() == int(rec.sample_rate * 1.5)
+
+
+def test_get_sample_count_zero_on_empty_buffer():
+    rec = AudioRecorder()
+    assert rec.get_sample_count() == 0
+
+
+def test_get_wav_bytes_slice_returns_requested_range():
+    rec = AudioRecorder()
+    _prime_recorder_buffer(rec, 3.0)
+    start, end = 16000, 32000
+    wav = rec.get_wav_bytes_slice(start, end)
+    with wave.open(io.BytesIO(wav), "rb") as wf:
+        assert wf.getnchannels() == 1
+        assert wf.getsampwidth() == 2
+        assert wf.getframerate() == 16000
+        assert wf.getnframes() == end - start
+
+
+def test_get_wav_bytes_slice_zero_length_is_valid_empty_wav():
+    rec = AudioRecorder()
+    _prime_recorder_buffer(rec, 1.0)
+    wav = rec.get_wav_bytes_slice(0, 0)
+    with wave.open(io.BytesIO(wav), "rb") as wf:
+        assert wf.getnframes() == 0
+
+
+def test_get_wav_bytes_slice_raises_on_out_of_bounds():
+    rec = AudioRecorder()
+    _prime_recorder_buffer(rec, 1.0)
+    with pytest.raises(ValueError):
+        rec.get_wav_bytes_slice(0, 99999)
+    with pytest.raises(ValueError):
+        rec.get_wav_bytes_slice(-1, 100)
+
+
+def test_get_wav_bytes_slice_raises_on_reversed_range():
+    rec = AudioRecorder()
+    _prime_recorder_buffer(rec, 1.0)
+    with pytest.raises(ValueError):
+        rec.get_wav_bytes_slice(500, 100)
