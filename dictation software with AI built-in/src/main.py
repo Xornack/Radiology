@@ -9,6 +9,7 @@ from loguru import logger
 from src.ui.main_window import MainWindow
 from src.hardware.recorder import AudioRecorder, list_input_devices
 from src.hardware.mic_listener import MicListener
+from src.hardware.global_hotkey import GlobalHotkey, VK_F4, MOD_NOREPEAT
 from src.ai.whisper_client import WhisperClient
 from src.ai.local_whisper_client import LocalWhisperClient
 from src.ai.llm_client import LLMClient
@@ -173,13 +174,21 @@ def main():
     else:
         logger.warning("No medical microphone found. Using keyboard fallback (F4).")
 
-    # 7. Keyboard fallback — F4 toggles recording (always registered)
+    # 7. F4 toggles recording. Prefer a global hotkey (fires regardless of
+    # focused window — critical for Wedge mode into Chrome/Outlook/etc.) and
+    # fall back to an app-local Qt shortcut if registration fails (e.g., another
+    # app already holds F4).
     def f4_toggle():
         handle_trigger(not recording_state["active"])
 
-    f4_shortcut = QShortcut(QKeySequence("F4"), window)
-    f4_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
-    f4_shortcut.activated.connect(f4_toggle)
+    f4_hotkey = GlobalHotkey(vk=VK_F4, modifiers=MOD_NOREPEAT)
+    if f4_hotkey.register():
+        f4_hotkey.activated.connect(f4_toggle)
+        f4_shortcut = None
+    else:
+        f4_shortcut = QShortcut(QKeySequence("F4"), window)
+        f4_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        f4_shortcut.activated.connect(f4_toggle)
 
     # 8. Wire the Generate Impression button
     def do_generate_impression():
@@ -202,9 +211,13 @@ def main():
 
     window.on_generate_impression = do_generate_impression
 
-    # 9. Shutdown cleanup — close HID and audio stream when app exits
+    # 9. Shutdown cleanup — close HID, global hotkey, and audio stream when app exits
     def on_shutdown():
         logger.info("Shutting down...")
+        try:
+            f4_hotkey.unregister()
+        except Exception as e:
+            logger.warning(f"Error unregistering global hotkey: {e}")
         try:
             mic.stop()
         except Exception as e:
