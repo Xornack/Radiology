@@ -200,7 +200,11 @@ def _mk_orch_with_streaming(
     return orch, recorder, stt, wedge
 
 
-def test_stop_with_commits_slices_and_concatenates():
+def test_stop_with_commits_returns_remainder_only():
+    """In-app Stop with prior commits transcribes only the remainder and
+    returns JUST the remainder text. The UI already has the committed
+    chunks on-screen from StreamingTranscriber.commit_ready; returning
+    the full concatenation here would cause the UI to duplicate them."""
     orch, recorder, stt, _ = _mk_orch_with_streaming(
         committed=["The patient has a cough"],
         commit_idx=47000,
@@ -210,8 +214,8 @@ def test_stop_with_commits_slices_and_concatenates():
         result = orch.handle_trigger_up(mode="inapp")
     recorder.get_wav_bytes_slice.assert_called_once_with(47000, 100000)
     stt.transcribe.assert_called_once_with(b"remaining-wav-bytes")
-    assert "cough" in result
-    assert "no fever" in result
+    assert "no fever" in result.lower()
+    assert "cough" not in result.lower()
 
 
 def test_stop_without_commits_falls_through_to_whole_buffer():

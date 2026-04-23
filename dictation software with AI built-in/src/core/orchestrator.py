@@ -86,22 +86,23 @@ class DictationOrchestrator:
             self.profiler.start("whisper_stt")
 
         # 1. Transcribe (commit-aware for in-app mode).
+        # In-app with prior commits: the UI's editor already contains the
+        # committed chunks (from StreamingTranscriber.commit_ready). We
+        # only need to transcribe + return the REMAINING partial region;
+        # main.py passes that to commit_partial, which replaces just the
+        # trailing partial — committed text stays put, no duplication.
+        # Wedge mode and short dictations (no commits) fall back to the
+        # whole-buffer transcribe since nothing has been displayed yet.
         committed_text: list[str] = []
         commit_idx = 0
         if mode == "inapp" and self.streaming is not None:
             committed_text, commit_idx = self.streaming.get_committed_snapshot()
 
         if committed_text and commit_idx > 0:
-            # In-app path with prior commits: transcribe only the remaining
-            # partial region, concatenate with the committed chunks.
             end_sample = self.recorder.get_sample_count()
             remainder_wav = self.recorder.get_wav_bytes_slice(commit_idx, end_sample)
-            remainder_raw = self.stt_client.transcribe(remainder_wav)
-            pieces = list(committed_text) + ([remainder_raw] if remainder_raw else [])
-            raw_text = " ".join(pieces)
+            raw_text = self.stt_client.transcribe(remainder_wav)
         else:
-            # Fallback: whole-buffer transcribe (wedge mode, or short
-            # dictations that never accumulated a commit).
             audio_bytes = self.recorder.get_wav_bytes()
             raw_text = self.stt_client.transcribe(audio_bytes)
         logger.debug(f"Whisper raw: {raw_text!r}")

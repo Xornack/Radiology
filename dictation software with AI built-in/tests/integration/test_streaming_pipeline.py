@@ -114,10 +114,14 @@ def test_streaming_pipeline_two_commits_then_stop():
     orch.radiology_mode = False
     with patch("src.core.orchestrator.scrub_text", side_effect=lambda x: x):
         final = orch.handle_trigger_up(mode="inapp")
-    lowered = final.lower()
-    assert "cough" in lowered
-    assert "febrile today" in lowered
-    assert "no acute findings" in lowered
+    # Orchestrator returns ONLY the remainder (UI already has committed
+    # chunks on-screen via on_commit). Full text is reconstructed by the
+    # UI as committed_chunks + final.
+    committed, _ = splitter.get_committed_snapshot()
+    assert any("cough" in c.lower() for c in committed)
+    assert any("febrile today" in c.lower() for c in committed)
+    assert "no acute findings" in final.lower()
+    assert "cough" not in final.lower()
 
 
 def test_streaming_pipeline_no_commits_falls_back_to_whole_buffer():

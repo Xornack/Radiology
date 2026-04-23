@@ -644,7 +644,9 @@ def test_on_commit_locks_in_partial_region(qtbot):
     window.on_commit("first chunk")
     window.update_partial("second")
     text = window.editor.toPlainText()
-    assert text == "First chunksecond"
+    # Dynamic leading-space check: 'k' before insertion → add space
+    # separator between the committed chunk and the next partial.
+    assert text == "First chunk second"
 
 
 def test_on_commit_with_differing_text_replaces_and_locks(qtbot):
@@ -657,10 +659,13 @@ def test_on_commit_with_differing_text_replaces_and_locks(qtbot):
     window.on_commit("the patient has a cough")
     window.update_partial("and")
     text = window.editor.toPlainText()
-    assert text == "The patient has a coughand"
+    assert text == "The patient has a cough and"
 
 
 def test_commit_partial_after_on_commit_replaces_only_trailing(qtbot):
+    """Post-bugfix semantics: the orchestrator returns ONLY the remainder
+    when there are commits. commit_partial replaces the trailing partial
+    region with that remainder, leaving committed text intact."""
     window = MainWindow()
     qtbot.addWidget(window)
     window.show()
@@ -669,9 +674,12 @@ def test_commit_partial_after_on_commit_replaces_only_trailing(qtbot):
     window.update_partial("locked")
     window.on_commit("locked")
     window.update_partial("tail-partial")
+    # Caller passes only the remainder (orchestrator's Stop-path output
+    # when streaming has committed chunks).
     window.commit_partial("final")
     text = window.editor.toPlainText()
-    assert text == "Lockedfinal"
+    # Committed "Locked" + dynamic leading space + "final".
+    assert text == "Locked final"
 
 
 def test_commit_partial_empty_clears_trailing_only_after_on_commit(qtbot):
@@ -686,3 +694,22 @@ def test_commit_partial_empty_clears_trailing_only_after_on_commit(qtbot):
     window.commit_partial("")
     text = window.editor.toPlainText()
     assert text == "Locked"
+
+
+def test_on_commit_multiple_commits_have_spaces_between_them(qtbot):
+    """Three successive commits must be separated by spaces — the bug
+    from real-world testing: without this, 'testing pause' said three
+    times produced 'testing pausetesting pausetesting pause'."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.show()
+
+    window.begin_streaming()
+    window.update_partial("testing pause")
+    window.on_commit("testing pause")
+    window.update_partial("testing pause")
+    window.on_commit("testing pause")
+    window.update_partial("testing pause")
+    window.on_commit("testing pause")
+    text = window.editor.toPlainText()
+    assert text == "Testing pause testing pause testing pause"

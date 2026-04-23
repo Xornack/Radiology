@@ -51,9 +51,6 @@ class MainWindow(QMainWindow):
         self._committed_end: int = -1
         self._partial_end: int = -1
         # Set in begin_streaming when the anchor sits after non-whitespace text:
-        # successive click-on/click-off dictation sessions get a leading space
-        # so the previous sentence's terminator doesn't hug the new one.
-        self._needs_leading_space: bool = False
         # Set in begin_streaming: True when the dictation starts a new sentence
         # (document start, or preceding text ends with . ? !). False means the
         # session is a mid-sentence continuation and the first letter must stay
@@ -468,6 +465,22 @@ class MainWindow(QMainWindow):
             return text[0].upper() + text[1:]
         return text[0].lower() + text[1:]
 
+    def _needs_leading_space_at(self, pos: int) -> bool:
+        """True if inserting at `pos` needs a leading space.
+
+        Dynamically checks the editor content — works for both
+        session-start (pos follows prior user text) and mid-session
+        (pos follows a previous committed chunk). Replaces the earlier
+        `_needs_leading_space` flag, which only covered the first
+        insertion and missed the between-commits case.
+        """
+        if pos <= 0:
+            return False
+        doc = self.editor.toPlainText()
+        if pos > len(doc):
+            return False
+        return doc[pos - 1] not in " \t\n"
+
     def begin_streaming(self):
         """Anchor a streaming session at the current cursor position.
 
@@ -486,10 +499,6 @@ class MainWindow(QMainWindow):
         self._committed_end = pos
         self._partial_end = pos
         doc_text = self.editor.toPlainText()
-        self._needs_leading_space = (
-            pos > 0
-            and not doc_text[pos - 1].isspace()
-        )
         stripped_prefix = doc_text[:pos].rstrip()
         self._capitalize_first = (
             not stripped_prefix
@@ -504,7 +513,7 @@ class MainWindow(QMainWindow):
             self.profiler.start("partial_replace")
         if text:
             text = self._apply_first_letter_case(text)
-            if self._needs_leading_space:
+            if self._needs_leading_space_at(self._committed_end):
                 text = " " + text
         cursor = self.editor.textCursor()
         cursor.setPosition(self._committed_end)
@@ -523,16 +532,12 @@ class MainWindow(QMainWindow):
         transcription, which can differ from the last displayed partial since
         the STT has more audio context), then advances _committed_end so
         subsequent update_partial calls don't overwrite the locked text.
-
-        After the first commit, subsequent updates are mid-dictation-session:
-        no leading space is needed, and the session-start capitalization has
-        already been applied to the text that preceded this commit.
         """
         if self._committed_end < 0:
             return
         if text:
             text = self._apply_first_letter_case(text)
-            if self._needs_leading_space:
+            if self._needs_leading_space_at(self._committed_end):
                 text = " " + text
         cursor = self.editor.textCursor()
         cursor.setPosition(self._committed_end)
@@ -542,16 +547,20 @@ class MainWindow(QMainWindow):
         new_end = self._committed_end + len(text)
         self._committed_end = new_end
         self._partial_end = new_end
-        # Subsequent partials/commits are mid-session continuations.
-        self._needs_leading_space = False
+        # After the first commit, subsequent chunks are mid-sentence — the
+        # session-start capitalization has already been applied.
         self._capitalize_first = False
         self.editor.ensureCursorVisible()
 
     def commit_partial(self, text: str):
         """Replace the live partial region with the final text and end streaming.
 
-        After insertion the editor's current char format is reset to the default
-        so subsequent user typing is not inadvertently rendered in the dictation color.
+        `text` is the orchestrator's Stop-path output: for in-app mode with
+        prior commits, it's the REMAINDER only (committed chunks stay put
+        in the editor via prior on_commit calls). For wedge/no-commits, it's
+        the whole transcribe. Either way, replacing [_committed_end,
+        _partial_end] does the right thing — that region is the live partial
+        in both cases.
         """
         if self._committed_end < 0:
             if text:
@@ -560,7 +569,7 @@ class MainWindow(QMainWindow):
 
         if text:
             text = self._apply_first_letter_case(text)
-            if self._needs_leading_space:
+            if self._needs_leading_space_at(self._committed_end):
                 text = " " + text
 
         cursor = self.editor.textCursor()
@@ -575,7 +584,6 @@ class MainWindow(QMainWindow):
 
         self._committed_end = -1
         self._partial_end = -1
-        self._needs_leading_space = False
         self._capitalize_first = True
         self.editor.ensureCursorVisible()
 
