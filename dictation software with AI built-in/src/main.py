@@ -16,6 +16,7 @@ from src.ai.llm_client import LLMClient
 from src.core.orchestrator import DictationOrchestrator
 from src.core.streaming import StreamingTranscriber
 from src.engine import wedge
+from src.ui.warmup_coordinator import WarmupCoordinator
 from src.utils.profiler import LatencyTimer
 from src.utils.settings import settings
 
@@ -164,15 +165,28 @@ def main():
     profiler = LatencyTimer()
 
     # Preload heavy local models in the background so the first dictation
-    # doesn't block on model download/load. Any client that implements warm()
-    # participates; HTTP clients don't.
-    if hasattr(stt, "warm"):
-        threading.Thread(target=stt.warm, daemon=True).start()
+    # doesn't block on model download/load. The coordinator wraps the
+    # warm thread with Qt signals so the UI can show "Warming model..."
+    # and disable Record until ready. Clients without warm() (HTTP)
+    # shortcut to ready() immediately inside the coordinator.
+    warmup = WarmupCoordinator()
 
     # 2. Setup UI
     window = MainWindow()
     window.profiler = profiler
     window.show()
+
+    # Wire the warm-up coordinator now that the window exists.
+    def _on_warm_ready():
+        window.set_warming(False)
+
+    def _on_warm_failed(msg: str):
+        window.set_status(f"STT failed — {msg}", "#f38ba8")
+
+    warmup.ready.connect(_on_warm_ready)
+    warmup.failed.connect(_on_warm_failed)
+    window.set_warming(True)
+    warmup.warm_in_background(stt)
 
     # 3. Streaming live-partial transcriber — ticks every 1.5s during recording.
     # Constructed before the orchestrator so the orchestrator can be wired to
@@ -198,6 +212,14 @@ def main():
     recording_state = {"active": False}
 
     def handle_trigger(pressed: bool):
+        # Drop triggers while the STT model is still warming up. A short
+        # nudge tells the user what's happening instead of silently
+        # doing nothing. Only applies to trigger-down; a release with
+        # no active recording is already a no-op below.
+        if pressed and window.is_warming():
+            window.set_status("Still warming — please wait", "#f9e2af")
+            return
+
         # Idempotent: clicking Record while already recording (or Stop while idle)
         # is a no-op. Keeps HID, F4, and button sources consistent.
         if pressed == recording_state["active"]:
@@ -297,8 +319,8 @@ def main():
         orchestrator.stt_client = new_client
         streaming.stt_client = new_client
         active_stt_backend["value"] = backend
-        if hasattr(new_client, "warm"):
-            threading.Thread(target=new_client.warm, daemon=True).start()
+        window.set_warming(True)
+        warmup.warm_in_background(new_client)
         window.set_status(f"STT: {backend}")
 
     window.on_stt_changed = on_stt_changed
