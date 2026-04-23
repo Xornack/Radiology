@@ -42,6 +42,11 @@ class MainWindow(QMainWindow):
         # Tracks whether a recording session is currently active.
         self._recording: bool = False
 
+        # True while the STT client's warm() is in flight. Record is
+        # disabled and main.py's handle_trigger drops incoming triggers
+        # with a feedback nudge while this is True.
+        self._warming: bool = False
+
         # Bounds of the live region that spans committed + partial text.
         # `_committed_end` is the insertion anchor; up to that position,
         # text is locked in and not rewritten by update_partial. Between
@@ -436,6 +441,25 @@ class MainWindow(QMainWindow):
         self.editor.setReadOnly(recording or self.current_mode() == "wedge")
 
     # Public API
+
+    def set_warming(self, on: bool) -> None:
+        """Toggle the "warming up" state. When on: status → 'Warming
+        model...', Record disabled. When off: status → 'Ready',
+        Record enabled (recording lock permitting)."""
+        self._warming = on
+        if on:
+            self.set_status("Warming model...", "#89b4fa")
+            self.record_btn.setEnabled(False)
+        else:
+            self.set_status("Ready")
+            # Only re-enable Record if no higher-priority lock (active
+            # recording) is holding it. set_recording_state is the
+            # authoritative gate during sessions.
+            if not self._recording:
+                self.record_btn.setEnabled(True)
+
+    def is_warming(self) -> bool:
+        return self._warming
 
     def set_status(self, text: str, color: str = "#a6e3a1"):
         """Update the status pill. Default color is green (idle/done)."""

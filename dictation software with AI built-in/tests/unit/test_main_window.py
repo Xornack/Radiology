@@ -713,3 +713,38 @@ def test_on_commit_multiple_commits_have_spaces_between_them(qtbot):
     window.on_commit("testing pause")
     text = window.editor.toPlainText()
     assert text == "Testing pause testing pause testing pause"
+
+
+# ----- Warming state -----
+
+def test_set_warming_true_disables_record_and_updates_status(qtbot):
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.show()
+
+    window.set_warming(True)
+    assert not window.record_btn.isEnabled()
+    assert "warming" in window.status_label.text().lower()
+
+
+def test_set_warming_false_enables_record_and_restores_ready(qtbot):
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.show()
+
+    window.set_warming(True)
+    window.set_warming(False)
+    assert window.record_btn.isEnabled()
+    assert "ready" in window.status_label.text().lower()
+
+
+def test_warming_state_reflects_in_attribute(qtbot):
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.show()
+
+    assert window.is_warming() is False
+    window.set_warming(True)
+    assert window.is_warming() is True
+    window.set_warming(False)
+    assert window.is_warming() is False
