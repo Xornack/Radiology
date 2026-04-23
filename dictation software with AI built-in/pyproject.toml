@@ -69,6 +69,15 @@ parakeet = [
 vosk = [
     "vosk>=0.3.45",
 ]
+# Optional SenseVoice STT backend (Alibaba FunASR): pip install -e '.[sensevoice]'
+# Small multilingual ASR (~100M params) with emotion + event tagging.
+# funasr needs torchaudio at import time but doesn't declare it as a hard dep
+# on Python 3.13 — pin it explicitly so the extra is self-contained.
+sensevoice = [
+    "funasr>=1.1",
+    "torch>=2.3",
+    "torchaudio>=2.3",
+]
 
 [project.scripts]
 radiology-dictation = "src.main:main"

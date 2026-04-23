@@ -36,6 +36,10 @@ class Settings:
         # fetch. Leave empty until the user sets the path; the builder will
         # raise a clear error on first selection rather than crashing later.
         self.vosk_model_path: str = os.getenv("VOSK_MODEL_PATH", "")
+        # Radiology-vocabulary correction on by default (user is a radiologist).
+        # Set RADIOLOGY_MODE=0 / false / off to flip the default to off.
+        rad_raw = os.getenv("RADIOLOGY_MODE", "1").strip().lower()
+        self.radiology_mode: bool = rad_raw not in ("0", "false", "off", "no")
         # "local" runs faster-whisper in-process (no server needed).
         # "http" uses WhisperClient against WHISPER_URL.
         self.whisper_mode: str = os.getenv("WHISPER_MODE", "local").lower()

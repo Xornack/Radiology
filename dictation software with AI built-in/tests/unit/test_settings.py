@@ -56,3 +56,17 @@ def test_settings_stt_backend_env_override(monkeypatch):
     monkeypatch.setenv("STT_BACKEND", "Gemma-E2B")
     s = Settings()
     assert s.stt_backend == "gemma-e2b"
+
+
+def test_settings_radiology_mode_defaults_on():
+    """Default: user is a radiologist, vocabulary correction starts on."""
+    s = Settings()
+    assert s.radiology_mode is True
+
+
+def test_settings_radiology_mode_disabled_by_env(monkeypatch):
+    """RADIOLOGY_MODE=0 flips the startup default off for non-radiology users."""
+    for off_value in ("0", "false", "False", "off", "no"):
+        monkeypatch.setenv("RADIOLOGY_MODE", off_value)
+        s = Settings()
+        assert s.radiology_mode is False, f"{off_value!r} should disable"
