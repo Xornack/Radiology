@@ -208,11 +208,22 @@ class DictationOrchestrator:
         self._wedge_last_terminator = bool(stripped) and stripped[-1] in ".?!"
 
     def generate_impression(self, findings: str) -> str:
-        """
-        Generates a radiology impression from findings text via the LLM client.
-        Returns an empty string if no LLM client is configured.
+        """Ask the LLM client for an impression and time the round-trip.
+
+        Returns "" if no LLM client is configured. The profiler timer
+        logs cold-vs-warm Ollama latency so the user can see whether
+        keep-alive tuning is needed.
         """
         if not self.llm_client:
-            logger.warning("generate_impression called but no LLM client is configured.")
+            logger.warning(
+                "generate_impression called but no LLM client is configured."
+            )
             return ""
-        return self.llm_client.generate_impression(findings)
+        if self.profiler:
+            self.profiler.start("llm_impression")
+        try:
+            return self.llm_client.generate_impression(findings)
+        finally:
+            if self.profiler:
+                total = self.profiler.stop("llm_impression")
+                logger.info(f"Impression generation: {total:.2f}s")
