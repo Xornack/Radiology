@@ -227,3 +227,25 @@ class DictationOrchestrator:
             if self.profiler:
                 total = self.profiler.stop("llm_impression")
                 logger.info(f"Impression generation: {total:.2f}s")
+
+    def structure_report(self, text: str) -> str:
+        """Ask the LLM client to convert freeform text into the ACR
+        six-section template. Time the round-trip via the profiler.
+
+        Returns "" if no LLM client is configured. The profiler timer
+        logs how expensive the longer ~1024-token output is so the
+        user can decide whether to switch to a larger / faster model.
+        """
+        if not self.llm_client:
+            logger.warning(
+                "structure_report called but no LLM client is configured."
+            )
+            return ""
+        if self.profiler:
+            self.profiler.start("structure_report")
+        try:
+            return self.llm_client.structure_report(text)
+        finally:
+            if self.profiler:
+                total = self.profiler.stop("structure_report")
+                logger.info(f"Report structuring: {total:.2f}s")

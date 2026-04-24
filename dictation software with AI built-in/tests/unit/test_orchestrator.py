@@ -373,3 +373,35 @@ def test_type_wedge_commit_wedge_failure_does_not_raise():
     # Bookkeeping stays untouched on failure: the flag would be wrong for
     # the follow-up leading-space decision if we flipped it on a miss.
     assert orch._wedge_has_typed is False
+
+
+def test_structure_report_delegates_to_llm_client():
+    """Orchestrator.structure_report calls the LLM client's structure_report
+    and returns its result."""
+    mock_llm = MagicMock()
+    mock_llm.structure_report.return_value = "EXAMINATION:\nCT chest.\n..."
+
+    orchestrator = DictationOrchestrator(
+        recorder=MagicMock(),
+        stt_client=MagicMock(),
+        wedge=MagicMock(),
+        llm_client=mock_llm,
+    )
+
+    result = orchestrator.structure_report("freeform report text")
+
+    assert "EXAMINATION" in result
+    mock_llm.structure_report.assert_called_once_with("freeform report text")
+
+
+def test_structure_report_returns_empty_when_no_llm_client():
+    """Orchestrator with no llm_client returns "" without crashing."""
+    orchestrator = DictationOrchestrator(
+        recorder=MagicMock(),
+        stt_client=MagicMock(),
+        wedge=MagicMock(),
+        llm_client=None,
+    )
+
+    result = orchestrator.structure_report("any text")
+    assert result == ""
