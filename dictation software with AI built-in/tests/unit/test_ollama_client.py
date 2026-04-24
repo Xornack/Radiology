@@ -70,3 +70,74 @@ def test_generate_impression_returns_empty_on_http_error():
         )
         result = client.generate_impression("findings")
     assert result == ""
+
+
+def test_structure_report_success():
+    """OllamaClient.structure_report parses the chat response and returns it."""
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "message": {"content": "EXAMINATION:\nCT chest.\n\n..."}
+    }
+
+    with patch("requests.post", return_value=mock_response):
+        client = OllamaClient(
+            url="http://localhost:11434/api/chat",
+            model="qwen2.5:3b",
+        )
+        result = client.structure_report("Some freeform report text.")
+
+    assert "EXAMINATION:" in result
+
+
+def test_structure_report_scrubs_phi():
+    """PHI must be scrubbed BEFORE the structuring request leaves the process."""
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"message": {"content": "Structured."}}
+
+    with patch("requests.post", return_value=mock_response) as mock_post:
+        with patch(
+            "src.ai.ollama_client.scrub_text",
+            side_effect=lambda x: x.replace("John Doe", "[NAME]"),
+        ) as mock_scrub:
+            client = OllamaClient(
+                url="http://localhost:11434/api/chat",
+                model="qwen2.5:3b",
+            )
+            client.structure_report("Patient John Doe has clear lungs.")
+
+    mock_scrub.assert_called_once()
+    sent_payload = mock_post.call_args[1]["json"]
+    serialized = str(sent_payload)
+    assert "John Doe" not in serialized
+    assert "[NAME]" in serialized
+
+
+def test_structure_report_returns_empty_on_connection_error():
+    """No Ollama server -> graceful empty string, no exception."""
+    with patch("requests.post", side_effect=requests.ConnectionError):
+        client = OllamaClient(
+            url="http://localhost:11434/api/chat",
+            model="qwen2.5:3b",
+        )
+        result = client.structure_report("some text")
+    assert result == ""
+
+
+def test_structure_report_uses_larger_num_predict():
+    """Six-section reports are longer than impressions; the request must
+    set num_predict >= 1024 so FINDINGS doesn't truncate mid-sentence."""
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"message": {"content": "Structured."}}
+
+    with patch("requests.post", return_value=mock_response) as mock_post:
+        client = OllamaClient(
+            url="http://localhost:11434/api/chat",
+            model="qwen2.5:3b",
+        )
+        client.structure_report("some text")
+
+    sent_payload = mock_post.call_args[1]["json"]
+    assert sent_payload["options"]["num_predict"] >= 1024
