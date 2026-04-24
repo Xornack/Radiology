@@ -343,45 +343,17 @@ def test_stt_combo_defaults_to_whisper_local_cpu(qtbot):
     assert window.current_stt_backend() == "whisper-local-cpu"
 
 
-def test_stt_combo_contains_all_user_facing_backends(qtbot):
-    """Dropdown lists every backend a single-workstation user can safely pick.
-    whisper-http and parakeet-tdt are intentionally hidden; see the
-    does-not-expose tests below. Both are still reachable via STT_BACKEND."""
+def test_stt_combo_contains_all_supported_backends(qtbot):
+    """Dropdown lists every backend the app currently supports."""
     window = MainWindow()
     qtbot.addWidget(window)
     keys = [window.stt_combo.itemData(i) for i in range(window.stt_combo.count())]
     assert set(keys) == {
         "whisper-local-cpu",
         "whisper-local-gpu",
-        "whisper-turbo-gpu",
-        "moonshine-tiny",
-        "moonshine-base",
         "sensevoice",
-        "vosk",
-        "gemma-e2b",
-        "gemma-e2b-4bit",
-        "gemma-e4b",
-        "gemma-e4b-4bit",
+        "medasr",
     }
-
-
-def test_stt_combo_does_not_expose_whisper_http(qtbot):
-    """whisper-http in the dropdown is a foot-gun on a single workstation —
-    always connection-refuses. Keep it env-var-only."""
-    window = MainWindow()
-    qtbot.addWidget(window)
-    keys = [window.stt_combo.itemData(i) for i in range(window.stt_combo.count())]
-    assert "whisper-http" not in keys
-
-
-def test_stt_combo_does_not_expose_parakeet(qtbot):
-    """Parakeet (NeMo) hard-crashes the process on Python 3.13 Windows with
-    no recoverable exception. Kept out of the dropdown so a click can't brick
-    the session; still reachable via STT_BACKEND=parakeet-tdt."""
-    window = MainWindow()
-    qtbot.addWidget(window)
-    keys = [window.stt_combo.itemData(i) for i in range(window.stt_combo.count())]
-    assert "parakeet-tdt" not in keys
 
 
 def test_radiology_check_defaults_on(qtbot):
@@ -432,12 +404,12 @@ def test_stt_combo_change_fires_callback(qtbot):
     qtbot.addWidget(window)
     received = []
     window.on_stt_changed = lambda backend: received.append(backend)
-    # Find the Gemma E2B index and switch to it
+    # Switch to SenseVoice (a non-default entry)
     for i in range(window.stt_combo.count()):
-        if window.stt_combo.itemData(i) == "gemma-e2b":
+        if window.stt_combo.itemData(i) == "sensevoice":
             window.stt_combo.setCurrentIndex(i)
             break
-    assert received == ["gemma-e2b"]
+    assert received == ["sensevoice"]
 
 
 def test_stt_combo_disabled_during_recording(qtbot):
@@ -458,8 +430,8 @@ def test_set_stt_backend_syncs_combo_without_firing_callback(qtbot):
     qtbot.addWidget(window)
     received = []
     window.on_stt_changed = lambda backend: received.append(backend)
-    window.set_stt_backend("gemma-e4b")
-    assert window.current_stt_backend() == "gemma-e4b"
+    window.set_stt_backend("whisper-local-gpu")
+    assert window.current_stt_backend() == "whisper-local-gpu"
     assert received == []
 
 
@@ -630,6 +602,61 @@ def test_empty_commit_after_leading_space_anchor_leaves_no_stray_space(qtbot):
     window.commit_partial("")
 
     assert window.editor.toPlainText() == "Clear."
+
+
+def test_commit_starting_with_punctuation_attaches_to_prior_word(qtbot):
+    """MedASR splits "is this clear question mark" into streaming commits — the
+    second commit can arrive as a lone "?". The controller must not wedge a
+    space in front of it, otherwise the editor shows "clear ?"."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.begin_streaming()
+    window.on_commit("Is this clear")
+    window.on_commit("?")
+    window.commit_partial("")
+
+    assert window.editor.toPlainText() == "Is this clear?"
+
+
+def test_partial_starting_with_punctuation_attaches_to_prior_commit(qtbot):
+    """Same attach-to-left behavior at the partial level — a live "?" tick
+    must not render as ' ?' before the user finishes dictating."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.begin_streaming()
+    window.on_commit("Is this clear")
+    window.update_partial("?")
+
+    assert window.editor.toPlainText() == "Is this clear?"
+
+
+def test_commit_partial_starting_with_punctuation_attaches_to_prior_text(qtbot):
+    """Session-end commit_partial path: lone '.' or '?' must not get a leading
+    space when it lands after a prior committed word."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.begin_streaming()
+    window.on_commit("Findings clear")
+    window.commit_partial(".")
+
+    assert window.editor.toPlainText() == "Findings clear."
+
+
+def test_commit_of_regular_word_still_gets_leading_space(qtbot):
+    """Regression guard: the new attach-to-left rule only fires for
+    punctuation — normal words must still get the separator."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window.begin_streaming()
+    window.on_commit("First chunk")
+    window.on_commit("second chunk")
+    window.commit_partial("")
+
+    assert window.editor.toPlainText() == "First chunk second chunk"
 
 
 # ----- on_commit slot (streaming commit/split) -----

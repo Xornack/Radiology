@@ -1,3 +1,4 @@
+import os
 import pytest
 from src.utils.settings import Settings
 
@@ -5,19 +6,12 @@ from src.utils.settings import Settings
 def test_settings_default_values():
     """Settings must provide safe defaults when no environment variables are set."""
     s = Settings()
-    assert s.whisper_url == "http://localhost:8000/transcribe"
+    assert s.whisper_model == "base.en"
     assert s.llm_url == "http://localhost:8001/v1/completions"
     assert isinstance(s.speechmike_vid, int)
     assert isinstance(s.speechmike_pid, int)
     assert s.speechmike_vid == 0x0554   # Nuance PowerMic II-NS
     assert s.speechmike_pid == 0x1001
-
-
-def test_settings_reads_whisper_url_from_env(monkeypatch):
-    """WHISPER_URL environment variable must override the default."""
-    monkeypatch.setenv("WHISPER_URL", "http://gpu-server:9000/transcribe")
-    s = Settings()
-    assert s.whisper_url == "http://gpu-server:9000/transcribe"
 
 
 def test_settings_reads_llm_url_from_env(monkeypatch):
@@ -53,9 +47,16 @@ def test_settings_default_stt_backend_is_whisper_local_cpu():
 
 def test_settings_stt_backend_env_override(monkeypatch):
     """STT_BACKEND env var selects a different backend (case-insensitive)."""
-    monkeypatch.setenv("STT_BACKEND", "Gemma-E2B")
+    monkeypatch.setenv("STT_BACKEND", "SenseVoice")
     s = Settings()
-    assert s.stt_backend == "gemma-e2b"
+    assert s.stt_backend == "sensevoice"
+
+
+def test_settings_whisper_model_env_override(monkeypatch):
+    """WHISPER_MODEL selects the faster-whisper model size."""
+    monkeypatch.setenv("WHISPER_MODEL", "small.en")
+    s = Settings()
+    assert s.whisper_model == "small.en"
 
 
 def test_settings_radiology_mode_defaults_on():
@@ -70,3 +71,52 @@ def test_settings_radiology_mode_disabled_by_env(monkeypatch):
         monkeypatch.setenv("RADIOLOGY_MODE", off_value)
         s = Settings()
         assert s.radiology_mode is False, f"{off_value!r} should disable"
+
+
+# --- .env loader ---
+
+def test_dotenv_loader_sets_missing_env_vars(tmp_path, monkeypatch):
+    """KEY=VALUE lines should populate os.environ for variables not already set."""
+    from src.utils.settings import _load_dotenv
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "# a comment\n"
+        "\n"
+        "FOO_TEST_SETTING=bar\n"
+        'BAZ_TEST_SETTING="hello world"\n'
+        "QUX_TEST_SETTING='single quoted'\n"
+    )
+    for key in ("FOO_TEST_SETTING", "BAZ_TEST_SETTING", "QUX_TEST_SETTING"):
+        monkeypatch.delenv(key, raising=False)
+    _load_dotenv(env_file)
+    assert os.environ["FOO_TEST_SETTING"] == "bar"
+    assert os.environ["BAZ_TEST_SETTING"] == "hello world"
+    assert os.environ["QUX_TEST_SETTING"] == "single quoted"
+
+
+def test_dotenv_loader_does_not_overwrite_existing_env(tmp_path, monkeypatch):
+    """A value set in the shell must win over the .env fallback."""
+    import os
+    from src.utils.settings import _load_dotenv
+    env_file = tmp_path / ".env"
+    env_file.write_text("FOO_TEST_OVERRIDE=from_file\n")
+    monkeypatch.setenv("FOO_TEST_OVERRIDE", "from_shell")
+    _load_dotenv(env_file)
+    assert os.environ["FOO_TEST_OVERRIDE"] == "from_shell"
+
+
+def test_dotenv_loader_ignores_missing_file(tmp_path):
+    """No .env? Loader is a silent no-op — never raises."""
+    from src.utils.settings import _load_dotenv
+    _load_dotenv(tmp_path / "does_not_exist.env")
+
+
+def test_dotenv_loader_skips_malformed_lines(tmp_path, monkeypatch):
+    """Lines without '=' are silently skipped rather than blowing up."""
+    import os
+    from src.utils.settings import _load_dotenv
+    env_file = tmp_path / ".env"
+    env_file.write_text("just_a_word_no_equals\nVALID_TEST_KEY=ok\n")
+    monkeypatch.delenv("VALID_TEST_KEY", raising=False)
+    _load_dotenv(env_file)
+    assert os.environ["VALID_TEST_KEY"] == "ok"

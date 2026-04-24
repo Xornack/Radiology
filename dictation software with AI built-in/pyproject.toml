@@ -37,38 +37,6 @@ gpu = [
     "nvidia-cublas-cu12",
     "nvidia-cudnn-cu12",
 ]
-# Optional Gemma 4 STT backend: pip install -e '.[gemma]'
-# Requires HF license acceptance for google/gemma-4-E2B or E4B.
-# pillow + torchvision are hard transitives of Gemma4Processor even though we
-# only feed it audio: the multimodal processor imports PIL and torchvision
-# unconditionally at load time to register the image/video branches.
-gemma = [
-    "transformers>=4.50",
-    "torch>=2.3",
-    "torchvision>=0.18",
-    "accelerate>=0.33",
-    "pillow>=10",
-    # 4-bit quantized Gemma variants (CUDA-only).
-    "bitsandbytes>=0.43",
-]
-# Optional Moonshine STT backend (Useful Sensors): pip install -e '.[moonshine]'
-# Dedicated ASR, small (~60 MB), fast on CPU. ONNX Runtime flavor — avoids
-# the PyTorch-version pin on the torch-flavored `useful-moonshine` package,
-# which doesn't currently ship wheels for Python 3.13.
-moonshine = [
-    "useful-moonshine-onnx",
-]
-# Optional NVIDIA Parakeet-TDT STT backend: pip install -e '.[parakeet]'
-# Requires NeMo toolkit (large install, ~1 GB+); GPU strongly recommended.
-parakeet = [
-    "nemo_toolkit[asr]>=2.0",
-]
-# Optional Vosk STT backend: pip install -e '.[vosk]'
-# Models must be downloaded manually from https://alphacephei.com/vosk/models
-# and the unpacked directory path set in VOSK_MODEL_PATH.
-vosk = [
-    "vosk>=0.3.45",
-]
 # Optional SenseVoice STT backend (Alibaba FunASR): pip install -e '.[sensevoice]'
 # Small multilingual ASR (~100M params) with emotion + event tagging.
 # funasr needs torchaudio at import time but doesn't declare it as a hard dep
@@ -77,6 +45,15 @@ sensevoice = [
     "funasr>=1.1",
     "torch>=2.3",
     "torchaudio>=2.3",
+]
+# Optional MedASR STT backend (Google Health AI): pip install -e '.[medasr]'
+# Conformer ASR (~105M params) trained on physician dictation — ~4.6% WER
+# on radiology per Google's benchmarks. Needs transformers main until the
+# next release ships; requires HF login + accepting the Health AI
+# Developer Foundations terms on huggingface.co/google/medasr.
+medasr = [
+    "transformers>=4.57",
+    "torch>=2.3",
 ]
 
 [project.scripts]

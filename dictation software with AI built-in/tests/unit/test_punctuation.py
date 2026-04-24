@@ -254,3 +254,32 @@ def test_capitalize_first_false_on_plain_text():
 def test_capitalize_first_default_true_preserves_legacy_behavior():
     """Default behavior is unchanged for callers that don't pass the flag."""
     assert apply_punctuation("hello period world") == "Hello. World"
+
+
+def test_strip_inferred_false_preserves_real_punctuation():
+    """MedASR produces real `.` and `,` glyphs; the stripper would erase them.
+    When strip_inferred=False the stripper no-ops but token substitution +
+    autocap still run."""
+    assert apply_punctuation(
+        "the lungs are clear. the heart is normal.",
+        strip_inferred=False,
+    ) == "The lungs are clear. The heart is normal."
+
+
+def test_strip_inferred_false_still_substitutes_dictated_tokens():
+    """Token substitution stays on even when strip_inferred is off — if a
+    MedASR user says 'question mark' (no tag exists for it) the spoken word
+    must still become a glyph."""
+    assert apply_punctuation(
+        "is it clear question mark",
+        strip_inferred=False,
+    ) == "Is it clear?"
+
+
+def test_strip_inferred_false_preserves_mixed_glyphs_and_tokens():
+    """Real MedASR output mixes real commas (from its ITN) with glyphs the
+    client expanded from tags — both must survive."""
+    assert apply_punctuation(
+        "findings: lungs clear, heart normal.",
+        strip_inferred=False,
+    ) == "Findings: lungs clear, heart normal."

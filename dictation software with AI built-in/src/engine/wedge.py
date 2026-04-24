@@ -35,6 +35,8 @@ _user32.AttachThreadInput.argtypes = [
 ]
 _user32.AttachThreadInput.restype = wintypes.BOOL
 _user32.GetFocus.restype = wintypes.HWND
+_user32.IsWindow.argtypes = [wintypes.HWND]
+_user32.IsWindow.restype = wintypes.BOOL
 _user32.PostMessageW.argtypes = [
     wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM
 ]
@@ -95,6 +97,14 @@ def type_text(text: str):
     target = _focused_hwnd()
     if not target:
         logger.error(f"Wedge: no focused window; cannot post {text!r}")
+        return
+    # HWND captured above could already be invalid if the window closed
+    # between focus lookup and now. IsWindow is cheap and prevents a
+    # cryptic GetLastError=1400 (INVALID_WINDOW_HANDLE) on the first post.
+    if not _user32.IsWindow(target):
+        logger.error(
+            f"Wedge: target HWND {target:#x} no longer valid; cannot post {text!r}"
+        )
         return
 
     for unit in _to_utf16_code_units(text):

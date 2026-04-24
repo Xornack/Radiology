@@ -1,8 +1,8 @@
 import ctypes
 from loguru import logger
-from src.security.scrubber import scrub_text
-from src.engine.punctuation import apply_punctuation
-from src.engine.lexicon import correct_radiology
+from src.engine.pipeline import TextPipeline
+# Re-exported for tests that patch `src.core.orchestrator.scrub_text`.
+from src.security.scrubber import scrub_text  # noqa: F401
 
 
 def _foreground_window_title() -> str:
@@ -56,14 +56,24 @@ class DictationOrchestrator:
         # terminator. True initially so the very first session capitalizes.
         # In-app mode doesn't consult this — the caller uses editor context.
         self._wedge_last_terminator = True
-        # When True, apply a radiology-vocabulary correction pass after
-        # punctuation so near-misses like "plural" → "pleural" are fixed.
-        # UI flips this via a checkbox; defaults on since the user is a
-        # radiologist by default.
+        # Post-transcription text pipeline: scrub → punctuation → optional
+        # radiology correction. Owned here so the three stages stay in sync
+        # and the orchestrator doesn't have to know about them individually.
+        self._text_pipeline = TextPipeline(radiology_mode=True)
+        # Public knob the UI checkbox toggles; synced into the pipeline on
+        # each call so mid-session rewiring is a no-op rather than stale.
         self.radiology_mode = True
+        # Re-entrancy guard. A double-press of the trigger or a race between
+        # UI button and hardware HID shouldn't restart the recorder mid-session
+        # (which would clear the audio buffer and lose the dictation).
+        self._recording = False
 
     def handle_trigger_down(self):
         """Called when the user presses the dictation button."""
+        if self._recording:
+            logger.warning("handle_trigger_down ignored: already recording")
+            return
+        self._recording = True
         logger.info("Dictation started.")
         if self.profiler:
             self.profiler.start("full_pipeline")
@@ -110,19 +120,23 @@ class DictationOrchestrator:
             self.profiler.stop("whisper_stt")
             self.profiler.start("scrubbing")
 
-        # 3. Scrub PHI
-        clean_text = scrub_text(raw_text)
-
-        # 3b. Map spoken punctuation tokens (period, comma, new paragraph, ...).
-        # Wedge mode uses our own terminator flag to decide first-letter caps;
-        # in-app mode leaves the first letter alone and lets the UI layer
-        # decide from editor context (cursor may have moved between sessions).
+        # 3. Post-transcription text pipeline: scrub → punctuation → optional
+        # radiology correction. Wedge mode uses the terminator flag for
+        # first-letter caps; in-app leaves casing to the UI layer (which
+        # decides from editor context — cursor may have moved between sessions).
         cap_first = self._wedge_last_terminator if mode == "wedge" else False
-        clean_text = apply_punctuation(clean_text, capitalize_first=cap_first)
-
-        # 3c. Optional radiology-vocabulary correction.
-        if self.radiology_mode:
-            clean_text = correct_radiology(clean_text)
+        self._text_pipeline.radiology_mode = self.radiology_mode
+        # Engines that emit real punctuation (MedASR) must skip the Whisper
+        # stripper — otherwise every `.` and `,` we produced disappears.
+        # `is True` is deliberate: MagicMock STT stubs in tests auto-create a
+        # truthy attribute here, and we want that to behave like a normal
+        # Whisper-style engine unless the test opts in explicitly.
+        emits_punct = getattr(self.stt_client, "emits_punctuation", False) is True
+        clean_text = self._text_pipeline.process(
+            raw_text,
+            capitalize_first=cap_first,
+            strip_inferred=not emits_punct,
+        )
         logger.debug(f"Final text to send: {clean_text!r}")
 
         if self.profiler:
@@ -151,6 +165,7 @@ class DictationOrchestrator:
             total = self.profiler.stop("full_pipeline")
             logger.info(f"Pipeline complete. Total latency: {total:.4f}s")
 
+        self._recording = False
         return clean_text
 
     def generate_impression(self, findings: str) -> str:

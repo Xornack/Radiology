@@ -53,3 +53,18 @@ def test_punctuation_boundaries_respected():
     assert correct_radiology("Assessment: plural effusion.") == (
         "Assessment: pleural effusion."
     )
+
+
+def test_threshold_parameter_is_applied():
+    """A strict threshold should prevent corrections that the default (0.85) permits.
+
+    'atalectasis' vs. 'atelectasis' scores ~0.83 — above the default 0.85
+    cutoff after Python's difflib normalizes the comparison, but below a
+    very strict 0.99 cutoff. Verifies the threshold knob is actually wired.
+    """
+    default = correct_radiology("mild atalectasis")
+    strict = correct_radiology("mild atalectasis", threshold=0.99)
+    # Default catches the near-miss; strict does not.
+    assert "atelectasis" in default
+    assert "atelectasis" not in strict
+    assert "atalectasis" in strict

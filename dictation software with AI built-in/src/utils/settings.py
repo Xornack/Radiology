@@ -1,4 +1,6 @@
 import os
+from pathlib import Path
+
 from loguru import logger
 
 
@@ -13,6 +15,41 @@ def _safe_int(val: str, default: int, name: str) -> int:
         return default
 
 
+def _load_dotenv(env_path: Path) -> None:
+    """Read KEY=VALUE lines from a .env file into os.environ (as a fallback).
+
+    Existing environment variables always win, so a shell override is still
+    authoritative. Used so secrets like `HF_TOKEN` can live in a gitignored
+    file instead of being typed on every launch. Format: one `KEY=VALUE`
+    per line, `#` for comments, optional matched surrounding quotes.
+    """
+    if not env_path.is_file():
+        return
+    try:
+        for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip()
+            # Strip matching surrounding quotes so HF_TOKEN="hf_xxx" works.
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):
+                value = value[1:-1]
+            os.environ.setdefault(key, value)
+    except Exception as e:
+        logger.warning(f"Failed to read .env at {env_path}: {e}")
+
+
+# Project root = two levels up from this file (src/utils/settings.py).
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+# Load .env before Settings() reads os.getenv so the file's values take
+# effect on first app start — no extra wiring in main.py needed.
+_load_dotenv(_PROJECT_ROOT / ".env")
+
+
 class Settings:
     """
     Application settings loaded from environment variables with safe defaults.
@@ -20,38 +57,15 @@ class Settings:
     """
     def __init__(self):
         # STT backend selector. One of:
-        #   "whisper-local-cpu" (default), "whisper-local-gpu", "whisper-http",
-        #   "gemma-e2b", "gemma-e2b-4bit", "gemma-e4b", "gemma-e4b-4bit",
-        #   "moonshine-tiny", "moonshine-base", "parakeet-tdt", "vosk".
-        # "whisper-local" is accepted as a legacy alias for whisper-local-cpu.
+        #   "whisper-local-cpu" (default), "whisper-local-gpu", "sensevoice".
         # Unknown values fall back to whisper-local-cpu so a typo in the env
         # doesn't silently disable dictation.
         self.stt_backend: str = os.getenv("STT_BACKEND", "whisper-local-cpu").lower()
-        # Parakeet-TDT model ID (NeMo HF Hub repo). Defaults to the 0.6B v2
-        # which is the best accuracy/latency tradeoff for radiology speech.
-        self.parakeet_model: str = os.getenv(
-            "PARAKEET_MODEL", "nvidia/parakeet-tdt-0.6b-v2"
-        )
-        # Vosk requires a manually-downloaded model directory — no HF/hub
-        # fetch. Leave empty until the user sets the path; the builder will
-        # raise a clear error on first selection rather than crashing later.
-        self.vosk_model_path: str = os.getenv("VOSK_MODEL_PATH", "")
         # Radiology-vocabulary correction on by default (user is a radiologist).
         # Set RADIOLOGY_MODE=0 / false / off to flip the default to off.
         rad_raw = os.getenv("RADIOLOGY_MODE", "1").strip().lower()
         self.radiology_mode: bool = rad_raw not in ("0", "false", "off", "no")
-        # "local" runs faster-whisper in-process (no server needed).
-        # "http" uses WhisperClient against WHISPER_URL.
-        self.whisper_mode: str = os.getenv("WHISPER_MODE", "local").lower()
-        self.whisper_url: str = os.getenv(
-            "WHISPER_URL", "http://localhost:8000/transcribe"
-        )
         self.whisper_model: str = os.getenv("WHISPER_MODEL", "base.en")
-        # CPU+int8 works everywhere without CUDA Toolkit. To use GPU, install
-        # CUDA Toolkit 12.x (or `pip install nvidia-cublas-cu12 nvidia-cudnn-cu12`)
-        # and set WHISPER_DEVICE=cuda, WHISPER_COMPUTE_TYPE=float16.
-        self.whisper_device: str = os.getenv("WHISPER_DEVICE", "cpu")
-        self.whisper_compute_type: str = os.getenv("WHISPER_COMPUTE_TYPE", "int8")
         self.llm_url: str = os.getenv(
             "LLM_URL", "http://localhost:8001/v1/completions"
         )

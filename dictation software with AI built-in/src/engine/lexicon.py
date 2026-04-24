@@ -82,10 +82,10 @@ def correct_radiology(text: str, threshold: float = 0.85) -> str:
     """
     if not text:
         return text
-    return _WORD_RE.sub(_correct_one_word, text)
+    return _WORD_RE.sub(lambda m: _correct_one_word(m, threshold), text)
 
 
-def _correct_one_word(match: re.Match) -> str:
+def _correct_one_word(match: re.Match, threshold: float) -> str:
     word = match.group(0)
     lower = word.lower()
     if lower in RADIOLOGY_TERMS:
@@ -94,7 +94,7 @@ def _correct_one_word(match: re.Match) -> str:
         return _preserve_case(word, _KNOWN_SWAPS[lower])
     if lower in _SAFE_WORDS:
         return word
-    candidates = get_close_matches(lower, RADIOLOGY_TERMS, n=1, cutoff=0.85)
+    candidates = get_close_matches(lower, RADIOLOGY_TERMS, n=1, cutoff=threshold)
     if candidates:
         return _preserve_case(word, candidates[0])
     return word

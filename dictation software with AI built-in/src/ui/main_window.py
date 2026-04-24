@@ -4,7 +4,11 @@ from PyQt6.QtWidgets import (
     QWidget, QLabel, QPushButton, QComboBox, QSizeGrip, QCheckBox,
 )
 from PyQt6.QtCore import Qt, QPoint
-from PyQt6.QtGui import QColor, QTextCharFormat, QTextCursor
+from PyQt6.QtGui import QColor, QTextCharFormat
+
+from src.ai.stt_registry import dropdown_backends
+from src.ui.styles import MAIN_WINDOW_QSS
+from src.ui.text_streaming_controller import TextStreamingController
 
 
 class MainWindow(QMainWindow):
@@ -33,7 +37,7 @@ class MainWindow(QMainWindow):
         self.on_refresh_devices: Optional[Callable[[], None]] = None
         self.on_mode_changed: Optional[Callable[[str], None]] = None
         # Fires with the new STT backend key when the user picks a different
-        # engine from the dropdown (e.g. "whisper-local" → "gemma-e2b").
+        # engine from the dropdown (e.g. "whisper-local-cpu" → "sensevoice").
         self.on_stt_changed: Optional[Callable[[str], None]] = None
         # Fires with True/False when the user flips the radiology-vocabulary
         # checkbox. main.py wires this to orchestrator.radiology_mode.
@@ -47,22 +51,9 @@ class MainWindow(QMainWindow):
         # with a feedback nudge while this is True.
         self._warming: bool = False
 
-        # Bounds of the live region that spans committed + partial text.
-        # `_committed_end` is the insertion anchor; up to that position,
-        # text is locked in and not rewritten by update_partial. Between
-        # `_committed_end` and `_partial_end` is the live partial region
-        # that update_partial replaces in place. Both are -1 when no
-        # streaming session is active.
-        self._committed_end: int = -1
-        self._partial_end: int = -1
-        # Set in begin_streaming when the anchor sits after non-whitespace text:
-        # Set in begin_streaming: True when the dictation starts a new sentence
-        # (document start, or preceding text ends with . ? !). False means the
-        # session is a mid-sentence continuation and the first letter must stay
-        # lowercase.
-        self._capitalize_first: bool = True
-
-        # Optional profiler wired by main.py to track latency-critical operations
+        # Optional profiler wired by main.py to track latency-critical
+        # operations. The streaming controller reads this via a getter
+        # lambda so a post-construction `window.profiler = p` just works.
         self.profiler = None
 
         # Format applied to every dictated run (partials and commits).
@@ -157,25 +148,10 @@ class MainWindow(QMainWindow):
             "Speech-to-text engine. Whisper: fast, live partials. "
             "Gemma 4: multimodal LLM, final transcription only (slower)."
         )
-        self.stt_combo.addItem("Whisper (local, CPU)", userData="whisper-local-cpu")
-        self.stt_combo.addItem("Whisper (local, GPU)", userData="whisper-local-gpu")
-        self.stt_combo.addItem("Whisper Turbo (GPU)", userData="whisper-turbo-gpu")
-        # "whisper-http" backend is intentionally NOT exposed in the dropdown:
-        # on a single workstation it always connection-refuses. Available via
-        # STT_BACKEND=whisper-http env var for remote/containerized deployments.
-        self.stt_combo.addItem("Moonshine tiny", userData="moonshine-tiny")
-        self.stt_combo.addItem("Moonshine base", userData="moonshine-base")
-        self.stt_combo.addItem("SenseVoice (Alibaba)", userData="sensevoice")
-        # Parakeet-TDT (NeMo) is intentionally NOT exposed in the dropdown:
-        # NeMo's import chain (torch-distributed / Megatron / pytorch-lightning)
-        # hard-crashes on Python 3.13 Windows during ASRModel.from_pretrained,
-        # with no recoverable Python exception — the whole process dies. Still
-        # reachable via STT_BACKEND=parakeet-tdt if someone wants to debug.
-        self.stt_combo.addItem("Vosk (offline)", userData="vosk")
-        self.stt_combo.addItem("Gemma 4 E2B-it", userData="gemma-e2b")
-        self.stt_combo.addItem("Gemma 4 E2B-it (4-bit)", userData="gemma-e2b-4bit")
-        self.stt_combo.addItem("Gemma 4 E4B-it", userData="gemma-e4b")
-        self.stt_combo.addItem("Gemma 4 E4B-it (4-bit)", userData="gemma-e4b-4bit")
+        # Source of truth for available backends is src/ai/stt_registry.
+        # Adding one there makes it appear here automatically.
+        for spec in dropdown_backends():
+            self.stt_combo.addItem(spec.display_name, userData=spec.key)
         self.stt_combo.currentIndexChanged.connect(self._on_stt_combo_changed)
         sr_layout.addWidget(self.stt_combo, stretch=1)
 
@@ -224,6 +200,15 @@ class MainWindow(QMainWindow):
         self.editor = QTextEdit()
         self.editor.setPlaceholderText("Dictation transcript appears here...")
         root.addWidget(self.editor)
+
+        # Partial-text state machine. The getter lambda lets main.py set
+        # `window.profiler` after construction without us having to forward
+        # the change to the controller.
+        self._streaming_ctrl = TextStreamingController(
+            self.editor,
+            self._dictation_format,
+            profiler_getter=lambda: self.profiler,
+        )
 
         # Action bar
         action_bar = QWidget()
@@ -476,286 +461,22 @@ class MainWindow(QMainWindow):
         """Returns the current transcript text (used as LLM input)."""
         return self.editor.toPlainText()
 
-    # Streaming partial-transcript support
-
-    def _apply_first_letter_case(self, text: str) -> str:
-        """Uppercase or lowercase the first letter per the session's cap-first flag.
-
-        Normalizes text from either source (orchestrator output, which may be
-        uncapitalized in-app, or streaming partials, which cap by default) so
-        the first letter matches editor context.
-        """
-        if self._capitalize_first:
-            return text[0].upper() + text[1:]
-        return text[0].lower() + text[1:]
-
-    def _needs_leading_space_at(self, pos: int) -> bool:
-        """True if inserting at `pos` needs a leading space.
-
-        Dynamically checks the editor content — works for both
-        session-start (pos follows prior user text) and mid-session
-        (pos follows a previous committed chunk). Replaces the earlier
-        `_needs_leading_space` flag, which only covered the first
-        insertion and missed the between-commits case.
-        """
-        if pos <= 0:
-            return False
-        doc = self.editor.toPlainText()
-        if pos > len(doc):
-            return False
-        return doc[pos - 1] not in " \t\n"
+    # Streaming partial-transcript support — thin delegators to the
+    # TextStreamingController so callers keep the same API.
 
     def begin_streaming(self):
-        """Anchor a streaming session at the current cursor position.
-
-        If there is an active selection, the selected text is removed first so
-        dictation replaces it (standard "type over selection" behavior). Until
-        commit_partial, the range [_committed_end, _partial_end] is the live
-        partial region that update_partial replaces in place. Below
-        _committed_end is locked-in text (initially empty; grows as on_commit
-        fires during the session).
-        """
-        cursor = self.editor.textCursor()
-        if cursor.hasSelection():
-            cursor.removeSelectedText()
-            self.editor.setTextCursor(cursor)
-        pos = cursor.position()
-        self._committed_end = pos
-        self._partial_end = pos
-        doc_text = self.editor.toPlainText()
-        stripped_prefix = doc_text[:pos].rstrip()
-        self._capitalize_first = (
-            not stripped_prefix
-            or stripped_prefix[-1] in ".?!"
-        )
+        self._streaming_ctrl.begin()
 
     def update_partial(self, text: str):
-        """Replace [_committed_end, _partial_end] with `text`."""
-        if self._committed_end < 0:
-            return
-        if self.profiler:
-            self.profiler.start("partial_replace")
-        if text:
-            text = self._apply_first_letter_case(text)
-            if self._needs_leading_space_at(self._committed_end):
-                text = " " + text
-        cursor = self.editor.textCursor()
-        cursor.setPosition(self._committed_end)
-        cursor.setPosition(self._partial_end, QTextCursor.MoveMode.KeepAnchor)
-        cursor.removeSelectedText()
-        cursor.insertText(text, self._dictation_format)
-        self._partial_end = self._committed_end + len(text)
-        self.editor.ensureCursorVisible()
-        if self.profiler:
-            self.profiler.stop("partial_replace")
+        self._streaming_ctrl.update_partial(text)
 
     def on_commit(self, text: str):
-        """Lock the current partial region as committed.
-
-        Replaces [_committed_end, _partial_end] with `text` (the commit
-        transcription, which can differ from the last displayed partial since
-        the STT has more audio context), then advances _committed_end so
-        subsequent update_partial calls don't overwrite the locked text.
-        """
-        if self._committed_end < 0:
-            return
-        if text:
-            text = self._apply_first_letter_case(text)
-            if self._needs_leading_space_at(self._committed_end):
-                text = " " + text
-        cursor = self.editor.textCursor()
-        cursor.setPosition(self._committed_end)
-        cursor.setPosition(self._partial_end, QTextCursor.MoveMode.KeepAnchor)
-        cursor.removeSelectedText()
-        cursor.insertText(text, self._dictation_format)
-        new_end = self._committed_end + len(text)
-        self._committed_end = new_end
-        self._partial_end = new_end
-        # After the first commit, subsequent chunks are mid-sentence — the
-        # session-start capitalization has already been applied.
-        self._capitalize_first = False
-        self.editor.ensureCursorVisible()
+        self._streaming_ctrl.on_commit(text)
 
     def commit_partial(self, text: str):
-        """Replace the live partial region with the final text and end streaming.
-
-        `text` is the orchestrator's Stop-path output: for in-app mode with
-        prior commits, it's the REMAINDER only (committed chunks stay put
-        in the editor via prior on_commit calls). For wedge/no-commits, it's
-        the whole transcribe. Either way, replacing [_committed_end,
-        _partial_end] does the right thing — that region is the live partial
-        in both cases.
-        """
-        if self._committed_end < 0:
-            if text:
-                self.append_text(text)
-            return
-
-        if text:
-            text = self._apply_first_letter_case(text)
-            if self._needs_leading_space_at(self._committed_end):
-                text = " " + text
-
-        cursor = self.editor.textCursor()
-        cursor.setPosition(self._committed_end)
-        cursor.setPosition(self._partial_end, QTextCursor.MoveMode.KeepAnchor)
-        cursor.removeSelectedText()
-        if text:
-            cursor.insertText(text, self._dictation_format)
-
-        self.editor.setTextCursor(cursor)
-        self.editor.setCurrentCharFormat(QTextCharFormat())
-
-        self._committed_end = -1
-        self._partial_end = -1
-        self._capitalize_first = True
-        self.editor.ensureCursorVisible()
+        self._streaming_ctrl.commit_partial(text)
 
     # Styling
 
     def _apply_styles(self):
-        self.setStyleSheet("""
-            #rootWidget {
-                background: #1e1e2e;
-                border: 1px solid #585b70;
-                border-radius: 8px;
-            }
-            #titleBar {
-                background: #24273a;
-                border-bottom: 1px solid #45475a;
-                border-top-left-radius: 8px;
-                border-top-right-radius: 8px;
-            }
-            #appTitle {
-                color: #cdd6f4;
-                font-size: 13px;
-                font-weight: bold;
-            }
-            #winBtn {
-                background: #313244;
-                color: #cdd6f4;
-                border: none;
-                border-radius: 4px;
-                font-size: 16px;
-            }
-            #winBtn:hover { background: #45475a; }
-            #closeBtn {
-                background: #313244;
-                color: #cdd6f4;
-                border: none;
-                border-radius: 4px;
-                font-size: 16px;
-            }
-            #closeBtn:hover { background: #f38ba8; color: #1e1e2e; }
-            QTextEdit {
-                background: #181825;
-                color: #cdd6f4;
-                border: none;
-                font-family: 'Segoe UI', sans-serif;
-                font-size: 13px;
-                padding: 6px;
-            }
-            #actionBar {
-                background: #1e1e2e;
-                border-top: 1px solid #45475a;
-            }
-            #impressionBtn {
-                background: #89b4fa;
-                color: #1e1e2e;
-                border: none;
-                border-radius: 4px;
-                padding: 6px 14px;
-                font-size: 12px;
-                font-weight: bold;
-            }
-            #impressionBtn:hover { background: #b4befe; }
-            #impressionBtn:disabled { background: #45475a; color: #7f849c; }
-            #recordBtn {
-                background: #f38ba8;
-                color: #1e1e2e;
-                border: none;
-                border-radius: 4px;
-                padding: 6px 12px;
-                font-size: 12px;
-                font-weight: bold;
-            }
-            #recordBtn:hover { background: #eba0ac; }
-            #recordBtn:disabled { background: #45475a; color: #7f849c; }
-            #stopBtn {
-                background: #fab387;
-                color: #1e1e2e;
-                border: none;
-                border-radius: 4px;
-                padding: 6px 12px;
-                font-size: 12px;
-                font-weight: bold;
-            }
-            #stopBtn:hover { background: #f5c2a7; }
-            #stopBtn:disabled { background: #45475a; color: #7f849c; }
-            #clearBtn {
-                background: #313244;
-                color: #cdd6f4;
-                border: none;
-                border-radius: 4px;
-                padding: 6px 12px;
-                font-size: 12px;
-            }
-            #clearBtn:hover { background: #45475a; }
-            #micRow { background: #1e1e2e; }
-            #micLabel { color: #a6adc8; font-size: 11px; }
-            #micCombo {
-                background: #313244;
-                color: #cdd6f4;
-                border: 1px solid #45475a;
-                border-radius: 4px;
-                padding: 3px 6px;
-                font-size: 11px;
-            }
-            #micCombo:disabled { background: #1e1e2e; color: #7f849c; }
-            #refreshBtn {
-                background: #313244;
-                color: #cdd6f4;
-                border: 1px solid #45475a;
-                border-radius: 4px;
-                font-size: 14px;
-            }
-            #refreshBtn:hover { background: #45475a; }
-            #refreshBtn:disabled { background: #1e1e2e; color: #7f849c; }
-            #micCombo QAbstractItemView {
-                background: #181825;
-                color: #cdd6f4;
-                selection-background-color: #45475a;
-            }
-            #modeRow { background: #1e1e2e; }
-            #modeLabel { color: #a6adc8; font-size: 11px; }
-            #modeCombo {
-                background: #313244;
-                color: #cdd6f4;
-                border: 1px solid #45475a;
-                border-radius: 4px;
-                padding: 3px 6px;
-                font-size: 11px;
-            }
-            #modeCombo:disabled { background: #1e1e2e; color: #7f849c; }
-            #modeCombo QAbstractItemView {
-                background: #181825;
-                color: #cdd6f4;
-                selection-background-color: #45475a;
-            }
-            #sttRow { background: #1e1e2e; }
-            #sttLabel { color: #a6adc8; font-size: 11px; }
-            #sttCombo {
-                background: #313244;
-                color: #cdd6f4;
-                border: 1px solid #45475a;
-                border-radius: 4px;
-                padding: 3px 6px;
-                font-size: 11px;
-            }
-            #sttCombo:disabled { background: #1e1e2e; color: #7f849c; }
-            #sttCombo QAbstractItemView {
-                background: #181825;
-                color: #cdd6f4;
-                selection-background-color: #45475a;
-            }
-        """)
+        self.setStyleSheet(MAIN_WINDOW_QSS)

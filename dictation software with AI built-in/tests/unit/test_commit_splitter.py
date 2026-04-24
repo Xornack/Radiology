@@ -148,3 +148,39 @@ def test_tickresult_is_a_plain_dataclass():
     r = TickResult(commit_text="a", partial_text="b")
     assert r.commit_text == "a"
     assert r.partial_text == "b"
+
+
+def test_process_tick_swallows_buffer_boundary_shift():
+    """If the recorder buffer shrinks between get_sample_count and the slice
+    call (e.g. recorder.start() was called mid-tick), the tick must return
+    an empty TickResult instead of propagating ValueError."""
+
+    class ShiftingRecorder:
+        def __init__(self, samples: np.ndarray):
+            self._samples = samples
+            self._raise_next = False
+
+        def get_sample_count(self) -> int:
+            return len(self._samples)
+
+        def get_wav_bytes_slice(self, start: int, end: int) -> bytes:
+            if self._raise_next:
+                raise ValueError(
+                    f"end_sample {end} exceeds buffer length 0"
+                )
+            pcm = (self._samples[start:end] * 32767).astype(np.int16)
+            buf = io.BytesIO()
+            with wave.open(buf, "wb") as wf:
+                wf.setnchannels(1)
+                wf.setsampwidth(2)
+                wf.setframerate(16000)
+                wf.writeframes(pcm.tobytes())
+            return buf.getvalue()
+
+    rec = ShiftingRecorder(_tone(1.2))
+    rec._raise_next = True
+    splitter = CommitSplitter(rec, ScriptedSTT([]))
+    # Must not raise — must return an empty tick.
+    result = splitter.process_tick()
+    assert result.commit_text is None
+    assert result.partial_text is None

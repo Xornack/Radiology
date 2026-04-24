@@ -9,16 +9,21 @@ from src.engine.wedge import type_text, WM_CHAR
 
 
 def _patches():
-    """Patch the Win32 shims so no real windows are touched during tests."""
+    """Patch the Win32 shims so no real windows are touched during tests.
+
+    IsWindow is patched truthy by default — individual tests that need to
+    exercise the "window vanished" branch should patch it themselves.
+    """
     return (
         patch('src.engine.wedge._focused_hwnd', return_value=0xDEAD),
+        patch('src.engine.wedge._user32.IsWindow', return_value=1),
         patch('src.engine.wedge._user32.PostMessageW', return_value=1),
     )
 
 
 def test_type_text_single_bmp_char_one_post():
-    focused_patch, post_patch = _patches()
-    with focused_patch, post_patch as mock_post:
+    focused_patch, iswin_patch, post_patch = _patches()
+    with focused_patch, iswin_patch, post_patch as mock_post:
         type_text("h")
         assert mock_post.call_count == 1
         args, _ = mock_post.call_args_list[0]
@@ -29,32 +34,32 @@ def test_type_text_single_bmp_char_one_post():
 
 
 def test_type_text_uppercase_one_post():
-    focused_patch, post_patch = _patches()
-    with focused_patch, post_patch as mock_post:
+    focused_patch, iswin_patch, post_patch = _patches()
+    with focused_patch, iswin_patch, post_patch as mock_post:
         type_text("H")
         assert mock_post.call_count == 1
         assert mock_post.call_args_list[0][0][2] == ord("H")
 
 
 def test_type_text_punctuation_one_post_each():
-    focused_patch, post_patch = _patches()
-    with focused_patch, post_patch as mock_post:
+    focused_patch, iswin_patch, post_patch = _patches()
+    with focused_patch, iswin_patch, post_patch as mock_post:
         type_text("!")
         assert mock_post.call_count == 1
         assert mock_post.call_args_list[0][0][2] == ord("!")
 
 
 def test_type_text_two_chars_two_posts():
-    focused_patch, post_patch = _patches()
-    with focused_patch, post_patch as mock_post:
+    focused_patch, iswin_patch, post_patch = _patches()
+    with focused_patch, iswin_patch, post_patch as mock_post:
         type_text("Hi")
         assert mock_post.call_count == 2
         assert [c[0][2] for c in mock_post.call_args_list] == [ord("H"), ord("i")]
 
 
 def test_type_text_three_chars_three_posts_in_order():
-    focused_patch, post_patch = _patches()
-    with focused_patch, post_patch as mock_post:
+    focused_patch, iswin_patch, post_patch = _patches()
+    with focused_patch, iswin_patch, post_patch as mock_post:
         type_text("Hi!")
         assert mock_post.call_count == 3
         assert [c[0][2] for c in mock_post.call_args_list] == [
@@ -63,14 +68,14 @@ def test_type_text_three_chars_three_posts_in_order():
 
 
 def test_type_text_colon_and_question_no_shift_emulation():
-    focused_patch, post_patch = _patches()
-    with focused_patch, post_patch as mock_post:
+    focused_patch, iswin_patch, post_patch = _patches()
+    with focused_patch, iswin_patch, post_patch as mock_post:
         type_text(":")
         assert mock_post.call_count == 1
         assert mock_post.call_args_list[0][0][2] == ord(":")
 
-    focused_patch, post_patch = _patches()
-    with focused_patch, post_patch as mock_post:
+    focused_patch, iswin_patch, post_patch = _patches()
+    with focused_patch, iswin_patch, post_patch as mock_post:
         type_text("?")
         assert mock_post.call_count == 1
         assert mock_post.call_args_list[0][0][2] == ord("?")
@@ -78,8 +83,8 @@ def test_type_text_colon_and_question_no_shift_emulation():
 
 def test_type_text_supplementary_plane_char_uses_surrogate_pair():
     """A U+1F600 😀 codepoint becomes 2 UTF-16 code units = 2 posts."""
-    focused_patch, post_patch = _patches()
-    with focused_patch, post_patch as mock_post:
+    focused_patch, iswin_patch, post_patch = _patches()
+    with focused_patch, iswin_patch, post_patch as mock_post:
         type_text("\U0001F600")
         assert mock_post.call_count == 2
         units = [c[0][2] for c in mock_post.call_args_list]
@@ -88,8 +93,8 @@ def test_type_text_supplementary_plane_char_uses_surrogate_pair():
 
 
 def test_type_text_empty_string_is_noop():
-    focused_patch, post_patch = _patches()
-    with focused_patch, post_patch as mock_post:
+    focused_patch, iswin_patch, post_patch = _patches()
+    with focused_patch, iswin_patch, post_patch as mock_post:
         type_text("")
         assert mock_post.call_count == 0
 
@@ -97,8 +102,9 @@ def test_type_text_empty_string_is_noop():
 def test_type_text_aborts_on_post_failure():
     """PostMessageW returning 0 aborts the remaining characters."""
     focused_patch = patch('src.engine.wedge._focused_hwnd', return_value=0xDEAD)
+    iswin_patch = patch('src.engine.wedge._user32.IsWindow', return_value=1)
     post_patch = patch('src.engine.wedge._user32.PostMessageW')
-    with focused_patch, post_patch as mock_post:
+    with focused_patch, iswin_patch, post_patch as mock_post:
         mock_post.side_effect = [1, 0, 1, 1, 1]
         type_text("Hello")
         assert mock_post.call_count == 2
@@ -109,5 +115,16 @@ def test_type_text_noop_when_no_focused_window():
     focused_patch = patch('src.engine.wedge._focused_hwnd', return_value=0)
     post_patch = patch('src.engine.wedge._user32.PostMessageW')
     with focused_patch, post_patch as mock_post:
+        type_text("hi")
+        assert mock_post.call_count == 0
+
+
+def test_type_text_noop_when_window_no_longer_valid():
+    """If the HWND was focused at lookup but is now destroyed, IsWindow says
+    no and we must not post — avoids a cryptic INVALID_WINDOW_HANDLE error."""
+    focused_patch = patch('src.engine.wedge._focused_hwnd', return_value=0xDEAD)
+    iswin_patch = patch('src.engine.wedge._user32.IsWindow', return_value=0)
+    post_patch = patch('src.engine.wedge._user32.PostMessageW')
+    with focused_patch, iswin_patch, post_patch as mock_post:
         type_text("hi")
         assert mock_post.call_count == 0

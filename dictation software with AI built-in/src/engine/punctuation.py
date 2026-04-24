@@ -139,7 +139,11 @@ def _autocap(text: str, capitalize_first: bool = True) -> str:
     return text
 
 
-def apply_punctuation(text: str, capitalize_first: bool = True) -> str:
+def apply_punctuation(
+    text: str,
+    capitalize_first: bool = True,
+    strip_inferred: bool = True,
+) -> str:
     """
     PowerScribe-style post-processor. Strips Whisper's auto-punctuation and
     replaces dictated tokens (period, comma, new paragraph, colon, ...) with
@@ -149,10 +153,16 @@ def apply_punctuation(text: str, capitalize_first: bool = True) -> str:
     that treat this as a mid-sentence continuation (e.g. click-off/click-on
     dictation where the previous session didn't end with a terminator) can
     keep the first letter lowercase.
+
+    `strip_inferred=False` skips the Whisper-punctuation stripper for STT
+    engines that already emit real glyphs (MedASR). Token substitution +
+    spacing + autocap still run so dictated-word punctuation and capital
+    conventions stay consistent across engines.
     """
     if not text:
         return text
-    text = _strip_whisper_punctuation(text)
+    if strip_inferred:
+        text = _strip_whisper_punctuation(text)
     text = _substitute_tokens(text)
     text = _tidy_spacing(text)
     text = _enforce_punctuation_spacing(text)

@@ -1,13 +1,21 @@
 # PHI Regex Patterns
 # Each key is a regex pattern; each value is the replacement placeholder.
 # Order matters: more specific patterns (SSN, MRN) are checked before generic ones.
+#
+# Case handling: scoped `(?i:...)` groups mark LABELS (MRN, Patient, Dr., Name:)
+# as case-insensitive so "mrn: 123" and "patient john doe" are scrubbed the
+# same as their capitalized forms. The NAME portions stay case-sensitive on
+# purpose — blanket IGNORECASE over `[A-Z][\w\-']*` would match any word and
+# produce massive false positives on ordinary sentences.
 PHI_PATTERNS = {
     # Social Security Numbers: 123-45-6789
     r'\b\d{3}-\d{2}-\d{4}\b': '[SSN]',
 
-    # MRN: various formats (must come before generic number patterns)
-    r'\bMRN[:\s#]*\d[\d\-]+\b': 'MRN: [ID]',
-    r'\bMedical\s+Record\s+(?:Number|No\.?|#)\s*:?\s*\d[\d\-]+\b': 'MRN: [ID]',
+    # MRN: various formats (must come before generic number patterns).
+    # Separator class allows ':', whitespace, '#', and '-' so both
+    # "MRN: 1234" and "MRN-1234" scrub correctly.
+    r'(?i:\bMRN)[:\s#\-]*\d[\d\-]*\b': 'MRN: [ID]',
+    r'(?i:\bMedical\s+Record\s+(?:Number|No\.?|\#)?)\s*[:\-]?\s*\d[\d\-]+\b': 'MRN: [ID]',
 
     # Dates — month-spelled: January 5, 2024 / Jan 5 2024
     r'\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|'
@@ -28,12 +36,12 @@ PHI_PATTERNS = {
 
     # Patient name: "Patient <1+ capitalized words>"
     # Handles: "Patient John Doe", "Patient JOHN DOE", "Patient Mary-Jane Smith",
-    #          "Patient José García", "Patient Madonna"
-    r'\bPatient\s+(?:[A-Z][\w\-\']*\s+)*[A-Z][\w\-\']*\b': 'Patient [NAME]',
+    #          "Patient José García", "Patient Madonna", "patient John Doe"
+    r'(?i:\bPatient)\s+(?:[A-Z][\w\-\']*\s+)*[A-Z][\w\-\']*\b': 'Patient [NAME]',
 
-    # Titled names: "Mr. John Smith", "Dr. Jane Doe", "Mrs. O'Brien"
-    r'\b(?:Mr|Mrs|Ms|Dr|Prof)\.?\s+(?:[A-Z][\w\-\']*\s+)*[A-Z][\w\-\']*\b': '[NAME]',
+    # Titled names: "Mr. John Smith", "Dr. Jane Doe", "Mrs. O'Brien", "dr smith"
+    r'(?i:\b(?:Mr|Mrs|Ms|Dr|Prof)\.?)\s+(?:[A-Z][\w\-\']*\s+)*[A-Z][\w\-\']*\b': '[NAME]',
 
     # "Name:" labels from report headers
-    r'\bName\s*:\s*(?:[A-Z][\w\-\']*\s+)*[A-Z][\w\-\']*\b': 'Name: [NAME]',
+    r'(?i:\bName)\s*:\s*(?:[A-Z][\w\-\']*\s+)*[A-Z][\w\-\']*\b': 'Name: [NAME]',
 }

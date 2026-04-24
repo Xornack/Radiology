@@ -9,9 +9,8 @@ from src.ui.main_window import MainWindow
 from src.hardware.recorder import AudioRecorder, list_input_devices
 from src.hardware.mic_listener import MicListener
 from src.hardware.global_hotkey import GlobalHotkey, VK_F4, MOD_NOREPEAT
-from src.ai.whisper_client import WhisperClient
-from src.ai.local_whisper_client import LocalWhisperClient
 from src.ai.llm_client import LLMClient
+from src.ai.stt_registry import build_stt_client
 from src.core.orchestrator import DictationOrchestrator
 from src.core.streaming import StreamingTranscriber
 from src.engine import wedge
@@ -21,135 +20,9 @@ from src.utils.settings import settings
 
 
 def _build_stt_client(backend: str):
-    """Return the configured STT client for the requested backend.
-
-    Unknown backend strings fall back to local Whisper (CPU) so a dropdown
-    typo doesn't disable dictation.
-    """
-    backend = (backend or "").lower()
-    if backend == "whisper-http":
-        logger.info(f"STT: Whisper HTTP → {settings.whisper_url}")
-        return WhisperClient(url=settings.whisper_url)
-    if backend == "whisper-local-gpu":
-        # Force CUDA + float16. If the runtime DLLs are missing the client
-        # already falls back to CPU+int8 automatically at inference time.
-        logger.info(f"STT: Whisper local GPU (model={settings.whisper_model}, cuda/float16)")
-        return LocalWhisperClient(
-            model_size=settings.whisper_model,
-            device="cuda",
-            compute_type="float16",
-        )
-    if backend == "whisper-turbo-gpu":
-        # Whisper large-v3-turbo: same large-v3 encoder, trimmed decoder (~4
-        # layers vs 32). ~8x faster than large-v3 at comparable accuracy for
-        # English; GPU-only because the model is still ~1.5 GB.
-        logger.info("STT: Whisper Turbo (large-v3-turbo, cuda/float16)")
-        return LocalWhisperClient(
-            model_size="large-v3-turbo",
-            device="cuda",
-            compute_type="float16",
-        )
-    if backend in ("moonshine-tiny", "moonshine-base"):
-        # The ONNX-flavored package imports as `moonshine_onnx`; the torch
-        # flavor as `moonshine`. Accept either so Python 3.13 users (where
-        # the torch flavor's pin is broken) can still use the ONNX variant.
-        try:
-            import moonshine_onnx  # noqa: F401
-        except ImportError:
-            try:
-                import moonshine  # noqa: F401
-            except ImportError as e:
-                raise ImportError(
-                    "Moonshine STT requires the [moonshine] extra "
-                    f"(missing: {getattr(e, 'name', None) or e}). "
-                    "Install with: pip install -e '.[moonshine]'"
-                ) from e
-        from src.ai.moonshine_stt_client import MoonshineSTTClient
-        model_name = (
-            "moonshine/tiny" if backend == "moonshine-tiny" else "moonshine/base"
-        )
-        logger.info(f"STT: Moonshine ({model_name})")
-        return MoonshineSTTClient(model=model_name)
-    if backend == "parakeet-tdt":
-        try:
-            import nemo.collections.asr as _nemo_asr  # noqa: F401
-        except ImportError as e:
-            raise ImportError(
-                "Parakeet STT requires the [parakeet] extra "
-                f"(missing: {getattr(e, 'name', None) or e}). "
-                "Install with: pip install -e '.[parakeet]'"
-            ) from e
-        from src.ai.parakeet_stt_client import ParakeetSTTClient
-        logger.info(f"STT: Parakeet-TDT ({settings.parakeet_model})")
-        return ParakeetSTTClient(model=settings.parakeet_model)
-    if backend == "sensevoice":
-        try:
-            import funasr  # noqa: F401
-        except ImportError as e:
-            raise ImportError(
-                "SenseVoice STT requires the [sensevoice] extra "
-                f"(missing: {getattr(e, 'name', None) or e}). "
-                "Install with: pip install -e '.[sensevoice]'"
-            ) from e
-        from src.ai.sensevoice_stt_client import SenseVoiceSTTClient
-        logger.info("STT: SenseVoice (iic/SenseVoiceSmall)")
-        return SenseVoiceSTTClient()
-    if backend == "vosk":
-        try:
-            import vosk  # noqa: F401
-        except ImportError as e:
-            raise ImportError(
-                "Vosk STT requires the [vosk] extra "
-                f"(missing: {getattr(e, 'name', None) or e}). "
-                "Install with: pip install -e '.[vosk]'"
-            ) from e
-        if not settings.vosk_model_path:
-            raise ValueError(
-                "Vosk requires VOSK_MODEL_PATH pointing at an unpacked Vosk "
-                "model directory (download from https://alphacephei.com/vosk/models)."
-            )
-        from src.ai.vosk_stt_client import VoskSTTClient
-        logger.info(f"STT: Vosk ({settings.vosk_model_path})")
-        return VoskSTTClient(model_path=settings.vosk_model_path)
-    if backend in ("gemma-e2b", "gemma-e4b", "gemma-e2b-4bit", "gemma-e4b-4bit"):
-        # Validate heavy deps up front so a missing [gemma] extra surfaces in
-        # the UI status pill instead of silently failing later on the warm thread.
-        try:
-            import torch  # noqa: F401
-            import transformers  # noqa: F401
-        except ImportError as e:
-            missing = getattr(e, "name", None) or str(e)
-            raise ImportError(
-                f"Gemma STT requires the [gemma] extra (missing: {missing}). "
-                f"Install with: pip install -e '.[gemma]'"
-            ) from e
-        quantize_4bit = backend.endswith("-4bit")
-        if quantize_4bit:
-            try:
-                import bitsandbytes  # noqa: F401
-            except ImportError as e:
-                raise ImportError(
-                    "4-bit Gemma requires bitsandbytes (shipped with the "
-                    "[gemma] extra). Re-run: pip install -e '.[gemma]'"
-                ) from e
-        from src.ai.gemma_stt_client import GemmaSTTClient
-        # The instruction-tuned (-it) variants ship with the chat template that
-        # the multimodal processor needs; the base repos don't.
-        model_id = (
-            "google/gemma-4-E4B-it"
-            if backend.startswith("gemma-e4b")
-            else "google/gemma-4-E2B-it"
-        )
-        label = f"Gemma 4 ({model_id}{', 4-bit' if quantize_4bit else ''})"
-        logger.info(f"STT: {label}")
-        return GemmaSTTClient(model_id=model_id, quantize_4bit=quantize_4bit)
-    # Default / fallback: whisper-local-cpu (also handles legacy "whisper-local").
-    logger.info(f"STT: Whisper local CPU (model={settings.whisper_model}, cpu/int8)")
-    return LocalWhisperClient(
-        model_size=settings.whisper_model,
-        device="cpu",
-        compute_type="int8",
-    )
+    """Thin wrapper over `stt_registry.build_stt_client`. Kept so existing
+    tests that monkeypatch `main._build_stt_client` still work."""
+    return build_stt_client(backend, settings)
 
 
 def main():
@@ -382,10 +255,23 @@ def main():
     if f4_hotkey.register():
         f4_hotkey.activated.connect(f4_toggle)
         f4_shortcut = None
+        logger.info("F4 recording trigger registered as global hotkey.")
     else:
         f4_shortcut = QShortcut(QKeySequence("F4"), window)
         f4_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
         f4_shortcut.activated.connect(f4_toggle)
+        # Surface the degraded mode in the UI: the app-local shortcut only
+        # fires when the window has focus, which is useless for Wedge mode
+        # (where the user intentionally focuses another app). Users should
+        # know that F4 won't work while Chrome/Outlook/etc. is foreground.
+        logger.warning(
+            "Global F4 hotkey unavailable (another app is holding it?); "
+            "falling back to app-local shortcut — F4 only fires when this "
+            "window has focus."
+        )
+        window.set_status(
+            "F4 works only when this window is focused", "#f9e2af"
+        )
 
     # 8. Wire the Generate Impression button
     def do_generate_impression():
@@ -408,21 +294,22 @@ def main():
 
     window.on_generate_impression = do_generate_impression
 
-    # 9. Shutdown cleanup — close HID, global hotkey, and audio stream when app exits
+    # 9. Shutdown cleanup — stop every background source in reverse order
+    # (producer → consumer). Each step is wrapped independently so an
+    # earlier failure doesn't skip later ones and leak resources.
     def on_shutdown():
         logger.info("Shutting down...")
-        try:
-            f4_hotkey.unregister()
-        except Exception as e:
-            logger.warning(f"Error unregistering global hotkey: {e}")
-        try:
-            mic.stop()
-        except Exception as e:
-            logger.warning(f"Error stopping mic listener: {e}")
-        try:
-            recorder.stop()
-        except Exception as e:
-            logger.warning(f"Error stopping recorder: {e}")
+        shutdown_tasks = [
+            ("global hotkey", f4_hotkey.unregister),
+            ("mic listener",  mic.stop),
+            ("streaming",     streaming.stop),
+            ("recorder",      recorder.stop),
+        ]
+        for label, task in shutdown_tasks:
+            try:
+                task()
+            except Exception as e:
+                logger.warning(f"Error stopping {label}: {e}")
 
     app.aboutToQuit.connect(on_shutdown)
 

@@ -56,3 +56,40 @@ def test_non_phi_text_unchanged():
     """Normal clinical text without PHI must pass through unmodified."""
     raw_text = "The lungs are clear. No pneumothorax. Heart size normal."
     assert scrub_text(raw_text) == raw_text
+
+
+def test_scrub_mrn_with_hyphen_separator():
+    """MRN-1234567 (hyphen directly attached to label) must also be scrubbed."""
+    result = scrub_text("Patient history: MRN-1234567 presented today.")
+    assert "1234567" not in result
+    assert "[ID]" in result
+
+
+def test_scrub_lowercase_mrn_label():
+    """Lowercase 'mrn' label must still trigger scrubbing."""
+    result = scrub_text("mrn: 123456789")
+    assert "123456789" not in result
+    assert "[ID]" in result
+
+
+def test_scrub_lowercase_patient_label():
+    """Lowercase 'patient' before a capitalized name must still scrub."""
+    result = scrub_text("patient John Doe has a cough.")
+    assert "John" not in result
+    assert "Doe" not in result
+    assert "[NAME]" in result
+
+
+def test_scrub_lowercase_dr_title():
+    """Lowercase title 'dr.' before a capitalized name must still scrub."""
+    result = scrub_text("Seen by dr. Smith in clinic.")
+    assert "Smith" not in result
+    assert "[NAME]" in result
+
+
+def test_scrub_case_insensitive_label_does_not_over_match():
+    """IGNORECASE on label must not turn into IGNORECASE on the NAME part —
+    ordinary lowercase words should not be swept into a [NAME] placeholder."""
+    raw = "the lungs are clear and heart size is normal"
+    # No title, no capitalized name → nothing scrubs.
+    assert scrub_text(raw) == raw

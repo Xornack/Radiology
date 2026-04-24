@@ -50,10 +50,19 @@ class StreamingTranscriber(QObject):
         self._timer.start(self.interval_ms)
 
     def stop(self):
-        """Stops scheduling new ticks. In-flight workers finish on their
-        own but their results are discarded because `_active` is False."""
+        """Stop scheduling new ticks and wait for any in-flight worker to
+        finish. Blocking briefly matters so get_committed_snapshot() (called
+        next by the orchestrator on Stop) reads a consistent commit pointer."""
         self._active = False
         self._timer.stop()
+        worker = self._worker
+        if worker is not None and worker.is_alive():
+            worker.join(timeout=2.0)
+            if worker.is_alive():
+                logger.warning(
+                    "Streaming worker did not finish within 2s; "
+                    "committed snapshot may be stale"
+                )
 
     def get_committed_snapshot(self) -> tuple[list[str], int]:
         """Orchestrator uses this on Stop. Safe to call after `stop()`."""

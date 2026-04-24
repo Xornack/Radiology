@@ -99,3 +99,40 @@ def test_streaming_transcriber_stt_setter_syncs_splitter(qtbot):
     new_stt = DummySTT()
     st.stt_client = new_stt
     assert st._splitter.stt_client is new_stt
+
+
+def test_streaming_stop_waits_for_in_flight_worker(qtbot):
+    """stop() must join the in-flight worker so the orchestrator's subsequent
+    get_committed_snapshot() reads a consistent commit pointer."""
+    st = StreamingTranscriber(DummyRecorder(), DummySTT())
+
+    class SlowSplitter:
+        def __init__(self):
+            self.finished_at: float | None = None
+
+        def process_tick(self):
+            time.sleep(0.15)
+            self.finished_at = time.time()
+            return TickResult()
+
+        def reset(self):
+            pass
+
+        def get_committed_snapshot(self):
+            return [], 0
+
+    slow = SlowSplitter()
+    st._splitter = slow
+    st.start()
+    st._tick()  # dispatch a worker
+
+    # Call stop while the worker is still in the sleep.
+    stop_call_time = time.time()
+    st.stop()
+    stop_returned_at = time.time()
+
+    # stop() must have blocked until the worker finished.
+    assert slow.finished_at is not None
+    assert stop_returned_at >= slow.finished_at
+    # Sanity: it actually waited (worker sleeps 0.15s).
+    assert stop_returned_at - stop_call_time >= 0.1

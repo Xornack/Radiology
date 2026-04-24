@@ -35,29 +35,34 @@ The first launch downloads the default Whisper model (`base.en`, ~140 MB) from H
 Press `F4` or click **● Record** to dictate. Click **■ Stop** when done — the
 final transcript replaces the live partial and is typed into the foreground app.
 
+## STT Backends
+
+Three backends are supported today. Pick one in the UI dropdown or via the
+`STT_BACKEND` env var.
+
+| Dropdown label | `STT_BACKEND` | Requires |
+|---|---|---|
+| Whisper (local, CPU) | `whisper-local-cpu` (default) | nothing extra |
+| Whisper (local, GPU) | `whisper-local-gpu` | `pip install -e '.[gpu]'` |
+| SenseVoice (Alibaba) | `sensevoice` | `pip install -e '.[sensevoice]'` |
+
+Whisper CPU is the zero-setup default and works on any machine. Whisper GPU
+needs the `[gpu]` extra (cuBLAS + cuDNN wheels — no CUDA Toolkit install).
+If CUDA is selected but the runtime DLLs aren't found, the client logs a
+warning and falls back to CPU `int8` automatically. SenseVoice (via
+Alibaba's FunASR) is a multilingual alternative that tends to handle this
+author's voice better than Whisper-base.
+
 ## Environment Variables
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `WHISPER_MODE` | `local` | `local` = in-process faster-whisper; `http` = call `WHISPER_URL` |
+| `STT_BACKEND` | `whisper-local-cpu` | `whisper-local-cpu` / `whisper-local-gpu` / `sensevoice` |
 | `WHISPER_MODEL` | `base.en` | Any faster-whisper model (`tiny.en`, `small.en`, `medium.en`, `large-v3`) |
-| `WHISPER_DEVICE` | `cpu` | `cpu` or `cuda` |
-| `WHISPER_COMPUTE_TYPE` | `int8` | `int8` / `int8_float16` / `float16` / `float32` |
-| `WHISPER_URL` | `http://localhost:8000/transcribe` | Used only when `WHISPER_MODE=http` |
-| `LLM_URL` | `http://localhost:8001/v1/completions` | OpenAI-compatible completions endpoint |
-| `SPEECHMIKE_VID` | `0x0911` | HID vendor ID of the dictation mic (hex or decimal) |
-| `SPEECHMIKE_PID` | `0x0c1c` | HID product ID |
-
-## Optional: GPU Acceleration
-
-Easiest Windows path (no CUDA Toolkit install required):
-
-```bash
-pip install -e '.[gpu]'
-$env:WHISPER_DEVICE="cuda"; $env:WHISPER_COMPUTE_TYPE="float16"; python -m src.main
-```
-
-If CUDA is set but the runtime DLLs aren't found, the app logs a warning and automatically falls back to CPU `int8`.
+| `RADIOLOGY_MODE` | `1` | Set to `0`/`false`/`off` to disable the radiology-vocabulary correction pass |
+| `LLM_URL` | `http://localhost:8001/v1/completions` | OpenAI-compatible completions endpoint (impression generation) |
+| `SPEECHMIKE_VID` | `0x0554` | HID vendor ID of the dictation mic (hex or decimal) |
+| `SPEECHMIKE_PID` | `0x1001` | HID product ID |
 
 ## Architecture
 
@@ -72,8 +77,10 @@ src/
 │   ├── recorder.py               # sounddevice capture + device enumeration
 │   └── mic_listener.py           # HID polling thread for SpeechMike/PowerMic
 ├── ai/
+│   ├── _common.py                # BaseSTTClient + WAV helpers (shared)
 │   ├── local_whisper_client.py   # faster-whisper, in-process
-│   ├── whisper_client.py         # HTTP client (for microservice deployments)
+│   ├── sensevoice_stt_client.py  # Alibaba SenseVoice via funasr
+│   ├── stt_registry.py           # Source of truth for available backends
 │   └── llm_client.py             # OpenAI-compatible LLM for impressions
 ├── engine/wedge.py               # Win32 SendInput keyboard injection
 ├── network/pacs_query.py         # DICOM C-FIND client

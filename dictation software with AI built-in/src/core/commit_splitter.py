@@ -55,9 +55,17 @@ class CommitSplitter:
         if partial_samples < int(self.sample_rate * self.min_partial_s):
             return TickResult()
 
-        partial_wav = self.recorder.get_wav_bytes_slice(
-            self._commit_sample_idx, end_sample
-        )
+        # Buffer can shrink between get_sample_count and get_wav_bytes_slice
+        # if the recorder is restarted mid-tick (UI restart race). Swallow
+        # the resulting ValueError and skip this tick — the next one will
+        # realign.
+        try:
+            partial_wav = self.recorder.get_wav_bytes_slice(
+                self._commit_sample_idx, end_sample
+            )
+        except ValueError as e:
+            logger.warning(f"Skipping tick due to buffer boundary shift: {e}")
+            return TickResult()
         partial_samples_arr = _decode_wav_to_float32(partial_wav)
 
         commit_local_idx = find_commit_point(
@@ -67,9 +75,13 @@ class CommitSplitter:
         commit_text: Optional[str] = None
         if commit_local_idx is not None and commit_local_idx > 0:
             commit_end_global = self._commit_sample_idx + commit_local_idx
-            commit_wav = self.recorder.get_wav_bytes_slice(
-                self._commit_sample_idx, commit_end_global
-            )
+            try:
+                commit_wav = self.recorder.get_wav_bytes_slice(
+                    self._commit_sample_idx, commit_end_global
+                )
+            except ValueError as e:
+                logger.warning(f"Skipping commit due to buffer boundary shift: {e}")
+                return TickResult()
             try:
                 raw = self.stt_client.transcribe(commit_wav)
             except Exception as e:
@@ -79,7 +91,13 @@ class CommitSplitter:
                 # capitalize_first=False: commit chunks are mid-sentence
                 # relative to the final concatenated text. The orchestrator's
                 # Stop-path post-processing decides casing from editor context.
-                commit_text = apply_punctuation(raw, capitalize_first=False)
+                commit_text = apply_punctuation(
+                    raw,
+                    capitalize_first=False,
+                    strip_inferred=getattr(
+                        self.stt_client, "emits_punctuation", False
+                    ) is not True,
+                )
                 self._committed_text.append(commit_text)
                 self._commit_sample_idx = commit_end_global
 
@@ -88,15 +106,29 @@ class CommitSplitter:
         if partial_end - partial_start <= 0:
             return TickResult(commit_text=commit_text, partial_text=None)
 
-        remainder_wav = self.recorder.get_wav_bytes_slice(
-            partial_start, partial_end
-        )
+        try:
+            remainder_wav = self.recorder.get_wav_bytes_slice(
+                partial_start, partial_end
+            )
+        except ValueError as e:
+            logger.warning(f"Skipping partial due to buffer boundary shift: {e}")
+            return TickResult(commit_text=commit_text, partial_text=None)
         try:
             raw = self.stt_client.transcribe(remainder_wav)
         except Exception as e:
             logger.error(f"Partial transcribe failed: {e}")
             raw = ""
-        partial_text = apply_punctuation(raw, capitalize_first=False) if raw else None
+        partial_text = (
+            apply_punctuation(
+                raw,
+                capitalize_first=False,
+                strip_inferred=not getattr(
+                    self.stt_client, "emits_punctuation", False
+                ),
+            )
+            if raw
+            else None
+        )
 
         return TickResult(commit_text=commit_text, partial_text=partial_text)
 

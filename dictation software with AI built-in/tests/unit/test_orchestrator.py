@@ -257,3 +257,22 @@ def test_orchestrator_without_streaming_handle_works_as_today():
     with patch("src.core.orchestrator.scrub_text", side_effect=lambda x: x):
         orch.handle_trigger_up(mode="inapp")
     recorder.get_wav_bytes.assert_called_once()
+
+
+def test_handle_trigger_down_is_idempotent_while_recording():
+    """A double-press must not restart the recorder mid-session (which
+    would clear the audio buffer and lose the prior audio)."""
+    orch = _make_orch()
+    orch.handle_trigger_down()
+    orch.handle_trigger_down()  # second press: ignored
+    assert orch.recorder.start.call_count == 1
+
+
+def test_handle_trigger_up_resets_recording_flag():
+    """After Stop, a subsequent Start must work — the flag must clear."""
+    orch = _make_orch()
+    orch.handle_trigger_down()
+    with patch("src.core.orchestrator.scrub_text", side_effect=lambda x: x):
+        orch.handle_trigger_up(mode="inapp")
+    orch.handle_trigger_down()
+    assert orch.recorder.start.call_count == 2
