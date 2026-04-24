@@ -66,9 +66,6 @@ class Settings:
         rad_raw = os.getenv("RADIOLOGY_MODE", "1").strip().lower()
         self.radiology_mode: bool = rad_raw not in ("0", "false", "off", "no")
         self.whisper_model: str = os.getenv("WHISPER_MODEL", "base.en")
-        self.llm_url: str = os.getenv(
-            "LLM_URL", "http://localhost:8001/v1/completions"
-        )
         self.ollama_url: str = os.getenv(
             "OLLAMA_URL", "http://localhost:11434/api/chat"
         )

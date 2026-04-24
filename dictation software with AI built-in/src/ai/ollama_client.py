@@ -74,9 +74,8 @@ class OllamaClient:
     def generate_impression(self, findings: str) -> str:
         """Scrub PHI, ask Ollama for an impression, return the text.
 
-        Returns "" on any failure so the UI degrades gracefully — matches
-        the contract main.py and the orchestrator already expect from the
-        previous LLMClient.
+        Returns "" on any failure so the UI degrades gracefully — the
+        orchestrator and main.py treat empty as "Impression failed".
         """
         clean_findings = scrub_text(findings)
         payload = {

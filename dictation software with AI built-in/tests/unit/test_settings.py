@@ -7,18 +7,26 @@ def test_settings_default_values():
     """Settings must provide safe defaults when no environment variables are set."""
     s = Settings()
     assert s.whisper_model == "base.en"
-    assert s.llm_url == "http://localhost:8001/v1/completions"
+    assert s.ollama_url == "http://localhost:11434/api/chat"
+    assert s.ollama_model == "qwen2.5:3b"
     assert isinstance(s.speechmike_vid, int)
     assert isinstance(s.speechmike_pid, int)
     assert s.speechmike_vid == 0x0554   # Nuance PowerMic II-NS
     assert s.speechmike_pid == 0x1001
 
 
-def test_settings_reads_llm_url_from_env(monkeypatch):
-    """LLM_URL environment variable must override the default."""
-    monkeypatch.setenv("LLM_URL", "http://gpu-server:9001/v1/completions")
+def test_settings_reads_ollama_url_from_env(monkeypatch):
+    """OLLAMA_URL environment variable must override the default."""
+    monkeypatch.setenv("OLLAMA_URL", "http://gpu-box:11434/api/chat")
     s = Settings()
-    assert s.llm_url == "http://gpu-server:9001/v1/completions"
+    assert s.ollama_url == "http://gpu-box:11434/api/chat"
+
+
+def test_settings_reads_ollama_model_from_env(monkeypatch):
+    """OLLAMA_MODEL environment variable selects a different local model."""
+    monkeypatch.setenv("OLLAMA_MODEL", "llama3.1:8b")
+    s = Settings()
+    assert s.ollama_model == "llama3.1:8b"
 
 
 def test_settings_reads_hid_ids_from_env(monkeypatch):
