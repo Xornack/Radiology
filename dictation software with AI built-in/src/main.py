@@ -9,7 +9,7 @@ from src.ui.main_window import MainWindow
 from src.hardware.recorder import AudioRecorder, list_input_devices
 from src.hardware.mic_listener import MicListener
 from src.hardware.global_hotkey import GlobalHotkey, VK_F4, MOD_NOREPEAT
-from src.ai.llm_client import LLMClient
+from src.ai.ollama_client import OllamaClient
 from src.ai.stt_registry import build_stt_client
 from src.core.orchestrator import DictationOrchestrator
 from src.core.streaming import StreamingTranscriber
@@ -32,7 +32,7 @@ def main():
 
     # 1. Initialize AI clients from settings (env-configurable, no hardcoded URLs)
     stt = _build_stt_client(settings.stt_backend)
-    llm = LLMClient(url=settings.llm_url)
+    llm = OllamaClient(url=settings.ollama_url, model=settings.ollama_model)
     recorder = AudioRecorder()
     profiler = LatencyTimer()
 
