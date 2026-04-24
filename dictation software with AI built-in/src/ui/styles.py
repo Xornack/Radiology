@@ -49,7 +49,7 @@ MAIN_WINDOW_QSS = """
         background: #1e1e2e;
         border-top: 1px solid #45475a;
     }
-    #impressionBtn {
+    #impressionBtn, #structureBtn {
         background: #89b4fa;
         color: #1e1e2e;
         border: none;
@@ -58,8 +58,8 @@ MAIN_WINDOW_QSS = """
         font-size: 12px;
         font-weight: bold;
     }
-    #impressionBtn:hover { background: #b4befe; }
-    #impressionBtn:disabled { background: #45475a; color: #7f849c; }
+    #impressionBtn:hover, #structureBtn:hover { background: #b4befe; }
+    #impressionBtn:disabled, #structureBtn:disabled { background: #45475a; color: #7f849c; }
     #recordBtn {
         background: #f38ba8;
         color: #1e1e2e;
