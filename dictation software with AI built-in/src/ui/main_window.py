@@ -32,6 +32,7 @@ class MainWindow(QMainWindow):
         # when the Record/Stop toggle is clicked. `on_mic_changed` fires when
         # the user picks a different microphone from the dropdown.
         self.on_generate_impression: Optional[Callable[[], None]] = None
+        self.on_structure_report: Optional[Callable[[], None]] = None
         self.on_toggle_recording: Optional[Callable[[bool], None]] = None
         self.on_mic_changed: Optional[Callable[[Optional[int]], None]] = None
         self.on_refresh_devices: Optional[Callable[[], None]] = None
@@ -238,6 +239,15 @@ class MainWindow(QMainWindow):
         self.impression_btn.clicked.connect(self._on_impression_clicked)
         ab.addWidget(self.impression_btn)
 
+        self.structure_btn = QPushButton("Structure Report")
+        self.structure_btn.setObjectName("structureBtn")
+        self.structure_btn.setToolTip(
+            "Replace the editor contents with the ACR six-section "
+            "structured template (Ctrl+Z to undo)"
+        )
+        self.structure_btn.clicked.connect(self._on_structure_clicked)
+        ab.addWidget(self.structure_btn)
+
         root.addWidget(action_bar)
 
         # Frameless windows lack native resize handles; a QSizeGrip in the
@@ -279,6 +289,10 @@ class MainWindow(QMainWindow):
     def _on_impression_clicked(self):
         if self.on_generate_impression is not None:
             self.on_generate_impression()
+
+    def _on_structure_clicked(self):
+        if self.on_structure_report is not None:
+            self.on_structure_report()
 
     def _on_record_toggle_clicked(self):
         """Single toggle: emits True if currently idle, False if currently recording."""
@@ -421,6 +435,7 @@ class MainWindow(QMainWindow):
         # mid-dictation text and fires an LLM call that overlaps the session.
         self.clear_btn.setEnabled(not recording)
         self.impression_btn.setEnabled(not recording)
+        self.structure_btn.setEnabled(not recording)
         # Editor lock: always read-only while recording (prevents collision with
         # the live partial region). When idle, read-only state follows the mode.
         self.editor.setReadOnly(recording or self.current_mode() == "wedge")
