@@ -65,12 +65,11 @@ def main():
     # read its committed-snapshot on Stop.
     streaming = StreamingTranscriber(recorder, stt, interval_ms=1500)
     streaming.partial_ready.connect(window.update_partial)
-    streaming.commit_ready.connect(window.on_commit)
 
     # 4. Setup Orchestrator (LLM client wired in for impression generation).
-    # `streaming` handle enables the commit-aware Stop path: in-app mode
-    # reads committed chunks and only transcribes the remaining partial
-    # region instead of re-doing the whole buffer.
+    # `streaming` handle enables the commit-aware Stop path: both modes
+    # read committed chunks and only transcribe the remaining partial
+    # region on Stop.
     orchestrator = DictationOrchestrator(
         recorder=recorder,
         stt_client=stt,
@@ -79,6 +78,19 @@ def main():
         llm_client=llm,
         streaming=streaming,
     )
+
+    # Route each streaming commit by the active dictation mode. In-app
+    # sends the chunk to the editor's live-region controller; wedge types
+    # it into the externally focused window via the orchestrator helper
+    # (which also maintains the leading-space / capitalization state
+    # consumed later by the Stop-path remainder).
+    def _on_streaming_commit(text: str):
+        if window.current_mode() == "wedge":
+            orchestrator.type_wedge_commit(text)
+        else:
+            window.on_commit(text)
+
+    streaming.commit_ready.connect(_on_streaming_commit)
 
     # 5. Dictation trigger handler — shared by HID mic, F4, and Record/Stop buttons
     recording_state = {"active": False}
@@ -103,20 +115,20 @@ def main():
         if pressed:
             if mode == "wedge":
                 window.set_status("Recording (Wedge)...", "#f38ba8")
-                orchestrator.handle_trigger_down()
-                # No streaming in Wedge mode: partials have nowhere to render.
+                # No begin_streaming(): wedge mode skips live partials
+                # (external apps can't be rewritten mid-field). Commits
+                # still stream — see _on_streaming_commit.
             else:
                 window.set_status("Recording...", "#f38ba8")
                 window.begin_streaming()
-                orchestrator.handle_trigger_down()
-                # Only drive live partials if the active STT engine is fast
-                # enough per tick (Gemma is too slow; it only runs on Stop).
-                if getattr(orchestrator.stt_client, "supports_streaming", True):
-                    streaming.start()
+            orchestrator.handle_trigger_down()
+            # Only drive streaming if the active STT engine is fast
+            # enough per tick (Gemma is too slow; it only runs on Stop).
+            if getattr(orchestrator.stt_client, "supports_streaming", True):
+                streaming.start()
         else:
             window.set_status("Processing...", "#fab387")
-            if mode == "inapp":
-                streaming.stop()
+            streaming.stop()
             try:
                 result = orchestrator.handle_trigger_up(mode=mode)
             except Exception as e:
@@ -132,8 +144,12 @@ def main():
             if mode == "wedge":
                 # Do NOT append to the in-app editor — Wedge mode's destination
                 # is the externally focused window. Audit trail goes to the log.
-                if result:
-                    logger.info(f"Wedge sent: {result!r}")
+                # `result` is just the remainder post-Stop; commits were typed
+                # mid-session, so "success" means we typed SOMETHING — either a
+                # commit during streaming or the remainder on Stop.
+                had_commits = bool(streaming.get_committed_snapshot()[0])
+                if result or had_commits:
+                    logger.info(f"Wedge sent remainder: {result!r}")
                     window.set_status("Ready")
                 else:
                     window.set_status("No text recognized", "#f9e2af")

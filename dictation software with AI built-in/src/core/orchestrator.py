@@ -5,6 +5,12 @@ from src.engine.pipeline import TextPipeline
 from src.security.scrubber import scrub_text  # noqa: F401
 
 
+# Characters that typographically attach to the previous word. When a
+# commit chunk begins with one (e.g. lone "?" from "question mark"), the
+# continuation space must be skipped so we don't produce "clear ?".
+_ATTACHING_PUNCTUATION = set('.,?!;:)]}"”')
+
+
 def _foreground_window_title() -> str:
     """Best-effort retrieval of the currently-focused window title.
 
@@ -43,10 +49,12 @@ class DictationOrchestrator:
         self.wedge = wedge
         self.profiler = profiler
         self.llm_client = llm_client
-        # Optional streaming handle. When provided and in in-app mode,
-        # the Stop path reads committed chunks via
-        # `streaming.get_committed_snapshot()` and only transcribes the
-        # remaining partial region — avoids re-doing the whole buffer.
+        # Optional streaming handle. When provided, the Stop path reads
+        # committed chunks via `streaming.get_committed_snapshot()` and
+        # only transcribes the remaining partial region — both in-app
+        # and wedge modes stream commits mid-session, so re-doing the
+        # whole buffer on Stop would re-render/retype already-delivered
+        # text.
         self.streaming = streaming
         # First wedge type of the process has no leading space; every
         # subsequent one gets a space prepended so click-on/click-off
@@ -95,17 +103,17 @@ class DictationOrchestrator:
             self.profiler.stop("audio_capture")
             self.profiler.start("whisper_stt")
 
-        # 1. Transcribe (commit-aware for in-app mode).
-        # In-app with prior commits: the UI's editor already contains the
-        # committed chunks (from StreamingTranscriber.commit_ready). We
-        # only need to transcribe + return the REMAINING partial region;
-        # main.py passes that to commit_partial, which replaces just the
-        # trailing partial — committed text stays put, no duplication.
-        # Wedge mode and short dictations (no commits) fall back to the
-        # whole-buffer transcribe since nothing has been displayed yet.
+        # 1. Transcribe (commit-aware when streaming produced commits).
+        # Both modes stream commits during recording:
+        #   - In-app: commits land in the editor via window.on_commit.
+        #   - Wedge:  commits are typed into the focused window via
+        #             type_wedge_commit.
+        # Either way, on Stop we only transcribe the REMAINING partial
+        # region — the committed chunks are already on screen / typed.
+        # Short dictations with no commits fall back to the whole buffer.
         committed_text: list[str] = []
         commit_idx = 0
-        if mode == "inapp" and self.streaming is not None:
+        if self.streaming is not None:
             committed_text, commit_idx = self.streaming.get_committed_snapshot()
 
         if committed_text and commit_idx > 0:
@@ -167,6 +175,37 @@ class DictationOrchestrator:
 
         self._recording = False
         return clean_text
+
+    def type_wedge_commit(self, text: str) -> None:
+        """Type one committed phrase to the wedge target mid-dictation.
+
+        Wired to StreamingTranscriber.commit_ready in wedge mode. Tracks
+        _wedge_has_typed and _wedge_last_terminator so the Stop-path
+        remainder picks up matching leading-space/capitalization.
+        """
+        if not text:
+            return
+        # Commits arrive from CommitSplitter with capitalize_first=False.
+        # Restore sentence-initial caps when the running state is at a
+        # terminator (session start, or prior commit ended with . ? !).
+        if self._wedge_last_terminator:
+            text = text[0].upper() + text[1:]
+        needs_space = (
+            self._wedge_has_typed
+            and text[0] not in _ATTACHING_PUNCTUATION
+        )
+        to_type = (" " + text) if needs_space else text
+        try:
+            self.wedge.type_text(to_type)
+        except Exception as e:
+            # A wedge failure here must not kill the streaming loop — next
+            # tick will still fire. The transcript remains recoverable
+            # from the recorder buffer on Stop.
+            logger.error(f"Wedge commit failed: {e}")
+            return
+        self._wedge_has_typed = True
+        stripped = text.rstrip()
+        self._wedge_last_terminator = bool(stripped) and stripped[-1] in ".?!"
 
     def generate_impression(self, findings: str) -> str:
         """

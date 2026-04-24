@@ -231,11 +231,31 @@ def test_stop_without_commits_falls_through_to_whole_buffer():
     assert "whole thing" in result
 
 
-def test_stop_wedge_mode_ignores_streaming_handle():
+def test_stop_wedge_mode_uses_streaming_remainder():
+    """Wedge Stop with prior streaming commits transcribes only the
+    remainder and types it via the wedge. Committed chunks were already
+    typed mid-session by type_wedge_commit; re-typing them would produce
+    duplicate text in the external app."""
     orch, recorder, stt, wedge = _mk_orch_with_streaming(
         committed=["prior chunk"],
         commit_idx=50000,
         remaining_transcription="wedge transcription",
+    )
+    with patch("src.core.orchestrator.scrub_text", side_effect=lambda x: x):
+        orch.handle_trigger_up(mode="wedge")
+    recorder.get_wav_bytes_slice.assert_called_once_with(50000, 100000)
+    recorder.get_wav_bytes.assert_not_called()
+    stt.transcribe.assert_called_once_with(b"remaining-wav-bytes")
+    wedge.type_text.assert_called_once()
+
+
+def test_stop_wedge_mode_without_commits_uses_whole_buffer():
+    """Short wedge dictations that never reach a commit point still work:
+    the Stop path falls through to the whole-buffer transcribe."""
+    orch, recorder, stt, wedge = _mk_orch_with_streaming(
+        committed=[],
+        commit_idx=0,
+        remaining_transcription="short one",
     )
     with patch("src.core.orchestrator.scrub_text", side_effect=lambda x: x):
         orch.handle_trigger_up(mode="wedge")
@@ -276,3 +296,80 @@ def test_handle_trigger_up_resets_recording_flag():
         orch.handle_trigger_up(mode="inapp")
     orch.handle_trigger_down()
     assert orch.recorder.start.call_count == 2
+
+
+# --- type_wedge_commit (mid-session commit streaming to wedge) -------------
+
+
+def test_type_wedge_commit_empty_text_is_noop():
+    """Empty / whitespace-less commits must never fire a wedge post."""
+    orch = _make_orch()
+    orch.type_wedge_commit("")
+    orch.wedge.type_text.assert_not_called()
+
+
+def test_type_wedge_commit_first_chunk_no_leading_space():
+    """The very first commit in the process has no separator — the target
+    field is assumed empty (or the user is placing the cursor)."""
+    orch = _make_orch()
+    orch.type_wedge_commit("the patient is stable")
+    orch.wedge.type_text.assert_called_once_with("The patient is stable")
+
+
+def test_type_wedge_commit_subsequent_chunk_prepends_space():
+    """Mid-dictation continuation chunks must not run into the prior word."""
+    orch = _make_orch()
+    orch.type_wedge_commit("the patient is stable")
+    orch.type_wedge_commit("and without pain")
+    calls = [c.args[0] for c in orch.wedge.type_text.call_args_list]
+    assert calls == ["The patient is stable", " and without pain"]
+
+
+def test_type_wedge_commit_capitalizes_after_terminator():
+    """First chunk caps (session-start terminator flag is True). Second
+    chunk keeps lowercase unless the prior commit ended with . ? !."""
+    orch = _make_orch()
+    orch.type_wedge_commit("clear.")
+    orch.type_wedge_commit("no acute findings.")
+    calls = [c.args[0] for c in orch.wedge.type_text.call_args_list]
+    assert calls == ["Clear.", " No acute findings."]
+
+
+def test_type_wedge_commit_stays_lowercase_mid_sentence():
+    """No capitalization when previous chunk did NOT end with a terminator."""
+    orch = _make_orch()
+    orch.type_wedge_commit("the patient was examined")
+    orch.type_wedge_commit("and no abnormalities")
+    calls = [c.args[0] for c in orch.wedge.type_text.call_args_list]
+    assert calls == ["The patient was examined", " and no abnormalities"]
+
+
+def test_type_wedge_commit_attaching_punctuation_skips_leading_space():
+    """A lone attaching punctuation commit (from 'question mark') must
+    hug the previous word: '...clear' + '?' → '...clear?', not '...clear ?'."""
+    orch = _make_orch()
+    orch.type_wedge_commit("is it clear")
+    orch.type_wedge_commit("?")
+    calls = [c.args[0] for c in orch.wedge.type_text.call_args_list]
+    assert calls == ["Is it clear", "?"]
+
+
+def test_type_wedge_commit_updates_terminator_flag():
+    """Terminator flag must reflect the last non-space character typed so
+    the Stop-path remainder uses the correct capitalize_first value."""
+    orch = _make_orch()
+    orch.type_wedge_commit("findings are clear.")
+    assert orch._wedge_last_terminator is True
+    orch.type_wedge_commit("the next clause")
+    assert orch._wedge_last_terminator is False
+
+
+def test_type_wedge_commit_wedge_failure_does_not_raise():
+    """A wedge type_text failure must log and return — the streaming
+    worker thread cannot be allowed to die on one bad commit."""
+    orch = _make_orch()
+    orch.wedge.type_text.side_effect = RuntimeError("post failed")
+    orch.type_wedge_commit("hello")   # must not raise
+    # Bookkeeping stays untouched on failure: the flag would be wrong for
+    # the follow-up leading-space decision if we flipped it on a miss.
+    assert orch._wedge_has_typed is False

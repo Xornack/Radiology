@@ -124,6 +124,69 @@ def test_streaming_pipeline_two_commits_then_stop():
     assert "cough" not in final.lower()
 
 
+def test_streaming_pipeline_wedge_mode_types_each_commit():
+    """End-to-end wedge streaming: each CommitSplitter commit → orchestrator
+    type_wedge_commit → wedge.type_text. On Stop, only the remainder
+    region is transcribed and typed. The committed chunks must NOT be
+    re-typed (that would duplicate text in the external app)."""
+    from unittest.mock import MagicMock
+
+    recorder = ReplayRecorder()
+    stt = ScriptedSTT([
+        "the patient has a cough",         # tick 1 commit
+        "and is febrile",                   # tick 1 partial (unused here)
+        "and is febrile today",             # tick 2 commit
+        "normal exam",                      # tick 2 partial (unused here)
+        "and no acute findings",            # Stop-path remainder transcribe
+    ])
+    splitter = CommitSplitter(recorder=recorder, stt_client=stt)
+    wedge = MagicMock()
+
+    class FakeStreaming:
+        def __init__(self, splitter):
+            self._splitter = splitter
+
+        def get_committed_snapshot(self):
+            return self._splitter.get_committed_snapshot()
+
+    orch = DictationOrchestrator(
+        recorder=recorder,
+        stt_client=stt,
+        wedge=wedge,
+        streaming=FakeStreaming(splitter),
+    )
+    orch.radiology_mode = False
+
+    # Tick 1: produce a commit; forward it as main.py's dispatcher would.
+    recorder.append(np.concatenate([_tone(2.5), _silence(0.8), _tone(1.0)]))
+    r1 = splitter.process_tick()
+    assert r1.commit_text is not None
+    orch.type_wedge_commit(r1.commit_text)
+
+    # Tick 2: another commit.
+    recorder.append(np.concatenate([_tone(1.5), _silence(0.8), _tone(0.8)]))
+    r2 = splitter.process_tick()
+    assert r2.commit_text is not None
+    orch.type_wedge_commit(r2.commit_text)
+
+    # Stop: transcribe only the uncommitted remainder and type it.
+    with patch("src.core.orchestrator.scrub_text", side_effect=lambda x: x):
+        final = orch.handle_trigger_up(mode="wedge")
+
+    typed = [c.args[0] for c in wedge.type_text.call_args_list]
+    # Exactly three posts: two commits + one remainder. No re-typing of
+    # committed chunks (that would duplicate text in the external app).
+    assert len(typed) == 3
+    # First commit has no leading space (session start); every follow-up
+    # that starts with a letter gets one.
+    assert not typed[0].startswith(" ")
+    assert typed[1].startswith(" ")
+    assert typed[2].startswith(" ")
+    # Final remainder matches what the orchestrator returned.
+    assert typed[2].strip() == final.strip()
+    assert "no acute findings" in final.lower()
+
+
 def test_streaming_pipeline_no_commits_falls_back_to_whole_buffer():
     recorder = ReplayRecorder()
     recorder.append(_tone(2.0))
