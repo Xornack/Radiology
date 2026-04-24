@@ -78,26 +78,30 @@ class OllamaClient:
         orchestrator and main.py treat empty as "Impression failed".
         """
         clean_findings = scrub_text(findings)
+        messages = [
+            {"role": "system", "content": self.system_prompt},
+            {"role": "user", "content": _FEWSHOT_USER},
+            {"role": "assistant", "content": _FEWSHOT_ASSISTANT},
+            {"role": "user", "content": f"FINDINGS:\n{clean_findings}"},
+        ]
+        return self._chat(messages, num_predict=256)
+
+    def _chat(self, messages: list[dict], num_predict: int = 256) -> str:
+        """POST a chat request to Ollama. Returns assistant content or "" on failure."""
         payload = {
             "model": self.model,
-            "messages": [
-                {"role": "system", "content": self.system_prompt},
-                {"role": "user", "content": _FEWSHOT_USER},
-                {"role": "assistant", "content": _FEWSHOT_ASSISTANT},
-                {"role": "user", "content": f"FINDINGS:\n{clean_findings}"},
-            ],
+            "messages": messages,
             "stream": False,
-            # num_predict caps the response length. Ollama defaults to 128
-            # tokens which can truncate a 5-point impression mid-sentence;
-            # 256 is comfortable for the typical 1-5 item list.
-            "options": {"temperature": 0.1, "num_predict": 256},
+            # num_predict caps response length. Ollama defaults to 128
+            # tokens which can truncate longer outputs mid-sentence;
+            # callers pass an appropriate cap for their feature.
+            "options": {"temperature": 0.1, "num_predict": num_predict},
         }
 
         try:
             response = requests.post(self.url, json=payload, timeout=60)
         except requests.ConnectionError:
             # Most common failure mode by far — Ollama not running.
-            # Hint the fix in the log so the user doesn't have to guess.
             logger.warning(
                 f"Ollama connection refused at {self.url} — "
                 "is `ollama serve` running?"
@@ -114,8 +118,6 @@ class OllamaClient:
             return ""
 
         if response.status_code != 200:
-            # Truncate the body so a misbehaving server can't spam the log
-            # but a missing-model 404 is still obvious at a glance.
             body_excerpt = response.text[:200]
             logger.warning(
                 f"Ollama returned HTTP {response.status_code}: {body_excerpt!r}"
