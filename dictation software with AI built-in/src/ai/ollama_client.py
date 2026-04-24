@@ -4,10 +4,57 @@ from loguru import logger
 from src.security.scrubber import scrub_text
 
 
+# Synthesized from ACR practice-parameter guidance, RadioGraphics' "How to
+# Create a Great Radiology Report," and JACR's prompting guide. The rules
+# are explicit because a 3B-class model needs the anti-patterns spelled
+# out — without them it tends to just rephrase the findings verbatim.
 _DEFAULT_SYSTEM_PROMPT = (
-    "You are a radiologist's assistant. Given a section of findings, "
-    "write a concise impression in numbered bullet points. Do not invent "
-    "findings that are not in the input. Do not include patient identifiers."
+    "You are an experienced radiologist writing the IMPRESSION section of "
+    "a radiology report from a section of FINDINGS.\n\n"
+    "An impression is NOT a restatement of findings. It is your synthesis: "
+    "the clinical meaning of what was observed, prioritized by importance, "
+    "with actionable recommendations only when warranted.\n\n"
+    "Rules:\n"
+    "- Output a numbered list, ordered by clinical significance "
+    "(most important / most actionable first).\n"
+    "- 1-5 items typical. Fewer is better. If the study is normal, one "
+    "sentence is enough.\n"
+    "- Each item is ONE sentence. Synthesize - do NOT copy phrases "
+    "verbatim from the findings.\n"
+    "- For abnormal findings, name the most likely diagnosis when the "
+    "imaging supports one. Add a brief differential only when imaging "
+    "is genuinely ambiguous (most likely first).\n"
+    "- Add a specific recommendation (follow-up modality + interval, "
+    "clinical correlation, tissue sampling, etc.) only when the finding "
+    "warrants action.\n"
+    "- Use direct language. Avoid hedging fillers like \"evidence of\" "
+    "or \"appears to be\" unless truly warranted.\n"
+    "- Do NOT invent findings that are not in the input.\n"
+    "- Do NOT include patient names, MRN, dates, or any other identifiers.\n"
+    "- Do NOT restate the findings section or include the heading "
+    "\"Findings:\".\n"
+    "- Output only the numbered impression. No preamble, no commentary, "
+    "no apologies."
+)
+
+
+# One concrete user/assistant pair anchoring the synthesis-not-restatement
+# behavior + recommendation pattern. Multi-turn few-shot beats embedding
+# the example in the system prompt for chat-tuned models because it
+# matches the template they were trained on.
+_FEWSHOT_USER = (
+    "FINDINGS:\n"
+    "The right lower lobe shows a focal area of consolidation with "
+    "surrounding ground-glass opacity. Small right pleural effusion is "
+    "present. The left lung is clear. The cardiomediastinal silhouette "
+    "is normal. No pneumothorax."
+)
+
+_FEWSHOT_ASSISTANT = (
+    "1. Right lower lobe consolidation with adjacent ground-glass and "
+    "small pleural effusion, most compatible with pneumonia.\n"
+    "2. Recommend clinical correlation and follow-up imaging after "
+    "treatment to confirm resolution."
 )
 
 
@@ -36,13 +83,15 @@ class OllamaClient:
             "model": self.model,
             "messages": [
                 {"role": "system", "content": self.system_prompt},
-                {"role": "user", "content": (
-                    f"Findings:\n{clean_findings}\n\n"
-                    "Provide a concise impression."
-                )},
+                {"role": "user", "content": _FEWSHOT_USER},
+                {"role": "assistant", "content": _FEWSHOT_ASSISTANT},
+                {"role": "user", "content": f"FINDINGS:\n{clean_findings}"},
             ],
             "stream": False,
-            "options": {"temperature": 0.1},
+            # num_predict caps the response length. Ollama defaults to 128
+            # tokens which can truncate a 5-point impression mid-sentence;
+            # 256 is comfortable for the typical 1-5 item list.
+            "options": {"temperature": 0.1, "num_predict": 256},
         }
 
         try:
