@@ -310,6 +310,29 @@ def main():
 
     window.on_generate_impression = do_generate_impression
 
+    # Structure Report — replaces editor contents with the ACR six-section
+    # template via the same Ollama pipeline. Editor is left untouched on
+    # failure so a network blip can't destroy the user's text. Ctrl+Z
+    # reverts the replacement via QTextEdit's built-in undo stack.
+    def do_structure_report():
+        text = window.get_findings().strip()
+        if not text:
+            window.set_status("No text to structure", "#f9e2af")
+            return
+        window.set_status("Structuring report...", "#89b4fa")
+        window.structure_btn.setEnabled(False)
+        try:
+            structured = orchestrator.structure_report(text)
+        finally:
+            window.structure_btn.setEnabled(True)
+        if structured:
+            window.editor.setPlainText(structured)
+            window.set_status("Ready")
+        else:
+            window.set_status("Structuring failed", "#f38ba8")
+
+    window.on_structure_report = do_structure_report
+
     # 9. Shutdown cleanup — stop every background source in reverse order
     # (producer → consumer). Each step is wrapped independently so an
     # earlier failure doesn't skip later ones and leak resources.
