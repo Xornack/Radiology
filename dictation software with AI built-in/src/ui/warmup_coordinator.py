@@ -25,6 +25,11 @@ class WarmupCoordinator(QObject):
         super().__init__(parent)
         self._generation = 0
         self._lock = threading.Lock()
+        # Tracked so shutdown() can join them with a timeout. Daemon
+        # threads die silently with no log when the process exits; on
+        # a clean Quit we'd rather wait briefly and know if a warm
+        # was stranded mid-load (model-load bug surfaces in the log).
+        self._threads: list[threading.Thread] = []
 
     def warm_in_background(self, stt_client: Any) -> None:
         with self._lock:
@@ -48,7 +53,26 @@ class WarmupCoordinator(QObject):
             if self._generation_current(my_gen):
                 self.ready.emit()
 
-        threading.Thread(target=run, daemon=True).start()
+        t = threading.Thread(target=run, daemon=True)
+        with self._lock:
+            self._threads.append(t)
+        t.start()
+
+    def shutdown(self, timeout: float = 3.0) -> None:
+        """Best-effort join of in-flight warmups. Logs a warning if a
+        thread is still alive after `timeout`.
+
+        Called from the app's aboutToQuit handler so model-load hangs
+        don't become invisible daemon-thread exits during shutdown."""
+        with self._lock:
+            pending = [t for t in self._threads if t.is_alive()]
+        for t in pending:
+            t.join(timeout=timeout)
+            if t.is_alive():
+                logger.warning(
+                    "WarmupCoordinator: thread still running at shutdown — "
+                    "model load may be hung"
+                )
 
     def _generation_current(self, gen: int) -> bool:
         with self._lock:

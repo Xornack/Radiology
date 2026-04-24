@@ -11,6 +11,7 @@ RadLex XML for comprehensive coverage.
 """
 import re
 from difflib import get_close_matches
+from functools import lru_cache
 
 
 # Terms most commonly mis-transcribed in radiology dictation. Keep this
@@ -82,11 +83,17 @@ def correct_radiology(text: str, threshold: float = 0.85) -> str:
     """
     if not text:
         return text
-    return _WORD_RE.sub(lambda m: _correct_one_word(m, threshold), text)
+    return _WORD_RE.sub(lambda m: _correct_one_word(m.group(0), threshold), text)
 
 
-def _correct_one_word(match: re.Match, threshold: float) -> str:
-    word = match.group(0)
+def _correct_one_word(word: str, threshold: float) -> str:
+    """Case-preserving correction for a single token.
+
+    Hot path: `difflib.get_close_matches` dominates when the word misses
+    both the RADIOLOGY_TERMS set and the safe-words set. Delegating to
+    `_best_match` (which is `lru_cache`d by lowercase+threshold) means
+    repeated misses in a dictation session pay the cost once.
+    """
     lower = word.lower()
     if lower in RADIOLOGY_TERMS:
         return word
@@ -94,10 +101,19 @@ def _correct_one_word(match: re.Match, threshold: float) -> str:
         return _preserve_case(word, _KNOWN_SWAPS[lower])
     if lower in _SAFE_WORDS:
         return word
-    candidates = get_close_matches(lower, RADIOLOGY_TERMS, n=1, cutoff=threshold)
-    if candidates:
-        return _preserve_case(word, candidates[0])
+    best = _best_match(lower, threshold)
+    if best is not None:
+        return _preserve_case(word, best)
     return word
+
+
+@lru_cache(maxsize=4096)
+def _best_match(lower: str, threshold: float):
+    """Cached fuzzy lookup. Key is (lowercase-word, threshold) so the
+    same miss in a long dictation hits the cache instead of re-running
+    difflib.get_close_matches over the ~100-term vocabulary."""
+    candidates = get_close_matches(lower, RADIOLOGY_TERMS, n=1, cutoff=threshold)
+    return candidates[0] if candidates else None
 
 
 def _preserve_case(original: str, replacement: str) -> str:

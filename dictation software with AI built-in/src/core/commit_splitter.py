@@ -12,6 +12,7 @@ from loguru import logger
 
 from src.core.vad import find_commit_point
 from src.engine.punctuation import apply_punctuation
+from src.utils.profiler import _optional_timer
 
 
 @dataclass
@@ -29,11 +30,13 @@ class CommitSplitter:
         stt_client: Any,
         sample_rate: int = 16000,
         min_partial_s: float = 0.5,
+        profiler: Any = None,
     ):
         self.recorder = recorder
         self.stt_client = stt_client
         self.sample_rate = sample_rate
         self.min_partial_s = min_partial_s
+        self.profiler = profiler
         self._commit_sample_idx: int = 0
         self._committed_text: list[str] = []
 
@@ -68,9 +71,10 @@ class CommitSplitter:
             return TickResult()
         partial_samples_arr = _decode_wav_to_float32(partial_wav)
 
-        commit_local_idx = find_commit_point(
-            partial_samples_arr, sample_rate=self.sample_rate
-        )
+        with _optional_timer(self.profiler, "tick.vad"):
+            commit_local_idx = find_commit_point(
+                partial_samples_arr, sample_rate=self.sample_rate
+            )
 
         commit_text: Optional[str] = None
         if commit_local_idx is not None and commit_local_idx > 0:
@@ -83,7 +87,8 @@ class CommitSplitter:
                 logger.warning(f"Skipping commit due to buffer boundary shift: {e}")
                 return TickResult()
             try:
-                raw = self.stt_client.transcribe(commit_wav)
+                with _optional_timer(self.profiler, "tick.commit_stt"):
+                    raw = self.stt_client.transcribe(commit_wav)
             except Exception as e:
                 logger.error(f"Commit transcribe failed, skipping commit: {e}")
                 raw = ""
@@ -91,13 +96,14 @@ class CommitSplitter:
                 # capitalize_first=False: commit chunks are mid-sentence
                 # relative to the final concatenated text. The orchestrator's
                 # Stop-path post-processing decides casing from editor context.
-                commit_text = apply_punctuation(
-                    raw,
-                    capitalize_first=False,
-                    strip_inferred=getattr(
-                        self.stt_client, "emits_punctuation", False
-                    ) is not True,
-                )
+                with _optional_timer(self.profiler, "tick.commit_punct"):
+                    commit_text = apply_punctuation(
+                        raw,
+                        capitalize_first=False,
+                        strip_inferred=getattr(
+                            self.stt_client, "emits_punctuation", False
+                        ) is not True,
+                    )
                 self._committed_text.append(commit_text)
                 self._commit_sample_idx = commit_end_global
 
@@ -114,21 +120,23 @@ class CommitSplitter:
             logger.warning(f"Skipping partial due to buffer boundary shift: {e}")
             return TickResult(commit_text=commit_text, partial_text=None)
         try:
-            raw = self.stt_client.transcribe(remainder_wav)
+            with _optional_timer(self.profiler, "tick.partial_stt"):
+                raw = self.stt_client.transcribe(remainder_wav)
         except Exception as e:
             logger.error(f"Partial transcribe failed: {e}")
             raw = ""
-        partial_text = (
-            apply_punctuation(
-                raw,
-                capitalize_first=False,
-                strip_inferred=not getattr(
-                    self.stt_client, "emits_punctuation", False
-                ),
+        with _optional_timer(self.profiler, "tick.partial_punct"):
+            partial_text = (
+                apply_punctuation(
+                    raw,
+                    capitalize_first=False,
+                    strip_inferred=not getattr(
+                        self.stt_client, "emits_punctuation", False
+                    ),
+                )
+                if raw
+                else None
             )
-            if raw
-            else None
-        )
 
         return TickResult(commit_text=commit_text, partial_text=partial_text)
 

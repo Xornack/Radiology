@@ -1,3 +1,6 @@
+import json
+from typing import Callable, Optional
+
 import requests
 from loguru import logger
 
@@ -138,11 +141,20 @@ class OllamaClient:
         self.model = model
         self.system_prompt = system_prompt or _IMPRESSION_SYSTEM_PROMPT
 
-    def generate_impression(self, findings: str) -> str:
+    def generate_impression(
+        self,
+        findings: str,
+        on_chunk: Optional[Callable[[str], None]] = None,
+    ) -> str:
         """Scrub PHI, ask Ollama for an impression, return the text.
 
         Returns "" on any failure so the UI degrades gracefully — the
         orchestrator and main.py treat empty as "Impression failed".
+
+        `on_chunk(delta)` opts into streaming: each partial message
+        content fragment is passed to the callback as it arrives. The
+        final full string is still returned. Callback is invoked on the
+        calling thread — wrap in a Qt signal to marshal to the GUI.
         """
         clean_findings = scrub_text(findings)
         messages = [
@@ -151,14 +163,22 @@ class OllamaClient:
             {"role": "assistant", "content": _IMPRESSION_FEWSHOT_ASSISTANT},
             {"role": "user", "content": f"FINDINGS:\n{clean_findings}"},
         ]
-        return self._chat(messages, num_predict=256)
+        return self._chat(messages, num_predict=256, on_chunk=on_chunk)
 
-    def structure_report(self, text: str) -> str:
+    def structure_report(
+        self,
+        text: str,
+        on_chunk: Optional[Callable[[str], None]] = None,
+    ) -> str:
         """Scrub PHI, ask Ollama to slot the freeform text into the ACR
         six-section template, return the structured string.
 
         Returns "" on any failure so main.py can show "Structuring failed"
         without modifying the editor's contents.
+
+        `on_chunk(delta)` behaves as in `generate_impression` — useful
+        here because a 1024-token report takes long enough to benefit
+        from live token emission.
         """
         clean_text = scrub_text(text)
         messages = [
@@ -169,14 +189,31 @@ class OllamaClient:
         ]
         # 1024 tokens covers a comfortable six-section report; 128 (the
         # Ollama default) would routinely truncate mid-FINDINGS.
-        return self._chat(messages, num_predict=1024)
+        return self._chat(messages, num_predict=1024, on_chunk=on_chunk)
 
-    def _chat(self, messages: list[dict], num_predict: int = 256) -> str:
-        """POST a chat request to Ollama. Returns assistant content or "" on failure."""
+    def _chat(
+        self,
+        messages: list[dict],
+        num_predict: int = 256,
+        on_chunk: Optional[Callable[[str], None]] = None,
+    ) -> str:
+        """POST a chat request to Ollama. Returns assistant content or "" on failure.
+
+        `on_chunk` opts into streaming mode: the HTTP response is read
+        line-by-line, each JSON frame's delta is passed to the callback,
+        and the concatenated text is returned when the stream ends.
+        Callback runs on the HTTP-reading thread — caller's responsibility
+        to marshal to Qt if UI updates are desired.
+        """
+        streaming = on_chunk is not None
         payload = {
             "model": self.model,
             "messages": messages,
-            "stream": False,
+            "stream": streaming,
+            # keep_alive holds the model in VRAM/RAM after each request,
+            # eliminating the 20-30s reload tax between calls. Paired with
+            # env OLLAMA_KEEP_ALIVE=24h for the underlying daemon.
+            "keep_alive": "5m",
             # num_predict caps response length. Ollama defaults to 128
             # tokens which can truncate longer outputs mid-sentence;
             # callers pass an appropriate cap for their feature.
@@ -184,7 +221,11 @@ class OllamaClient:
         }
 
         try:
-            response = requests.post(self.url, json=payload, timeout=60)
+            # (connect, read) tuple: fail fast if Ollama isn't listening,
+            # but allow long reads for cold-load + 1024-token output.
+            response = requests.post(
+                self.url, json=payload, timeout=(5, 90), stream=streaming
+            )
         except requests.ConnectionError:
             # Most common failure mode by far — Ollama not running.
             logger.warning(
@@ -194,7 +235,7 @@ class OllamaClient:
             return ""
         except requests.Timeout:
             logger.warning(
-                "Ollama request timed out after 60s — cold model load? "
+                "Ollama request timed out — cold model load? "
                 "Consider OLLAMA_KEEP_ALIVE=24h in your shell."
             )
             return ""
@@ -209,11 +250,67 @@ class OllamaClient:
             )
             return ""
 
+        if streaming:
+            return self._read_streaming_body(response, on_chunk)
+
         try:
             data = response.json()
+        except ValueError as e:
+            logger.warning(f"Ollama response not valid JSON: {e}")
+            return ""
+        # Ollama sometimes returns HTTP 200 with a top-level "error" field
+        # (e.g. model-config problem). Surface it explicitly rather than
+        # crashing on the missing "message" key below.
+        if isinstance(data, dict) and "error" in data:
+            logger.warning(f"Ollama returned error in 200 body: {data['error']!r}")
+            return ""
+        try:
             return data["message"]["content"].strip()
-        except (ValueError, KeyError, TypeError) as e:
+        except (KeyError, TypeError) as e:
             logger.warning(
                 f"Ollama response malformed ({type(e).__name__}): {e}"
             )
             return ""
+
+    @staticmethod
+    def _read_streaming_body(
+        response: requests.Response,
+        on_chunk: Callable[[str], None],
+    ) -> str:
+        """Consume an Ollama NDJSON stream. Returns concatenated content.
+
+        Each line is a JSON object with {message:{content}} (a delta)
+        and a final {done:true} marker. Malformed lines are skipped —
+        Ollama has been known to emit occasional unparseable frames on
+        model-config errors.
+        """
+        chunks: list[str] = []
+        try:
+            for line in response.iter_lines():
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except (ValueError, TypeError):
+                    continue
+                if isinstance(obj, dict) and "error" in obj:
+                    logger.warning(f"Ollama streaming error: {obj['error']!r}")
+                    break
+                delta = ""
+                message = obj.get("message") if isinstance(obj, dict) else None
+                if isinstance(message, dict):
+                    delta = message.get("content", "") or ""
+                if delta:
+                    chunks.append(delta)
+                    try:
+                        on_chunk(delta)
+                    except Exception as e:
+                        # Callback exceptions shouldn't abort the stream —
+                        # the final return is still useful even if live
+                        # UI updates fail mid-token.
+                        logger.error(f"on_chunk callback raised: {e}")
+                if obj.get("done"):
+                    break
+        except requests.exceptions.ChunkedEncodingError as e:
+            logger.warning(f"Ollama stream interrupted: {e}")
+        return "".join(chunks).strip()

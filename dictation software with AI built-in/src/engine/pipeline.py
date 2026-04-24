@@ -9,6 +9,7 @@ touching the orchestrator.
 from src.engine.lexicon import correct_radiology
 from src.engine.punctuation import apply_punctuation
 from src.security.scrubber import scrub_text
+from src.utils.profiler import _optional_timer
 
 
 class TextPipeline:
@@ -18,8 +19,9 @@ class TextPipeline:
     (e.g. "plural" → "pleural"). The UI checkbox rewires this at runtime.
     """
 
-    def __init__(self, radiology_mode: bool = True):
+    def __init__(self, radiology_mode: bool = True, profiler=None):
         self.radiology_mode = radiology_mode
+        self.profiler = profiler
 
     def process(
         self,
@@ -39,12 +41,15 @@ class TextPipeline:
         glyphs alone — set it for engines like MedASR that already emit
         punctuation themselves, otherwise their periods/commas get erased.
         """
-        clean = scrub_text(raw)
-        clean = apply_punctuation(
-            clean,
-            capitalize_first=capitalize_first,
-            strip_inferred=strip_inferred,
-        )
+        with _optional_timer(self.profiler, "pipeline.scrub"):
+            clean = scrub_text(raw)
+        with _optional_timer(self.profiler, "pipeline.punct"):
+            clean = apply_punctuation(
+                clean,
+                capitalize_first=capitalize_first,
+                strip_inferred=strip_inferred,
+            )
         if self.radiology_mode:
-            clean = correct_radiology(clean)
+            with _optional_timer(self.profiler, "pipeline.lexicon"):
+                clean = correct_radiology(clean)
         return clean

@@ -15,6 +15,8 @@ from src.core.orchestrator import DictationOrchestrator
 from src.core.streaming import StreamingTranscriber
 from src.engine import wedge
 from src.ui.warmup_coordinator import WarmupCoordinator
+from src.ui.llm_worker import LlmWorker
+from src.ui.stop_path_worker import StopPathWorker
 from src.utils.profiler import LatencyTimer
 from src.utils.settings import settings
 
@@ -63,7 +65,9 @@ def main():
     # 3. Streaming live-partial transcriber — ticks every 1.5s during recording.
     # Constructed before the orchestrator so the orchestrator can be wired to
     # read its committed-snapshot on Stop.
-    streaming = StreamingTranscriber(recorder, stt, interval_ms=1500)
+    streaming = StreamingTranscriber(
+        recorder, stt, interval_ms=1500, profiler=profiler
+    )
     streaming.partial_ready.connect(window.update_partial)
 
     # 4. Setup Orchestrator (LLM client wired in for impression generation).
@@ -94,6 +98,44 @@ def main():
 
     # 5. Dictation trigger handler — shared by HID mic, F4, and Record/Stop buttons
     recording_state = {"active": False}
+
+    # Stop-path worker moves orchestrator.handle_trigger_up off the Qt
+    # main thread (the remainder transcribe can take 1-5s). On completion
+    # the worker emits `finished`/`failed` on the main thread via Qt's
+    # AutoConnection, and the handlers below paint the final status.
+    stop_worker = StopPathWorker(orchestrator)
+
+    def _on_stop_finished(mode: str, result: str):
+        if mode == "wedge":
+            # Do NOT append to the in-app editor — Wedge mode's destination
+            # is the externally focused window. Audit trail goes to the log.
+            # `result` is just the remainder post-Stop; commits were typed
+            # mid-session, so "success" means we typed SOMETHING — either a
+            # commit during streaming or the remainder on Stop.
+            had_commits = bool(streaming.get_committed_snapshot()[0])
+            if result or had_commits:
+                logger.info(f"Wedge sent remainder: {len(result)} chars")
+                window.set_status("Ready")
+            else:
+                window.set_status("No text recognized", "#f9e2af")
+        else:
+            if result:
+                window.commit_partial(result)
+                window.set_status("Ready")
+            else:
+                window.commit_partial("")
+                window.set_status("No text recognized", "#f9e2af")
+
+    def _on_stop_failed(mode: str, _err: str):
+        # A Whisper / recorder / wedge crash must not leave the UI stuck
+        # on "Processing..." forever. Reset the partial anchor so the next
+        # session starts clean, then surface the failure.
+        if mode == "inapp":
+            window.commit_partial("")
+        window.set_status("Processing failed", "#f38ba8")
+
+    stop_worker.finished.connect(_on_stop_finished)
+    stop_worker.failed.connect(_on_stop_failed)
 
     def handle_trigger(pressed: bool):
         # Drop triggers while the STT model is still warming up. A short
@@ -128,38 +170,12 @@ def main():
                 streaming.start()
         else:
             window.set_status("Processing...", "#fab387")
+            # streaming.stop() still blocks briefly (joins the in-flight
+            # tick worker, up to 2s) so get_committed_snapshot() below
+            # reads a consistent commit pointer. That short block is
+            # acceptable; the long transcribe is what's off-thread now.
             streaming.stop()
-            try:
-                result = orchestrator.handle_trigger_up(mode=mode)
-            except Exception as e:
-                # A Whisper / recorder / wedge crash must not leave the UI
-                # stuck on "Processing..." forever. Reset the partial anchor
-                # so the next session starts clean, then surface the failure.
-                logger.error(f"Dictation processing failed: {e}")
-                if mode == "inapp":
-                    window.commit_partial("")
-                window.set_status("Processing failed", "#f38ba8")
-                return
-
-            if mode == "wedge":
-                # Do NOT append to the in-app editor — Wedge mode's destination
-                # is the externally focused window. Audit trail goes to the log.
-                # `result` is just the remainder post-Stop; commits were typed
-                # mid-session, so "success" means we typed SOMETHING — either a
-                # commit during streaming or the remainder on Stop.
-                had_commits = bool(streaming.get_committed_snapshot()[0])
-                if result or had_commits:
-                    logger.info(f"Wedge sent remainder: {result!r}")
-                    window.set_status("Ready")
-                else:
-                    window.set_status("No text recognized", "#f9e2af")
-            else:
-                if result:
-                    window.commit_partial(result)
-                    window.set_status("Ready")
-                else:
-                    window.commit_partial("")
-                    window.set_status("No text recognized", "#f9e2af")
+            stop_worker.run(mode)
 
     # Wire the Record/Stop buttons to the same toggle path
     window.on_toggle_recording = handle_trigger
@@ -195,6 +211,11 @@ def main():
         # Rebuild the STT client and swap it into every consumer. Recording is
         # blocked mid-session by the UI lock, so we can replace the reference
         # atomically with no in-flight work to migrate.
+        #
+        # Model instantiation is synchronous here (1-2s stutter on backend
+        # swap). Moving it to a worker thread is in the backlog — it needs
+        # careful cross-thread Qt plumbing and the stutter is infrequent
+        # enough (user action, not per-tick) that it's a later polish item.
         if recording_state["active"]:
             return
         try:
@@ -289,7 +310,37 @@ def main():
             "F4 works only when this window is focused", "#f9e2af"
         )
 
-    # 8. Wire the Generate Impression button
+    # 8. Wire the Generate Impression / Structure Report buttons.
+    # Both round-trip through Ollama on a background thread via LlmWorker,
+    # so the UI stays responsive during the 2-30s call. Signal handlers
+    # paint the result and re-enable the button — the button-disable
+    # happens up front and is the only UI state we mutate synchronously.
+    llm_worker = LlmWorker(orchestrator)
+
+    def _on_impression_ready(impression: str):
+        window.append_text("")
+        window.append_text("IMPRESSION: " + impression)
+        window.set_status("Ready")
+        window.impression_btn.setEnabled(True)
+
+    def _on_impression_failed(_msg: str):
+        window.set_status("Impression failed", "#f38ba8")
+        window.impression_btn.setEnabled(True)
+
+    def _on_structure_ready(structured: str):
+        window.editor.setPlainText(structured)
+        window.set_status("Ready")
+        window.structure_btn.setEnabled(True)
+
+    def _on_structure_failed(_msg: str):
+        window.set_status("Structuring failed", "#f38ba8")
+        window.structure_btn.setEnabled(True)
+
+    llm_worker.impression_ready.connect(_on_impression_ready)
+    llm_worker.impression_failed.connect(_on_impression_failed)
+    llm_worker.structure_ready.connect(_on_structure_ready)
+    llm_worker.structure_failed.connect(_on_structure_failed)
+
     def do_generate_impression():
         findings = window.get_findings().strip()
         if not findings:
@@ -297,16 +348,7 @@ def main():
             return
         window.set_status("Generating impression...", "#89b4fa")
         window.impression_btn.setEnabled(False)
-        try:
-            impression = orchestrator.generate_impression(findings)
-        finally:
-            window.impression_btn.setEnabled(True)
-        if impression:
-            window.append_text("")
-            window.append_text("IMPRESSION: " + impression)
-            window.set_status("Ready")
-        else:
-            window.set_status("Impression failed", "#f38ba8")
+        llm_worker.run_impression(findings)
 
     window.on_generate_impression = do_generate_impression
 
@@ -321,15 +363,7 @@ def main():
             return
         window.set_status("Structuring report...", "#89b4fa")
         window.structure_btn.setEnabled(False)
-        try:
-            structured = orchestrator.structure_report(text)
-        finally:
-            window.structure_btn.setEnabled(True)
-        if structured:
-            window.editor.setPlainText(structured)
-            window.set_status("Ready")
-        else:
-            window.set_status("Structuring failed", "#f38ba8")
+        llm_worker.run_structure(text)
 
     window.on_structure_report = do_structure_report
 
@@ -343,6 +377,7 @@ def main():
             ("mic listener",  mic.stop),
             ("streaming",     streaming.stop),
             ("recorder",      recorder.stop),
+            ("warmup",        warmup.shutdown),
         ]
         for label, task in shutdown_tasks:
             try:

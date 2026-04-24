@@ -26,6 +26,7 @@ class StreamingTranscriber(QObject):
         interval_ms: int = 1500,
         sample_rate: int = 16000,
         parent=None,
+        profiler=None,
     ):
         super().__init__(parent)
         self.recorder = recorder
@@ -36,6 +37,7 @@ class StreamingTranscriber(QObject):
             recorder=recorder,
             stt_client=stt_client,
             sample_rate=sample_rate,
+            profiler=profiler,
         )
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)

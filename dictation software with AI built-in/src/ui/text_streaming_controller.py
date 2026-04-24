@@ -176,6 +176,8 @@ class TextStreamingController:
         uncapitalized in-app, or streaming partials, which cap by default) so
         the first letter matches editor context.
         """
+        if not text:
+            return text
         if self._capitalize_first:
             return text[0].upper() + text[1:]
         return text[0].lower() + text[1:]

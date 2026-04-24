@@ -141,3 +141,73 @@ def test_structure_report_uses_larger_num_predict():
 
     sent_payload = mock_post.call_args[1]["json"]
     assert sent_payload["options"]["num_predict"] >= 1024
+
+
+def test_chat_payload_sets_keep_alive():
+    """keep_alive pins the model in memory between calls, eliminating the
+    20-30s VRAM reload tax. Regression guard — this field must not be
+    dropped by future edits."""
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"message": {"content": "ok"}}
+
+    with patch("requests.post", return_value=mock_response) as mock_post:
+        client = OllamaClient(
+            url="http://localhost:11434/api/chat",
+            model="qwen2.5:3b",
+        )
+        client.generate_impression("findings")
+
+    sent_payload = mock_post.call_args[1]["json"]
+    assert "keep_alive" in sent_payload
+    assert sent_payload["keep_alive"]  # non-empty duration string
+
+
+def test_chat_returns_empty_on_ollama_error_in_200_body():
+    """Ollama sometimes returns HTTP 200 with {"error": ...} instead of
+    the expected {"message": {"content": ...}}. The client must log and
+    return "" rather than crashing on the missing "message" key."""
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"error": "model 'qwen2.5:3b' not found"}
+
+    with patch("requests.post", return_value=mock_response):
+        client = OllamaClient(
+            url="http://localhost:11434/api/chat",
+            model="qwen2.5:3b",
+        )
+        result = client.generate_impression("findings")
+
+    assert result == ""
+
+
+def test_chat_streams_via_on_chunk_callback():
+    """When on_chunk is provided, the client requests stream=True and
+    forwards each delta to the callback as it arrives. The final
+    concatenation is still returned."""
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    # Ollama stream format: NDJSON, one {"message": {"content": "..."}}
+    # per line, terminated by a {"done": true} frame.
+    mock_response.iter_lines.return_value = iter([
+        b'{"message": {"content": "Hello "}, "done": false}',
+        b'{"message": {"content": "world"}, "done": false}',
+        b'{"message": {"content": ""}, "done": true}',
+    ])
+
+    received = []
+
+    with patch("requests.post", return_value=mock_response) as mock_post:
+        client = OllamaClient(
+            url="http://localhost:11434/api/chat",
+            model="qwen2.5:3b",
+        )
+        result = client.generate_impression("findings", on_chunk=received.append)
+
+    assert received == ["Hello ", "world"]
+    assert result == "Hello world"
+    # stream=True must be set in the payload AND as a requests kwarg so
+    # the HTTP layer doesn't buffer the full body.
+    sent_payload = mock_post.call_args[1]["json"]
+    assert sent_payload["stream"] is True
+    assert mock_post.call_args[1].get("stream") is True

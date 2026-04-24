@@ -4,6 +4,20 @@ import re
 _DOT_STRIP_RE = re.compile(r"(?<!\d)\.(?!\d)")
 _OTHER_STRIP_RE = re.compile(r"[,?!;:]")
 
+# Precompiled at module load — these fire on every commit and every
+# live-partial tick, so per-call re.compile() adds up. Grouped with
+# their call-site below so intent is clear at a glance.
+_TOKEN_SPACE_BEFORE_RE = re.compile(r"\s+([.,!?;:)”])")
+_TOKEN_SPACE_AFTER_RE = re.compile(r"([(“])\s+")
+_NEWLINE_TIDY_RE = re.compile(r"[ \t]*\n[ \t]*")
+_MULTI_SPACE_RE = re.compile(r"[ \t]+")
+_MULTI_NEWLINE_RE = re.compile(r"\n{3,}")
+_LETTER_AFTER_PUNCT_RE = re.compile(r"([.,?])(?=[A-Za-z])")
+_LEADING_LOWER_RE = re.compile(r"^(\s*)([a-z])")
+_LEADING_UPPER_RE = re.compile(r"^(\s*)([A-Z])")
+_SENTENCE_BOUNDARY_CAP_RE = re.compile(r"([.!?]\s+)([a-z])")
+_PARAGRAPH_BOUNDARY_CAP_RE = re.compile(r"(\n\n+)([a-z])")
+
 
 _MULTI_WORD_MAP = {
     "question mark": "?",
@@ -55,19 +69,22 @@ def _strip_whisper_punctuation(text: str) -> str:
 def _substitute_tokens(text: str) -> str:
     """Replace multi-word and single-word spoken tokens with their characters."""
     words = text.split()
+    # Normalize case once per word instead of 2-3x per loop iteration.
+    lowers = [w.lower() for w in words]
     output: list[str] = []
     i = 0
-    while i < len(words):
-        if i + 1 < len(words):
-            pair = f"{words[i].lower()} {words[i + 1].lower()}"
+    n = len(words)
+    while i < n:
+        if i + 1 < n:
+            pair = f"{lowers[i]} {lowers[i + 1]}"
             if pair in _MULTI_WORD_MAP:
                 output.append(_MULTI_WORD_MAP[pair])
                 i += 2
                 continue
-        key = words[i].lower()
+        key = lowers[i]
         if key == "colon":
-            prev_word = words[i - 1].lower() if i > 0 else ""
-            next_word = words[i + 1].lower() if i + 1 < len(words) else ""
+            prev_word = lowers[i - 1] if i > 0 else ""
+            next_word = lowers[i + 1] if i + 1 < n else ""
             if prev_word in _COLON_ANATOMY_BEFORE or next_word in _COLON_ANATOMY_AFTER:
                 # Normalize case so mid-sentence "Colon" from Whisper doesn't
                 # leak a stray capital; _autocap restores it at sentence starts.
@@ -82,15 +99,15 @@ def _substitute_tokens(text: str) -> str:
             output.append(words[i])
         i += 1
     joined = " ".join(output)
-    joined = re.sub(r"\s+([.,!?;:)\u201d])", r"\1", joined)
-    joined = re.sub(r"([(\u201c])\s+", r"\1", joined)
-    joined = re.sub(r"[ \t]*\n[ \t]*", "\n", joined)
+    joined = _TOKEN_SPACE_BEFORE_RE.sub(r"\1", joined)
+    joined = _TOKEN_SPACE_AFTER_RE.sub(r"\1", joined)
+    joined = _NEWLINE_TIDY_RE.sub("\n", joined)
     return joined
 
 
 def _tidy_spacing(text: str) -> str:
-    text = re.sub(r"[ \t]+", " ", text)
-    text = re.sub(r"\n{3,}", "\n\n", text)
+    text = _MULTI_SPACE_RE.sub(" ", text)
+    text = _MULTI_NEWLINE_RE.sub("\n\n", text)
     text = "\n".join(line.strip() for line in text.split("\n"))
     return text.strip()
 
@@ -103,7 +120,7 @@ def _enforce_punctuation_spacing(text: str) -> str:
     punctuation is untouched (already spaced), but protects against any
     path that leaves punctuation hugging the next word.
     """
-    return re.sub(r"([.,?])(?=[A-Za-z])", r"\1 ", text)
+    return _LETTER_AFTER_PUNCT_RE.sub(r"\1 ", text)
 
 
 def _autocap(text: str, capitalize_first: bool = True) -> str:
@@ -115,24 +132,20 @@ def _autocap(text: str, capitalize_first: bool = True) -> str:
     when appended after "the patient was examined").
     """
     if capitalize_first:
-        text = re.sub(
-            r"^(\s*)([a-z])",
+        text = _LEADING_LOWER_RE.sub(
             lambda m: m.group(1) + m.group(2).upper(),
             text,
         )
     else:
-        text = re.sub(
-            r"^(\s*)([A-Z])",
+        text = _LEADING_UPPER_RE.sub(
             lambda m: m.group(1) + m.group(2).lower(),
             text,
         )
-    text = re.sub(
-        r"([.!?]\s+)([a-z])",
+    text = _SENTENCE_BOUNDARY_CAP_RE.sub(
         lambda m: m.group(1) + m.group(2).upper(),
         text,
     )
-    text = re.sub(
-        r"(\n\n+)([a-z])",
+    text = _PARAGRAPH_BOUNDARY_CAP_RE.sub(
         lambda m: m.group(1) + m.group(2).upper(),
         text,
     )

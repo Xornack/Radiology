@@ -1,4 +1,5 @@
 import ctypes
+from typing import Callable, Optional
 from loguru import logger
 from src.engine.pipeline import TextPipeline
 # Re-exported for tests that patch `src.core.orchestrator.scrub_text`.
@@ -25,7 +26,10 @@ def _foreground_window_title() -> str:
         buf = ctypes.create_unicode_buffer(length + 1)
         ctypes.windll.user32.GetWindowTextW(hwnd, buf, length + 1)
         return buf.value
-    except Exception:
+    except (AttributeError, OSError):
+        # AttributeError on non-Windows (ctypes.windll doesn't exist);
+        # OSError if the API call itself fails. Either way, diagnostic
+        # logging should degrade gracefully rather than propagate.
         return ""
 
 
@@ -67,7 +71,8 @@ class DictationOrchestrator:
         # Post-transcription text pipeline: scrub → punctuation → optional
         # radiology correction. Owned here so the three stages stay in sync
         # and the orchestrator doesn't have to know about them individually.
-        self._text_pipeline = TextPipeline(radiology_mode=True)
+        # Profiler passes through so each stage shows up in the report.
+        self._text_pipeline = TextPipeline(radiology_mode=True, profiler=profiler)
         # Public knob the UI checkbox toggles; synced into the pipeline on
         # each call so mid-session rewiring is a no-op rather than stale.
         self.radiology_mode = True
@@ -123,7 +128,10 @@ class DictationOrchestrator:
         else:
             audio_bytes = self.recorder.get_wav_bytes()
             raw_text = self.stt_client.transcribe(audio_bytes)
-        logger.debug(f"Whisper raw: {raw_text!r}")
+        # Log length only — raw STT output may contain un-scrubbed PHI
+        # (patient names dictated verbatim). Scrubbing happens next in the
+        # pipeline, so only the post-pipeline `Final text` line logs content.
+        logger.debug(f"Whisper raw: {len(raw_text)} chars")
         if self.profiler:
             self.profiler.stop("whisper_stt")
             self.profiler.start("scrubbing")
@@ -162,7 +170,10 @@ class DictationOrchestrator:
             try:
                 self.wedge.type_text(to_type)
                 self._wedge_has_typed = True
-                self._wedge_last_terminator = clean_text.rstrip()[-1] in ".?!"
+                # Guard: whitespace-only transcripts pass the `and clean_text`
+                # check above but rstrip() to "", and [-1] on that raises.
+                stripped = clean_text.rstrip()
+                self._wedge_last_terminator = bool(stripped) and stripped[-1] in ".?!"
             except Exception as e:
                 # Never let a wedge failure crash the UI handler —
                 # the transcript is still returned for display
@@ -207,12 +218,19 @@ class DictationOrchestrator:
         stripped = text.rstrip()
         self._wedge_last_terminator = bool(stripped) and stripped[-1] in ".?!"
 
-    def generate_impression(self, findings: str) -> str:
+    def generate_impression(
+        self,
+        findings: str,
+        on_chunk: Optional[Callable[[str], None]] = None,
+    ) -> str:
         """Ask the LLM client for an impression and time the round-trip.
 
         Returns "" if no LLM client is configured. The profiler timer
         logs cold-vs-warm Ollama latency so the user can see whether
         keep-alive tuning is needed.
+
+        `on_chunk` passes through to the LLM client for streaming; the
+        orchestrator doesn't interpret deltas, it just forwards.
         """
         if not self.llm_client:
             logger.warning(
@@ -222,13 +240,22 @@ class DictationOrchestrator:
         if self.profiler:
             self.profiler.start("llm_impression")
         try:
-            return self.llm_client.generate_impression(findings)
+            # Conditional kwarg keeps pre-streaming test doubles (which assert
+            # exact call args) working unchanged while letting the worker
+            # thread pass on_chunk when it wants live tokens.
+            if on_chunk is None:
+                return self.llm_client.generate_impression(findings)
+            return self.llm_client.generate_impression(findings, on_chunk=on_chunk)
         finally:
             if self.profiler:
                 total = self.profiler.stop("llm_impression")
                 logger.info(f"Impression generation: {total:.2f}s")
 
-    def structure_report(self, text: str) -> str:
+    def structure_report(
+        self,
+        text: str,
+        on_chunk: Optional[Callable[[str], None]] = None,
+    ) -> str:
         """Ask the LLM client to convert freeform text into the ACR
         six-section template. Time the round-trip via the profiler.
 
@@ -244,7 +271,9 @@ class DictationOrchestrator:
         if self.profiler:
             self.profiler.start("structure_report")
         try:
-            return self.llm_client.structure_report(text)
+            if on_chunk is None:
+                return self.llm_client.structure_report(text)
+            return self.llm_client.structure_report(text, on_chunk=on_chunk)
         finally:
             if self.profiler:
                 total = self.profiler.stop("structure_report")
