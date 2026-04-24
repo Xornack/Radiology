@@ -69,6 +69,10 @@ class Settings:
         self.llm_url: str = os.getenv(
             "LLM_URL", "http://localhost:8001/v1/completions"
         )
+        self.ollama_url: str = os.getenv(
+            "OLLAMA_URL", "http://localhost:11434/api/chat"
+        )
+        self.ollama_model: str = os.getenv("OLLAMA_MODEL", "qwen2.5:3b")
         # Default targets Nuance PowerMic II-NS (VID 0x0554 / PID 0x1001).
         # For other mics, override via SPEECHMIKE_VID / SPEECHMIKE_PID env vars.
         # Use `python tools/hid_probe.py list` to find the IDs for your device.
