@@ -8,7 +8,7 @@ from src.security.scrubber import scrub_text
 # Create a Great Radiology Report," and JACR's prompting guide. The rules
 # are explicit because a 3B-class model needs the anti-patterns spelled
 # out — without them it tends to just rephrase the findings verbatim.
-_DEFAULT_SYSTEM_PROMPT = (
+_IMPRESSION_SYSTEM_PROMPT = (
     "You are an experienced radiologist writing the IMPRESSION section of "
     "a radiology report from a section of FINDINGS.\n\n"
     "An impression is NOT a restatement of findings. It is your synthesis: "
@@ -42,7 +42,7 @@ _DEFAULT_SYSTEM_PROMPT = (
 # behavior + recommendation pattern. Multi-turn few-shot beats embedding
 # the example in the system prompt for chat-tuned models because it
 # matches the template they were trained on.
-_FEWSHOT_USER = (
+_IMPRESSION_FEWSHOT_USER = (
     "FINDINGS:\n"
     "The right lower lobe shows a focal area of consolidation with "
     "surrounding ground-glass opacity. Small right pleural effusion is "
@@ -50,7 +50,7 @@ _FEWSHOT_USER = (
     "is normal. No pneumothorax."
 )
 
-_FEWSHOT_ASSISTANT = (
+_IMPRESSION_FEWSHOT_ASSISTANT = (
     "1. Right lower lobe consolidation with adjacent ground-glass and "
     "small pleural effusion, most compatible with pneumonia.\n"
     "2. Recommend clinical correlation and follow-up imaging after "
@@ -98,14 +98,14 @@ _STRUCTURE_SYSTEM_PROMPT = (
 # the "Not provided" placeholder convention, and the do-not-synthesize
 # rule (source has no impression -> output IMPRESSION is "Not provided"
 # despite an obvious nodule that warrants one).
-_STRUCTURE_FEWSHOT_USER = (
+_STRUCTURE_IMPRESSION_FEWSHOT_USER = (
     "CT chest done today for cough. Compared to scan from January.\n"
     "The lungs are clear. There is a 9 mm solid nodule in the right "
     "upper lobe, new compared to the prior. Heart size is normal. No "
     "pleural effusion. No mediastinal lymphadenopathy. Bones look fine."
 )
 
-_STRUCTURE_FEWSHOT_ASSISTANT = (
+_STRUCTURE_IMPRESSION_FEWSHOT_ASSISTANT = (
     "EXAMINATION:\n"
     "CT chest.\n\n"
     "CLINICAL HISTORY:\n"
@@ -136,7 +136,7 @@ class OllamaClient:
     ):
         self.url = url
         self.model = model
-        self.system_prompt = system_prompt or _DEFAULT_SYSTEM_PROMPT
+        self.system_prompt = system_prompt or _IMPRESSION_SYSTEM_PROMPT
 
     def generate_impression(self, findings: str) -> str:
         """Scrub PHI, ask Ollama for an impression, return the text.
@@ -147,8 +147,8 @@ class OllamaClient:
         clean_findings = scrub_text(findings)
         messages = [
             {"role": "system", "content": self.system_prompt},
-            {"role": "user", "content": _FEWSHOT_USER},
-            {"role": "assistant", "content": _FEWSHOT_ASSISTANT},
+            {"role": "user", "content": _IMPRESSION_FEWSHOT_USER},
+            {"role": "assistant", "content": _IMPRESSION_FEWSHOT_ASSISTANT},
             {"role": "user", "content": f"FINDINGS:\n{clean_findings}"},
         ]
         return self._chat(messages, num_predict=256)
@@ -163,8 +163,8 @@ class OllamaClient:
         clean_text = scrub_text(text)
         messages = [
             {"role": "system", "content": _STRUCTURE_SYSTEM_PROMPT},
-            {"role": "user", "content": _STRUCTURE_FEWSHOT_USER},
-            {"role": "assistant", "content": _STRUCTURE_FEWSHOT_ASSISTANT},
+            {"role": "user", "content": _STRUCTURE_IMPRESSION_FEWSHOT_USER},
+            {"role": "assistant", "content": _STRUCTURE_IMPRESSION_FEWSHOT_ASSISTANT},
             {"role": "user", "content": clean_text},
         ]
         # 1024 tokens covers a comfortable six-section report; 128 (the
