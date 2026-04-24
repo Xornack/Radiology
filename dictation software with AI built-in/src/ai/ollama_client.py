@@ -58,6 +58,73 @@ _FEWSHOT_ASSISTANT = (
 )
 
 
+# Synthesized from ACR Practice Parameter for Communication, RSNA RadReport
+# template conventions, and the ESR position paper on structured reporting.
+# Strict template: always emit all six headings, even when the source omits
+# them — the user explicitly chose visible-gap behavior over a lazy template.
+_STRUCTURE_SYSTEM_PROMPT = (
+    "You are an experienced radiologist converting an unstructured "
+    "radiology report into a STRUCTURED report using the ACR-standard "
+    "six-section template.\n\n"
+    "Output the report in EXACTLY this template, with all six headings "
+    "present in this exact order, even when the source provides nothing "
+    "for that section:\n\n"
+    "EXAMINATION:\n"
+    "CLINICAL HISTORY:\n"
+    "TECHNIQUE:\n"
+    "COMPARISON:\n"
+    "FINDINGS:\n"
+    "IMPRESSION:\n\n"
+    "Rules:\n"
+    "- Always emit all six headings in the order above.\n"
+    "- Under any heading the source does not cover, write exactly:\n"
+    "  Not provided\n"
+    "- Within FINDINGS, organize content by anatomic system (e.g. for "
+    "chest: lungs, mediastinum, heart, pleura, vessels, osseous "
+    "structures, soft tissues). Do not invent an ordering for body "
+    "parts the source does not mention.\n"
+    "- Never invent content. Only re-organize and lightly rephrase what "
+    "is already in the source.\n"
+    "- If the source already contains an IMPRESSION section, preserve "
+    "its content verbatim or near-verbatim. This is a structuring pass, "
+    "not a re-synthesis pass.\n"
+    "- Do not include patient names, MRN, dates, or any other identifiers.\n"
+    "- Output only the structured report. No preamble, no commentary, "
+    "no apologies."
+)
+
+
+# One concrete user/assistant pair anchoring the six-section format,
+# the "Not provided" placeholder convention, and the do-not-synthesize
+# rule (source has no impression -> output IMPRESSION is "Not provided"
+# despite an obvious nodule that warrants one).
+_STRUCTURE_FEWSHOT_USER = (
+    "CT chest done today for cough. Compared to scan from January.\n"
+    "The lungs are clear. There is a 9 mm solid nodule in the right "
+    "upper lobe, new compared to the prior. Heart size is normal. No "
+    "pleural effusion. No mediastinal lymphadenopathy. Bones look fine."
+)
+
+_STRUCTURE_FEWSHOT_ASSISTANT = (
+    "EXAMINATION:\n"
+    "CT chest.\n\n"
+    "CLINICAL HISTORY:\n"
+    "Cough.\n\n"
+    "TECHNIQUE:\n"
+    "Not provided\n\n"
+    "COMPARISON:\n"
+    "Prior CT chest from January.\n\n"
+    "FINDINGS:\n"
+    "Lungs: Clear. New 9 mm solid nodule in the right upper lobe.\n"
+    "Mediastinum: No lymphadenopathy.\n"
+    "Heart: Normal in size.\n"
+    "Pleura: No pleural effusion.\n"
+    "Osseous structures: Unremarkable.\n\n"
+    "IMPRESSION:\n"
+    "Not provided"
+)
+
+
 class OllamaClient:
     """Local LLM client backed by an Ollama server (chat endpoint)."""
 
@@ -85,6 +152,24 @@ class OllamaClient:
             {"role": "user", "content": f"FINDINGS:\n{clean_findings}"},
         ]
         return self._chat(messages, num_predict=256)
+
+    def structure_report(self, text: str) -> str:
+        """Scrub PHI, ask Ollama to slot the freeform text into the ACR
+        six-section template, return the structured string.
+
+        Returns "" on any failure so main.py can show "Structuring failed"
+        without modifying the editor's contents.
+        """
+        clean_text = scrub_text(text)
+        messages = [
+            {"role": "system", "content": _STRUCTURE_SYSTEM_PROMPT},
+            {"role": "user", "content": _STRUCTURE_FEWSHOT_USER},
+            {"role": "assistant", "content": _STRUCTURE_FEWSHOT_ASSISTANT},
+            {"role": "user", "content": clean_text},
+        ]
+        # 1024 tokens covers a comfortable six-section report; 128 (the
+        # Ollama default) would routinely truncate mid-FINDINGS.
+        return self._chat(messages, num_predict=1024)
 
     def _chat(self, messages: list[dict], num_predict: int = 256) -> str:
         """POST a chat request to Ollama. Returns assistant content or "" on failure."""
