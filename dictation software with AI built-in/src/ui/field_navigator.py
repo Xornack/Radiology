@@ -46,3 +46,56 @@ def find_brackets(text: str) -> list[tuple[int, int, str]]:
     text between the brackets — used as the field's placeholder/default.
     """
     return [(m.start(), m.end(), m.group(1)) for m in _FIELD_PATTERN.finditer(text)]
+
+
+def update_anchor_position(anchor: FieldAnchor, pos: int, removed: int, added: int) -> None:
+    """Apply one `contentsChange` event to an anchor in place.
+
+    Treats `anchor.start` like a "keep position on insert" cursor (insert
+    at a non-collapsed anchor's start does NOT push start forward — that
+    insert is conceptually before the anchor) and `anchor.end` like a
+    default cursor (insert at end pushes end forward).
+
+    The dictation-replace flow specifically depends on the collapsed-anchor
+    case (start == end): an insert at the collapsed position grows the
+    anchor to absorb the inserted text. This is what the "fully covers"
+    branch handles when start == end == pos and removed == 0.
+    """
+    delta = added - removed
+    change_end = pos + removed
+    s, e = anchor.start, anchor.end
+
+    # Edit fully covers anchor: anchor becomes [pos, pos + added].
+    # When chars_added == 0 this collapses the anchor; when chars_added > 0
+    # the anchor "becomes" the inserted text. Collapsed-anchor + insert at
+    # position is also caught here (s == e and pos == s, so pos <= s and
+    # change_end == pos == s == e ≥ e is satisfied).
+    if pos <= s and change_end >= e:
+        anchor.start = pos
+        anchor.end = pos + added
+        return
+
+    # Update start: an insert AT a non-collapsed anchor's start goes before
+    # the anchor (Qt's standard convention); collapsed-anchor inserts at
+    # start are already handled by the "fully covers" branch above.
+    if change_end <= s:
+        if pos < s:
+            anchor.start = s + delta
+        elif pos == s and removed == 0 and added > 0:
+            anchor.start = s + added
+    elif pos < s:
+        # Edit starts before anchor and ends inside.
+        anchor.start = pos + added
+
+    # Update end: an insert AT the anchor's end goes INSIDE the anchor —
+    # this is what makes streaming dictation grow the anchor as each
+    # partial lands at the previous partial's end position.
+    if pos > e:
+        return  # edit fully after anchor
+    if pos == e:
+        anchor.end = e + added
+    elif change_end <= e:
+        anchor.end = e + delta
+    else:
+        # Edit overlaps anchor's end — clamp to insertion endpoint.
+        anchor.end = pos + added
