@@ -241,3 +241,70 @@ def test_registry_marks_filled_after_replace(qtbot):
     assert len(anchors) == 1
     assert anchors[0].state == "filled"
     assert (anchors[0].start, anchors[0].end) == (0, 8)
+
+
+def test_find_next_returns_first_anchor_after_pos(qtbot):
+    editor = QTextEdit()
+    qtbot.addWidget(editor)
+    editor.setPlainText("zero [one] mid [two] end")  # fields at 5-10 and 15-20
+
+    registry = FieldRegistry(editor)
+
+    found = registry.find_next(0)
+    assert found is not None and found.default == "one"
+
+    found = registry.find_next(10)
+    assert found is not None and found.default == "two"
+
+
+def test_find_next_wraps_when_past_last(qtbot):
+    editor = QTextEdit()
+    qtbot.addWidget(editor)
+    editor.setPlainText("[a] tail [b]")  # anchors at 0-3 and 9-12
+
+    registry = FieldRegistry(editor)
+
+    found = registry.find_next(20)
+    assert found is not None and found.default == "a"
+
+
+def test_find_next_returns_none_when_no_anchors(qtbot):
+    editor = QTextEdit()
+    qtbot.addWidget(editor)
+    registry = FieldRegistry(editor)
+    assert registry.find_next(0) is None
+
+
+def test_find_next_skips_anchor_when_cursor_is_inside_it(qtbot):
+    """Per the spec: 'current is the cursor's home, not a destination.'"""
+    editor = QTextEdit()
+    qtbot.addWidget(editor)
+    editor.setPlainText("[one] mid [two]")  # 0-5 and 10-15
+
+    registry = FieldRegistry(editor)
+
+    # Cursor inside first anchor → next should be second
+    found = registry.find_next(2)
+    assert found is not None and found.default == "two"
+
+
+def test_find_prev_returns_last_anchor_before_pos(qtbot):
+    editor = QTextEdit()
+    qtbot.addWidget(editor)
+    editor.setPlainText("[a] mid [b] end [c]")  # 0-3, 8-11, 16-19
+
+    registry = FieldRegistry(editor)
+
+    found = registry.find_prev(15)
+    assert found is not None and found.default == "b"
+
+
+def test_find_prev_wraps_when_before_first(qtbot):
+    editor = QTextEdit()
+    qtbot.addWidget(editor)
+    editor.setPlainText("[a] [b]")  # 0-3 and 4-7
+
+    registry = FieldRegistry(editor)
+
+    found = registry.find_prev(0)
+    assert found is not None and found.default == "b"

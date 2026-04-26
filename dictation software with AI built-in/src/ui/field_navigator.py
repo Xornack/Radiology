@@ -133,6 +133,31 @@ class FieldRegistry:
         """
         self._anchors = [a for a in self._anchors if a.end > a.start]
 
+    def find_next(self, pos: int) -> "FieldAnchor | None":
+        """Anchor with the smallest start strictly greater than `pos`.
+
+        Wraps to the first anchor if none qualify and the list is non-empty.
+        Returns None only when there are no anchors at all.
+        """
+        if not self._anchors:
+            return None
+        for a in self._anchors:
+            if a.start > pos:
+                return a
+        return self._anchors[0]
+
+    def find_prev(self, pos: int) -> "FieldAnchor | None":
+        """Anchor with the largest end strictly less than `pos`.
+
+        Wraps to the last anchor if none qualify and the list is non-empty.
+        """
+        if not self._anchors:
+            return None
+        for a in reversed(self._anchors):
+            if a.end < pos:
+                return a
+        return self._anchors[-1]
+
     def _seed_from_text(self) -> None:
         text = self._editor.toPlainText()
         for start, end, default in find_brackets(text):
