@@ -311,7 +311,7 @@ def test_find_prev_wraps_when_before_first(qtbot):
 
 
 from PyQt6.QtGui import QColor, QTextCursor
-from src.ui.field_navigator import FieldHighlighter, PILL_BG, PILL_TEXT
+from src.ui.field_navigator import FieldHighlighter, PILL_BG, PILL_TEXT, FILLED_TEXT
 
 
 def test_highlighter_paints_pill_on_unfilled(qtbot):
@@ -346,3 +346,36 @@ def test_highlighter_paints_pill_on_unfilled(qtbot):
     # Closing bracket at position 2: invisible
     assert fmt_at[2].foreground().color() == QColor(PILL_BG)
     assert fmt_at[2].background().color() == QColor(PILL_BG)
+
+
+def test_highlighter_paints_teal_on_filled(qtbot):
+    """Filled anchor ranges get teal foreground (no pill)."""
+    editor = QTextEdit()
+    qtbot.addWidget(editor)
+    editor.setPlainText("[normal]")
+
+    registry = FieldRegistry(editor)
+    highlighter = FieldHighlighter(editor.document(), registry)
+
+    # Replace the bracketed range with plain text → anchor flips to filled
+    cursor = editor.textCursor()
+    cursor.setPosition(0)
+    cursor.setPosition(8, cursor.MoveMode.KeepAnchor)
+    cursor.removeSelectedText()
+    cursor.insertText("atrophic")
+
+    highlighter.rehighlight()
+
+    # Read layout-level overlay formats (QSyntaxHighlighter formats are NOT
+    # part of cursor.charFormat()). Build position → format map.
+    block = editor.document().firstBlock()
+    fmt_at = {}
+    for fr in block.layout().formats():
+        for offset in range(fr.start, fr.start + fr.length):
+            fmt_at[offset] = fr.format
+
+    # Anchor is now [0, 8] = "atrophic" — every char should be teal,
+    # no pill background
+    for pos in range(8):
+        assert fmt_at[pos].foreground().color() == QColor(FILLED_TEXT), f"pos {pos} not teal"
+        assert fmt_at[pos].background().color() != QColor(PILL_BG), f"pos {pos} has pill bg"

@@ -257,6 +257,8 @@ class FieldHighlighter(QSyntaxHighlighter):
             local_end = min(len(text), anchor.end - block_start)
             if anchor.state == "unfilled":
                 self._paint_pill(block_start, local_start, local_end)
+            else:
+                self._paint_filled(local_start, local_end)
 
     def _paint_pill(self, block_start: int, start: int, end: int) -> None:
         """Paint a 3-range pill: invisible bracket, dark inner text, invisible bracket."""
@@ -276,3 +278,9 @@ class FieldHighlighter(QSyntaxHighlighter):
             self.setFormat(start + 1, end - start - 2, inner_fmt)
         # Closing bracket
         self.setFormat(end - 1, 1, bracket_fmt)
+
+    def _paint_filled(self, start: int, end: int) -> None:
+        """Paint filled anchor with teal foreground."""
+        fmt = QTextCharFormat()
+        fmt.setForeground(QColor(FILLED_TEXT))
+        self.setFormat(start, end - start, fmt)
