@@ -368,6 +368,7 @@ class FieldNavigator(QObject):
         mods = ke.modifiers()
         ctrl = bool(mods & Qt.KeyboardModifier.ControlModifier)
         shift = bool(mods & Qt.KeyboardModifier.ShiftModifier)
+        alt = bool(mods & Qt.KeyboardModifier.AltModifier)
         key = ke.key()
         # Qt sends Key_Backtab when Shift is held with Tab; also accept
         # Key_Tab + Shift for completeness.
@@ -376,7 +377,16 @@ class FieldNavigator(QObject):
             key == Qt.Key.Key_Backtab
             or (shift and key == Qt.Key.Key_Tab)
         )
-        if not (is_tab_forward or is_tab_backward):
+        # Single-keystroke collapse of `[]`: when the user has emptied a
+        # field (e.g. by selecting via Ctrl+Tab and pressing Delete) the
+        # leftover empty pair should disappear with one more keypress
+        # rather than two — both brackets together.
+        is_empty_field_collapse = (
+            et == QEvent.Type.KeyPress
+            and not (ctrl or shift or alt)
+            and key in (Qt.Key.Key_Backspace, Qt.Key.Key_Delete)
+        )
+        if not (is_tab_forward or is_tab_backward or is_empty_field_collapse):
             return super().eventFilter(obj, event)
 
         if et == QEvent.Type.ShortcutOverride:
@@ -391,6 +401,11 @@ class FieldNavigator(QObject):
             # Drop the navigation event during recording. Returning True
             # also prevents the editor's default handling of Ctrl+Tab.
             return True
+        if is_empty_field_collapse:
+            if self._try_collapse_empty_field():
+                return True
+            # Not inside an empty `[]` — let the editor handle the key normally
+            return super().eventFilter(obj, event)
         if is_tab_forward:
             self.jump_next()
         else:
@@ -412,6 +427,29 @@ class FieldNavigator(QObject):
         if anchor is None:
             return
         self._select_anchor(anchor)
+
+    def _try_collapse_empty_field(self) -> bool:
+        """If the cursor sits between the brackets of an empty `[]` field
+        with no active selection, delete the whole pair in one keystroke.
+
+        Returns True when the collapse fired (caller should swallow the
+        key event), False otherwise.
+        """
+        cursor = self._editor.textCursor()
+        if cursor.hasSelection():
+            return False
+        pos = cursor.position()
+        text = self._editor.toPlainText()
+        for anchor in self._registry.anchors():
+            if anchor.end - anchor.start != 2 or pos != anchor.start + 1:
+                continue
+            if text[anchor.start:anchor.end] != "[]":
+                continue
+            cursor.setPosition(anchor.start)
+            cursor.setPosition(anchor.end, QTextCursor.MoveMode.KeepAnchor)
+            cursor.removeSelectedText()
+            return True
+        return False
 
     def _select_anchor(self, anchor: FieldAnchor) -> None:
         """Select the anchor's INNER text (between the brackets), not the

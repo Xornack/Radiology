@@ -582,6 +582,99 @@ def test_select_replace_flips_anchor_state_to_filled(qtbot):
     assert editor.toPlainText() == "The pancreas is [atrophic]."
 
 
+def test_delete_inside_empty_field_removes_both_brackets(qtbot):
+    """After Ctrl+Tab + Delete leaves `[]`, one more Delete removes the
+    whole empty pair (not just the closing bracket)."""
+    editor = QTextEdit()
+    qtbot.addWidget(editor)
+    editor.setPlainText("pre [normal] post")  # field at [4, 12]
+
+    registry = FieldRegistry(editor)
+    nav = FieldNavigator(editor, registry)
+
+    QTest.keyClick(editor, Qt.Key.Key_Tab, Qt.KeyboardModifier.ControlModifier)
+    cursor = editor.textCursor()
+    cursor.removeSelectedText()
+    assert editor.toPlainText() == "pre [] post"
+    assert editor.textCursor().position() == 5  # between [ and ]
+
+    QTest.keyClick(editor, Qt.Key.Key_Delete)
+
+    assert editor.toPlainText() == "pre  post"
+    registry.cleanup_zombies()
+    assert registry.anchors() == []
+
+
+def test_backspace_inside_empty_field_removes_both_brackets(qtbot):
+    """Same collapse rule via Backspace — covers the user who reflexively
+    backspaces rather than forward-deletes after emptying a field."""
+    editor = QTextEdit()
+    qtbot.addWidget(editor)
+    editor.setPlainText("pre [normal] post")  # field at [4, 12]
+
+    registry = FieldRegistry(editor)
+    nav = FieldNavigator(editor, registry)
+
+    QTest.keyClick(editor, Qt.Key.Key_Tab, Qt.KeyboardModifier.ControlModifier)
+    editor.textCursor().removeSelectedText()
+    assert editor.toPlainText() == "pre [] post"
+
+    QTest.keyClick(editor, Qt.Key.Key_Backspace)
+
+    assert editor.toPlainText() == "pre  post"
+
+
+def test_delete_outside_empty_field_falls_through(qtbot):
+    """Delete with cursor BEFORE the opening bracket of an empty field is
+    not the collapse case — it should delete the prior char as usual."""
+    editor = QTextEdit()
+    qtbot.addWidget(editor)
+    editor.setPlainText("pre []")  # cursor outside the field
+
+    registry = FieldRegistry(editor)
+    nav = FieldNavigator(editor, registry)
+
+    # Force the empty anchor to exist (seed-time regex skips `[]`, so
+    # simulate it via the path the runtime takes: select [normal] inner
+    # and delete).
+    editor.setPlainText("pre [normal]")
+    registry._anchors.clear()
+    registry._seed_from_text()
+    QTest.keyClick(editor, Qt.Key.Key_Tab, Qt.KeyboardModifier.ControlModifier)
+    editor.textCursor().removeSelectedText()
+    assert editor.toPlainText() == "pre []"
+
+    # Move cursor BEFORE the `[`
+    cursor = editor.textCursor()
+    cursor.setPosition(3)  # cursor between "pre" and " "
+    editor.setTextCursor(cursor)
+
+    QTest.keyClick(editor, Qt.Key.Key_Delete)
+
+    # The space before `[` got deleted, brackets still there
+    assert editor.toPlainText() == "pre[]"
+
+
+def test_delete_inside_non_empty_field_falls_through(qtbot):
+    """Delete inside a non-empty field deletes one char as usual — the
+    empty-collapse rule only fires when the field is exactly `[]`."""
+    editor = QTextEdit()
+    qtbot.addWidget(editor)
+    editor.setPlainText("[abc]")
+
+    registry = FieldRegistry(editor)
+    nav = FieldNavigator(editor, registry)
+
+    cursor = editor.textCursor()
+    cursor.setPosition(2)  # between 'a' and 'b'
+    editor.setTextCursor(cursor)
+
+    QTest.keyClick(editor, Qt.Key.Key_Delete)
+
+    # 'b' got deleted, brackets and 'a','c' remain
+    assert editor.toPlainText() == "[ac]"
+
+
 def test_ctrl_shift_tab_cycles_through_fields_from_end(qtbot):
     """Regression: cursor at end-of-doc, repeated Ctrl+Shift+Tab walks
     backwards through every field instead of getting stuck on the last.
