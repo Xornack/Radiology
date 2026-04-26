@@ -27,3 +27,6 @@ build/
 benchmarks/
 docs/superpowers/profiling/*/
 !docs/superpowers/profiling/*.md
+
+# Brainstorming visual companion (per-session mockups)
+.superpowers/
