@@ -6,6 +6,7 @@ from PyQt6.QtWidgets import QApplication
 from loguru import logger
 
 from src.ui.main_window import MainWindow
+from src.ui.field_navigator import FieldRegistry, FieldHighlighter, FieldNavigator
 from src.hardware.recorder import AudioRecorder, list_input_devices
 from src.hardware.mic_listener import MicListener
 from src.hardware.global_hotkey import GlobalHotkey, VK_F4, MOD_NOREPEAT
@@ -303,6 +304,24 @@ def _register_shutdown(app, f4_hotkey, mic, streaming, recorder, warmup):
     app.aboutToQuit.connect(on_shutdown)
 
 
+def _wire_field_navigator(window, recording_state) -> tuple:
+    """Attach field detection, highlighting, and Ctrl+Tab navigation to the editor.
+
+    Returns the registry/highlighter/navigator triple so main() can keep
+    references alive (otherwise the highlighter — a QObject child of the
+    document — is fine, but the navigator is a child of the editor and
+    auto-managed; the registry has no parent and would be GC'd if dropped).
+    """
+    registry = FieldRegistry(window.editor)
+    highlighter = FieldHighlighter(window.editor.document(), registry, window.editor)
+    navigator = FieldNavigator(
+        window.editor,
+        registry,
+        is_recording_fn=lambda: recording_state["active"],
+    )
+    return registry, highlighter, navigator
+
+
 def main():
     logger.info("Initializing Local AI Radiology Dictation Platform...")
 
@@ -358,6 +377,12 @@ def main():
         window, orchestrator, streaming, stop_worker, recording_state
     )
     window.on_toggle_recording = handle_trigger
+
+    # Field navigation: detect [bracket] fields, highlight as pills,
+    # and intercept Ctrl+Tab in the editor to walk between them.
+    _field_registry, _field_highlighter, _field_navigator = _wire_field_navigator(
+        window, recording_state
+    )
 
     # Microphone picker
     def on_mic_changed(device_index):
