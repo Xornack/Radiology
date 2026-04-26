@@ -645,6 +645,27 @@ def test_commit_partial_starting_with_punctuation_attaches_to_prior_text(qtbot):
     assert window.editor.toPlainText() == "Findings clear."
 
 
+def test_partial_after_opening_bracket_does_not_get_leading_space(qtbot):
+    """Regression: when Ctrl+Tab inner-only-selects a field's placeholder
+    and the user dictates a replacement, the partial lands immediately
+    after `[`. The controller must NOT prepend a space — otherwise the
+    field becomes `[ atrophic]` instead of `[atrophic]`."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.editor.setPlainText("The pancreas is [normal].")
+
+    # Simulate Ctrl+Tab inner-only selection on `[normal]` (positions 17-23)
+    cursor = window.editor.textCursor()
+    cursor.setPosition(17)
+    cursor.setPosition(23, cursor.MoveMode.KeepAnchor)
+    window.editor.setTextCursor(cursor)
+
+    window.begin_streaming()  # removes the selection → text is `The pancreas is [].`
+    window.update_partial("atrophic")
+
+    assert window.editor.toPlainText() == "The pancreas is [atrophic]."
+
+
 def test_commit_of_regular_word_still_gets_leading_space(qtbot):
     """Regression guard: the new attach-to-left rule only fires for
     punctuation — normal words must still get the separator."""

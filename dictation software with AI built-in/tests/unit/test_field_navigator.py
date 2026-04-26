@@ -416,7 +416,8 @@ from src.ui.field_navigator import FieldNavigator
 
 
 def test_ctrl_tab_selects_first_field(qtbot):
-    """Ctrl+Tab from cursor at position 0 selects the first field's full range (brackets included)."""
+    """Ctrl+Tab from cursor at position 0 selects the first field's INNER
+    text (brackets preserved)."""
     editor = QTextEdit()
     qtbot.addWidget(editor)
     editor.setPlainText("text [first] mid [second]")  # 5-12 and 17-25
@@ -432,7 +433,9 @@ def test_ctrl_tab_selects_first_field(qtbot):
 
     sel = editor.textCursor()
     assert sel.hasSelection()
-    assert (sel.selectionStart(), sel.selectionEnd()) == (5, 12)
+    # Inner-only: [first] spans [5, 12], inner is [6, 11] = "first"
+    assert (sel.selectionStart(), sel.selectionEnd()) == (6, 11)
+    assert sel.selectedText() == "first"
 
 
 def test_plain_tab_does_not_navigate(qtbot):
@@ -469,7 +472,9 @@ def test_ctrl_shift_tab_walks_backwards(qtbot):
     QTest.keyClick(editor, Qt.Key.Key_Backtab, Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier)
 
     sel = editor.textCursor()
-    assert (sel.selectionStart(), sel.selectionEnd()) == (8, 11)
+    # Inner-only: [b] spans [8, 11], inner is [9, 10] = "b"
+    assert (sel.selectionStart(), sel.selectionEnd()) == (9, 10)
+    assert sel.selectedText() == "b"
 
 
 def test_ctrl_tab_no_fields_is_silent_noop(qtbot):
@@ -546,9 +551,10 @@ def test_ctrl_shift_tab_shortcut_override_is_accepted(qtbot):
 
 
 def test_select_replace_flips_anchor_state_to_filled(qtbot):
-    """Simulate the dictation-replace flow: Ctrl+Tab to select a field, then
-    replace via cursor.removeSelectedText() + insertText(), as
-    TextStreamingController would do via begin() + insertText.
+    """Simulate the dictation-replace flow: Ctrl+Tab to select a field's
+    inner text, then replace via cursor.removeSelectedText() +
+    insertText(). Brackets are preserved because the selection covers
+    the inner text only.
     """
     editor = QTextEdit()
     qtbot.addWidget(editor)
@@ -557,26 +563,63 @@ def test_select_replace_flips_anchor_state_to_filled(qtbot):
     registry = FieldRegistry(editor)
     nav = FieldNavigator(editor, registry)
 
-    # Land on the field
+    # Land on the field — inner-only selection skips the brackets
     QTest.keyClick(editor, Qt.Key.Key_Tab, Qt.KeyboardModifier.ControlModifier)
     sel = editor.textCursor()
-    assert (sel.selectionStart(), sel.selectionEnd()) == (16, 24)
+    assert (sel.selectionStart(), sel.selectionEnd()) == (17, 23)
+    assert sel.selectedText() == "normal"
 
     # Replace the selection with dictated text — same primitive the streaming pipeline uses
     sel.removeSelectedText()
     sel.insertText("atrophic")
 
-    # Anchor state should be filled, end position updated
+    # Anchor state should be filled; brackets stayed put so the span
+    # extended from 8 to 10 chars.
     anchors = registry.anchors()
     assert len(anchors) == 1
     assert anchors[0].state == "filled"
-    assert (anchors[0].start, anchors[0].end) == (16, 24)
-    # Editor text shows the replacement
-    assert editor.toPlainText() == "The pancreas is atrophic."
+    assert (anchors[0].start, anchors[0].end) == (16, 26)
+    assert editor.toPlainText() == "The pancreas is [atrophic]."
+
+
+def test_ctrl_shift_tab_cycles_through_fields_from_end(qtbot):
+    """Regression: cursor at end-of-doc, repeated Ctrl+Shift+Tab walks
+    backwards through every field instead of getting stuck on the last.
+
+    Pre-fix bug: whole-field selection landed cursor at anchor.end, and
+    find_prev (using <=) returned the same anchor on every press. Inner-
+    only selection puts cursor at anchor.end-1, so find_prev advances.
+    """
+    editor = QTextEdit()
+    qtbot.addWidget(editor)
+    editor.setPlainText("[a] mid [b] tail [c]")  # anchors at 0-3, 8-11, 17-20
+    cursor = editor.textCursor()
+    cursor.setPosition(20)  # end of doc, also end of last field
+    editor.setTextCursor(cursor)
+
+    registry = FieldRegistry(editor)
+    nav = FieldNavigator(editor, registry)
+
+    # First press: lands on [c]
+    QTest.keyClick(editor, Qt.Key.Key_Backtab, Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier)
+    assert editor.textCursor().selectedText() == "c"
+
+    # Second press: walks to [b]
+    QTest.keyClick(editor, Qt.Key.Key_Backtab, Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier)
+    assert editor.textCursor().selectedText() == "b"
+
+    # Third press: walks to [a]
+    QTest.keyClick(editor, Qt.Key.Key_Backtab, Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier)
+    assert editor.textCursor().selectedText() == "a"
+
+    # Fourth press: wraps to last
+    QTest.keyClick(editor, Qt.Key.Key_Backtab, Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier)
+    assert editor.textCursor().selectedText() == "c"
 
 
 def test_re_dictate_into_filled_field_replaces_again(qtbot):
-    """After a fill, Ctrl+Shift+Tab can return to the field and another replace works."""
+    """After a fill, Ctrl+Shift+Tab can return to the field and another
+    replace works. Brackets persist through every fill cycle."""
     editor = QTextEdit()
     qtbot.addWidget(editor)
     editor.setPlainText("[normal] tail")  # field at [0, 8]
@@ -584,17 +627,18 @@ def test_re_dictate_into_filled_field_replaces_again(qtbot):
     registry = FieldRegistry(editor)
     nav = FieldNavigator(editor, registry)
 
-    # First fill
+    # First fill — inner-only selection means brackets stay
     QTest.keyClick(editor, Qt.Key.Key_Tab, Qt.KeyboardModifier.ControlModifier)
     cursor = editor.textCursor()
     cursor.removeSelectedText()
     cursor.insertText("atrophic")
+    assert editor.toPlainText() == "[atrophic] tail"
 
     # Move cursor past the field
-    cursor.setPosition(11)
+    cursor.setPosition(13)
     editor.setTextCursor(cursor)
 
-    # Walk back
+    # Walk back — find_prev selects the filled field's inner text
     QTest.keyClick(editor, Qt.Key.Key_Backtab, Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier)
     sel = editor.textCursor()
     assert sel.hasSelection()
@@ -607,4 +651,4 @@ def test_re_dictate_into_filled_field_replaces_again(qtbot):
     anchors = registry.anchors()
     assert len(anchors) == 1
     assert anchors[0].state == "filled"
-    assert editor.toPlainText() == "enlarged tail"
+    assert editor.toPlainText() == "[enlarged] tail"

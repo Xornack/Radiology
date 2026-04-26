@@ -42,6 +42,11 @@ class FieldAnchor:
 # brackets fail; nested brackets resolve to the innermost closed pair.
 _FIELD_PATTERN = re.compile(r"\[([^\[\]]+)\]")
 
+# Lax variant for state recomputation: allows `[]` (empty inner) so the
+# transient streaming state — selection removed, partial not yet inserted —
+# doesn't temporarily look like a deleted field.
+_FIELD_STATE_PATTERN = re.compile(r"\[([^\[\]]*)\]")
+
 
 def find_brackets(text: str) -> list[tuple[int, int, str]]:
     """Return `(start, end, default)` for every bracketed field in `text`.
@@ -128,12 +133,23 @@ class FieldRegistry:
         return self._anchors
 
     def cleanup_zombies(self) -> None:
-        """Drop anchors whose range collapsed and never got refilled.
+        """Drop anchors whose range collapsed or whose surrounding brackets
+        are gone.
 
-        Called before each Ctrl+Tab traversal so a deleted-with-no-replacement
-        field doesn't linger as a zero-length zombie.
+        Called before each Ctrl+Tab traversal. Bracket-less anchors mean the
+        user manually deleted the brackets — at that point the field is no
+        longer navigable.
         """
-        self._anchors = [a for a in self._anchors if a.end > a.start]
+        text = self._editor.toPlainText()
+        keep = []
+        for a in self._anchors:
+            if a.end <= a.start:
+                continue
+            span = text[a.start:a.end]
+            if not (span.startswith("[") and span.endswith("]")):
+                continue
+            keep.append(a)
+        self._anchors = keep
 
     def find_next(self, pos: int) -> "FieldAnchor | None":
         """Anchor with the smallest start strictly greater than `pos`.
@@ -183,28 +199,34 @@ class FieldRegistry:
         self._adopt_new_brackets()
 
     def _recompute_states(self) -> None:
-        """Set state = 'unfilled' if anchor's text matches the bracket regex,
-        else 'filled'."""
+        """Compare each anchor's current inner text against its original
+        default to decide unfilled vs filled.
+
+        Brackets are preserved through the dictation flow (inner-only
+        selection means streaming replaces only the content between the
+        brackets), so a "filled" anchor still spans `[text]`. The default
+        is captured at seed time and never updated — it represents the
+        placeholder the user originally wrote.
+        """
         text = self._editor.toPlainText()
         for anchor in self._anchors:
             span = text[anchor.start:anchor.end]
-            m = _FIELD_PATTERN.fullmatch(span)
-            if m is not None:
-                anchor.state = "unfilled"
-                anchor.default = m.group(1)
-            else:
+            m = _FIELD_STATE_PATTERN.fullmatch(span)
+            if m is None:
                 anchor.state = "filled"
+            else:
+                anchor.state = "unfilled" if m.group(1) == anchor.default else "filled"
 
     def _adopt_new_brackets(self) -> None:
         """Find bracket matches that don't correspond to any existing anchor
-        and add them as new ones. Avoids creating duplicates for unfilled
-        anchors that already exist at a given position.
+        and add them as new ones.
 
-        Two anchors at the same start position are treated as the same field
-        — this is how an unfilled anchor created at seed time gets re-found
-        after edits without growing duplicates.
+        Dedupes against ALL existing anchors (filled or not). With
+        bracket-preserving fills, a filled anchor's span still matches the
+        bracket regex — without the all-anchor dedup, every contentsChange
+        would clone it.
         """
-        existing_starts = {a.start for a in self._anchors if a.state == "unfilled"}
+        existing_starts = {a.start for a in self._anchors}
         text = self._editor.toPlainText()
         for start, end, default in find_brackets(text):
             if start in existing_starts:
@@ -234,12 +256,14 @@ FILLED_TEXT = "#94e2d5"
 class FieldHighlighter(QSyntaxHighlighter):
     """Paints field formatting based on the registry's anchor list.
 
-    Unfilled anchors get the pill: lavender background across the entire
+    Bracketed anchors get the pill: lavender background across the entire
     range, with the bracket characters foreground'd to match the
-    background (visually invisible, structurally present) and the inner
-    text in dark base color.
+    background (visually invisible, structurally present). Inner text is
+    dark base when unfilled, dictation-teal when filled.
 
-    Filled anchors get the existing dictation-teal foreground.
+    If a filled anchor's brackets are gone (user manually deleted them
+    before cleanup_zombies runs), it falls back to teal-only — no pill
+    structure to render.
 
     The anchor containing the editor's cursor (if any) additionally gets
     a yellow underline merged with the pill or filled format.
@@ -255,40 +279,48 @@ class FieldHighlighter(QSyntaxHighlighter):
         block_end = block_start + len(text)
         active_pos = self._editor.textCursor().position() if self._editor else -1
         for anchor in self._registry.anchors():
-            # Skip anchors that don't intersect this block
             if anchor.end <= block_start or anchor.start >= block_end:
                 continue
             local_start = max(0, anchor.start - block_start)
             local_end = min(len(text), anchor.end - block_start)
-            is_active = anchor.start <= active_pos <= anchor.end
-            if anchor.state == "unfilled":
-                self._paint_pill(local_start, local_end)
-            else:
+            local_text = text[local_start:local_end]
+            looks_bracketed = (
+                len(local_text) >= 2
+                and local_text.startswith("[")
+                and local_text.endswith("]")
+            )
+            if looks_bracketed:
+                self._paint_pill(local_start, local_end, anchor.state)
+            elif anchor.state == "filled":
                 self._paint_filled(local_start, local_end)
+            is_active = anchor.start <= active_pos <= anchor.end
             if is_active:
                 self._paint_active_outline(local_start, local_end)
 
-    def _paint_pill(self, start: int, end: int) -> None:
-        """Paint a 3-range pill: invisible bracket, dark inner text, invisible bracket."""
-        if end - start < 2:  # need at least `[]`
+    def _paint_pill(self, start: int, end: int, state: str) -> None:
+        """Paint a 3-range pill: invisible bracket, inner text, invisible bracket.
+
+        Inner color is dark base when unfilled (placeholder still showing)
+        or teal when filled (user has dictated/typed into it).
+        """
+        if end - start < 2:
             return
         bg = QColor(PILL_BG)
         bracket_fmt = QTextCharFormat()
         bracket_fmt.setForeground(bg)
         bracket_fmt.setBackground(bg)
+        inner_color = QColor(FILLED_TEXT) if state == "filled" else QColor(PILL_TEXT)
         inner_fmt = QTextCharFormat()
-        inner_fmt.setForeground(QColor(PILL_TEXT))
+        inner_fmt.setForeground(inner_color)
         inner_fmt.setBackground(bg)
-        # Opening bracket
         self.setFormat(start, 1, bracket_fmt)
-        # Inner text
         if end - start > 2:
             self.setFormat(start + 1, end - start - 2, inner_fmt)
-        # Closing bracket
         self.setFormat(end - 1, 1, bracket_fmt)
 
     def _paint_filled(self, start: int, end: int) -> None:
-        """Paint filled anchor with teal foreground."""
+        """Fallback for filled anchors that have lost their brackets — teal
+        foreground, no pill structure."""
         fmt = QTextCharFormat()
         fmt.setForeground(QColor(FILLED_TEXT))
         self.setFormat(start, end - start, fmt)
@@ -382,7 +414,21 @@ class FieldNavigator(QObject):
         self._select_anchor(anchor)
 
     def _select_anchor(self, anchor: FieldAnchor) -> None:
+        """Select the anchor's INNER text (between the brackets), not the
+        whole bracketed span.
+
+        Inner-only selection means the dictation pipeline replaces just the
+        placeholder content — `[normal]` stays bracketed as `[atrophic]`
+        rather than collapsing to bare `atrophic`. It also lets Ctrl+Tab
+        cycling work correctly: the cursor lands at `anchor.end - 1`, which
+        is strictly less than `anchor.end`, so `find_prev` (using <=) walks
+        to the previous anchor instead of re-selecting this one.
+        """
         cursor = QTextCursor(self._editor.document())
-        cursor.setPosition(anchor.start)
-        cursor.setPosition(anchor.end, QTextCursor.MoveMode.KeepAnchor)
+        if anchor.end - anchor.start >= 2:
+            cursor.setPosition(anchor.start + 1)
+            cursor.setPosition(anchor.end - 1, QTextCursor.MoveMode.KeepAnchor)
+        else:
+            cursor.setPosition(anchor.start)
+            cursor.setPosition(anchor.end, QTextCursor.MoveMode.KeepAnchor)
         self._editor.setTextCursor(cursor)

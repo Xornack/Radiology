@@ -17,6 +17,12 @@ from PyQt6.QtWidgets import QTextEdit
 # controller must not wedge a space in front of it.
 _ATTACHING_PUNCTUATION = set('.,?!;:)]}”"')
 
+# Characters that belong to the word on their RIGHT — if dictation lands
+# right after one of these (e.g. inside `[normal]` after the user
+# selected "normal" via Ctrl+Tab inner-only selection), don't prepend a
+# space. Otherwise field replacement produces `[ atrophic]`.
+_OPENING_PUNCTUATION = set('([{“"')
+
 
 class TextStreamingController:
     """Manages the live-partial region inside a QTextEdit during dictation.
@@ -201,5 +207,10 @@ class TextStreamingController:
         doc = self._editor.toPlainText()
         if pos > len(doc):
             return False
-        return doc[pos - 1] not in " \t\n"
+        prev_char = doc[pos - 1]
+        if prev_char in " \t\n":
+            return False
+        if prev_char in _OPENING_PUNCTUATION:
+            return False
+        return True
 
