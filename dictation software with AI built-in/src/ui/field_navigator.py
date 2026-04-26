@@ -321,30 +321,49 @@ class FieldNavigator(QObject):
         editor.installEventFilter(self)
 
     def eventFilter(self, obj: QObject, event: QEvent) -> bool:
-        if obj is self._editor and event.type() == QEvent.Type.KeyPress:
-            ke: QKeyEvent = event  # type: ignore[assignment]
-            mods = ke.modifiers()
-            ctrl = bool(mods & Qt.KeyboardModifier.ControlModifier)
-            shift = bool(mods & Qt.KeyboardModifier.ShiftModifier)
-            key = ke.key()
-            # Qt sends Key_Backtab when Shift is held with Tab; also accept
-            # Key_Tab + Shift for completeness.
-            is_tab_forward = ctrl and not shift and key == Qt.Key.Key_Tab
-            is_tab_backward = ctrl and (
-                key == Qt.Key.Key_Backtab
-                or (shift and key == Qt.Key.Key_Tab)
-            )
-            if is_tab_forward or is_tab_backward:
-                if self._is_recording():
-                    # Drop the navigation event during recording. Returning True
-                    # also prevents the editor's default handling of Ctrl+Tab.
-                    return True
-                if is_tab_forward:
-                    self.jump_next()
-                else:
-                    self.jump_prev()
-                return True
-        return super().eventFilter(obj, event)
+        if obj is not self._editor:
+            return super().eventFilter(obj, event)
+        et = event.type()
+        # ShortcutOverride: Qt's shortcut framework binds Ctrl+Shift+Tab to
+        # the standard PrevChild action (and similar). If we don't claim the
+        # key here, Qt routes it to the shortcut handler instead of delivering
+        # a KeyPress to us. Accepting the override tells Qt "this widget owns
+        # this key" and Qt then delivers it as a normal KeyPress.
+        if et not in (QEvent.Type.KeyPress, QEvent.Type.ShortcutOverride):
+            return super().eventFilter(obj, event)
+
+        ke: QKeyEvent = event  # type: ignore[assignment]
+        mods = ke.modifiers()
+        ctrl = bool(mods & Qt.KeyboardModifier.ControlModifier)
+        shift = bool(mods & Qt.KeyboardModifier.ShiftModifier)
+        key = ke.key()
+        # Qt sends Key_Backtab when Shift is held with Tab; also accept
+        # Key_Tab + Shift for completeness.
+        is_tab_forward = ctrl and not shift and key == Qt.Key.Key_Tab
+        is_tab_backward = ctrl and (
+            key == Qt.Key.Key_Backtab
+            or (shift and key == Qt.Key.Key_Tab)
+        )
+        if not (is_tab_forward or is_tab_backward):
+            return super().eventFilter(obj, event)
+
+        if et == QEvent.Type.ShortcutOverride:
+            # Claim the key — prevents Qt's shortcut framework from
+            # consuming it. The actual navigation runs on the KeyPress
+            # that Qt will subsequently deliver.
+            event.accept()
+            return True
+
+        # KeyPress
+        if self._is_recording():
+            # Drop the navigation event during recording. Returning True
+            # also prevents the editor's default handling of Ctrl+Tab.
+            return True
+        if is_tab_forward:
+            self.jump_next()
+        else:
+            self.jump_prev()
+        return True
 
     def jump_next(self) -> None:
         self._registry.cleanup_zombies()

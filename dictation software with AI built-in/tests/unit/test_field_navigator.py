@@ -518,6 +518,33 @@ def test_ctrl_tab_dropped_during_recording(qtbot):
     assert sel.hasSelection()
 
 
+def test_ctrl_shift_tab_shortcut_override_is_accepted(qtbot):
+    """Regression: in the running app, Qt's shortcut framework binds
+    Ctrl+Shift+Tab to PrevChild and consumes it before any KeyPress reaches
+    the editor. The event filter must accept the ShortcutOverride event so
+    Qt then delivers a normal KeyPress that we can handle.
+    QTest.keyClick bypasses this framework, so without this regression test
+    the bug only showed up when running the app for real.
+    """
+    from PyQt6.QtCore import QEvent
+    from PyQt6.QtGui import QKeyEvent
+
+    editor = QTextEdit()
+    qtbot.addWidget(editor)
+    editor.setPlainText("[a] [b]")
+    registry = FieldRegistry(editor)
+    nav = FieldNavigator(editor, registry)
+
+    override = QKeyEvent(
+        QEvent.Type.ShortcutOverride,
+        Qt.Key.Key_Backtab,
+        Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier,
+    )
+    consumed = nav.eventFilter(editor, override)
+    assert consumed is True
+    assert override.isAccepted()
+
+
 def test_select_replace_flips_anchor_state_to_filled(qtbot):
     """Simulate the dictation-replace flow: Ctrl+Tab to select a field, then
     replace via cursor.removeSelectedText() + insertText(), as
