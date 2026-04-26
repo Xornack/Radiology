@@ -516,3 +516,68 @@ def test_ctrl_tab_dropped_during_recording(qtbot):
     QTest.keyClick(editor, Qt.Key.Key_Tab, Qt.KeyboardModifier.ControlModifier)
     sel = editor.textCursor()
     assert sel.hasSelection()
+
+
+def test_select_replace_flips_anchor_state_to_filled(qtbot):
+    """Simulate the dictation-replace flow: Ctrl+Tab to select a field, then
+    replace via cursor.removeSelectedText() + insertText(), as
+    TextStreamingController would do via begin() + insertText.
+    """
+    editor = QTextEdit()
+    qtbot.addWidget(editor)
+    editor.setPlainText("The pancreas is [normal].")  # field at [16, 24]
+
+    registry = FieldRegistry(editor)
+    nav = FieldNavigator(editor, registry)
+
+    # Land on the field
+    QTest.keyClick(editor, Qt.Key.Key_Tab, Qt.KeyboardModifier.ControlModifier)
+    sel = editor.textCursor()
+    assert (sel.selectionStart(), sel.selectionEnd()) == (16, 24)
+
+    # Replace the selection with dictated text — same primitive the streaming pipeline uses
+    sel.removeSelectedText()
+    sel.insertText("atrophic")
+
+    # Anchor state should be filled, end position updated
+    anchors = registry.anchors()
+    assert len(anchors) == 1
+    assert anchors[0].state == "filled"
+    assert (anchors[0].start, anchors[0].end) == (16, 24)
+    # Editor text shows the replacement
+    assert editor.toPlainText() == "The pancreas is atrophic."
+
+
+def test_re_dictate_into_filled_field_replaces_again(qtbot):
+    """After a fill, Ctrl+Shift+Tab can return to the field and another replace works."""
+    editor = QTextEdit()
+    qtbot.addWidget(editor)
+    editor.setPlainText("[normal] tail")  # field at [0, 8]
+
+    registry = FieldRegistry(editor)
+    nav = FieldNavigator(editor, registry)
+
+    # First fill
+    QTest.keyClick(editor, Qt.Key.Key_Tab, Qt.KeyboardModifier.ControlModifier)
+    cursor = editor.textCursor()
+    cursor.removeSelectedText()
+    cursor.insertText("atrophic")
+
+    # Move cursor past the field
+    cursor.setPosition(11)
+    editor.setTextCursor(cursor)
+
+    # Walk back
+    QTest.keyClick(editor, Qt.Key.Key_Backtab, Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier)
+    sel = editor.textCursor()
+    assert sel.hasSelection()
+    assert sel.selectedText() == "atrophic"
+
+    # Replace again
+    sel.removeSelectedText()
+    sel.insertText("enlarged")
+
+    anchors = registry.anchors()
+    assert len(anchors) == 1
+    assert anchors[0].state == "filled"
+    assert editor.toPlainText() == "enlarged tail"
