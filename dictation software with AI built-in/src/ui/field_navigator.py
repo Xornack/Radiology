@@ -118,11 +118,20 @@ class FieldRegistry:
         self._editor = editor
         self._anchors: list[FieldAnchor] = []
         self._seed_from_text()
+        editor.document().contentsChange.connect(self._on_contents_change)
 
     def anchors(self) -> list[FieldAnchor]:
         """Anchors in document order. Returns the live list — callers must
         not mutate it."""
         return self._anchors
+
+    def cleanup_zombies(self) -> None:
+        """Drop anchors whose range collapsed and never got refilled.
+
+        Called before each Ctrl+Tab traversal so a deleted-with-no-replacement
+        field doesn't linger as a zero-length zombie.
+        """
+        self._anchors = [a for a in self._anchors if a.end > a.start]
 
     def _seed_from_text(self) -> None:
         text = self._editor.toPlainText()
@@ -136,3 +145,50 @@ class FieldRegistry:
                     end=end,
                 )
             )
+
+    def _on_contents_change(self, position: int, removed: int, added: int) -> None:
+        """Update every anchor's position via the rules in update_anchor_position,
+        then recompute filled/unfilled state from the current text, then add any
+        newly-bracketed regions as new anchors."""
+        for anchor in self._anchors:
+            update_anchor_position(anchor, position, removed, added)
+        self._recompute_states()
+        self._adopt_new_brackets()
+
+    def _recompute_states(self) -> None:
+        """Set state = 'unfilled' if anchor's text matches the bracket regex,
+        else 'filled'."""
+        text = self._editor.toPlainText()
+        for anchor in self._anchors:
+            span = text[anchor.start:anchor.end]
+            m = _FIELD_PATTERN.fullmatch(span)
+            if m is not None:
+                anchor.state = "unfilled"
+                anchor.default = m.group(1)
+            else:
+                anchor.state = "filled"
+
+    def _adopt_new_brackets(self) -> None:
+        """Find bracket matches that don't correspond to any existing anchor
+        and add them as new ones. Avoids creating duplicates for unfilled
+        anchors that already exist at a given position.
+
+        Two anchors at the same start position are treated as the same field
+        — this is how an unfilled anchor created at seed time gets re-found
+        after edits without growing duplicates.
+        """
+        existing_starts = {a.start for a in self._anchors if a.state == "unfilled"}
+        text = self._editor.toPlainText()
+        for start, end, default in find_brackets(text):
+            if start in existing_starts:
+                continue
+            self._anchors.append(
+                FieldAnchor(
+                    id=str(uuid.uuid4()),
+                    default=default,
+                    state="unfilled",
+                    start=start,
+                    end=end,
+                )
+            )
+        self._anchors.sort(key=lambda a: a.start)

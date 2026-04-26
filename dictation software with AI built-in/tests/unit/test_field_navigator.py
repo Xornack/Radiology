@@ -184,3 +184,60 @@ def test_registry_empty_editor_has_no_anchors(qtbot):
     qtbot.addWidget(editor)
     registry = FieldRegistry(editor)
     assert registry.anchors() == []
+
+
+def test_registry_updates_positions_on_insert_before(qtbot):
+    """Inserting text before a field shifts its positions."""
+    editor = QTextEdit()
+    qtbot.addWidget(editor)
+    editor.setPlainText("[a] tail")  # field at [0, 3]
+
+    registry = FieldRegistry(editor)
+    cursor = editor.textCursor()
+    cursor.setPosition(0)
+    cursor.insertText("XX")  # insert 2 chars at pos 0
+
+    anchors = registry.anchors()
+    assert (anchors[0].start, anchors[0].end) == (2, 5)
+
+
+def test_registry_drops_zombie_anchor_after_full_delete(qtbot):
+    """Deleting a field's whole range drops the anchor (after cleanup)."""
+    editor = QTextEdit()
+    qtbot.addWidget(editor)
+    editor.setPlainText("Pre [a] post")  # field at [4, 7]
+
+    registry = FieldRegistry(editor)
+    assert len(registry.anchors()) == 1
+
+    # Select and delete the field's range
+    cursor = editor.textCursor()
+    cursor.setPosition(4)
+    cursor.setPosition(7, cursor.MoveMode.KeepAnchor)
+    cursor.removeSelectedText()
+
+    # An immediate read still shows the collapsed anchor (pending replace);
+    # cleanup happens on next traversal
+    registry.cleanup_zombies()
+    assert registry.anchors() == []
+
+
+def test_registry_marks_filled_after_replace(qtbot):
+    """When a field's range is replaced with non-bracket text, anchor flips to filled."""
+    editor = QTextEdit()
+    qtbot.addWidget(editor)
+    editor.setPlainText("[normal]")
+
+    registry = FieldRegistry(editor)
+    assert registry.anchors()[0].state == "unfilled"
+
+    cursor = editor.textCursor()
+    cursor.setPosition(0)
+    cursor.setPosition(8, cursor.MoveMode.KeepAnchor)
+    cursor.removeSelectedText()
+    cursor.insertText("atrophic")
+
+    anchors = registry.anchors()
+    assert len(anchors) == 1
+    assert anchors[0].state == "filled"
+    assert (anchors[0].start, anchors[0].end) == (0, 8)
