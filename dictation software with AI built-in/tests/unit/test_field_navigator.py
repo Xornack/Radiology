@@ -308,3 +308,42 @@ def test_find_prev_wraps_when_before_first(qtbot):
 
     found = registry.find_prev(0)
     assert found is not None and found.default == "b"
+
+
+from PyQt6.QtGui import QColor, QTextCursor
+from src.ui.field_navigator import FieldHighlighter, PILL_BG, PILL_TEXT
+
+
+def test_highlighter_paints_pill_on_unfilled(qtbot):
+    """Bracketed text gets pill background and dark text on the inner chars; brackets get color-matched-to-bg foreground."""
+    editor = QTextEdit()
+    qtbot.addWidget(editor)
+    editor.setPlainText("[a]")
+
+    registry = FieldRegistry(editor)
+    highlighter = FieldHighlighter(editor.document(), registry)
+    highlighter.rehighlight()  # force pass
+
+    doc = editor.document()
+    cursor = QTextCursor(doc)
+
+    # Opening bracket at position 0
+    cursor.setPosition(0)
+    cursor.setPosition(1, cursor.MoveMode.KeepAnchor)
+    fmt_open = cursor.charFormat()
+    assert fmt_open.foreground().color() == QColor(PILL_BG)
+    assert fmt_open.background().color() == QColor(PILL_BG)
+
+    # Inner char at position 1
+    cursor.setPosition(1)
+    cursor.setPosition(2, cursor.MoveMode.KeepAnchor)
+    fmt_inner = cursor.charFormat()
+    assert fmt_inner.foreground().color() == QColor(PILL_TEXT)
+    assert fmt_inner.background().color() == QColor(PILL_BG)
+
+    # Closing bracket at position 2
+    cursor.setPosition(2)
+    cursor.setPosition(3, cursor.MoveMode.KeepAnchor)
+    fmt_close = cursor.charFormat()
+    assert fmt_close.foreground().color() == QColor(PILL_BG)
+    assert fmt_close.background().color() == QColor(PILL_BG)

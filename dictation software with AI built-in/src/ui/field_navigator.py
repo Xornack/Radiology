@@ -14,6 +14,8 @@ import uuid
 from dataclasses import dataclass
 from typing import Literal
 
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor, QSyntaxHighlighter, QTextCharFormat, QTextCursor
 from PyQt6.QtWidgets import QTextEdit
 
 
@@ -217,3 +219,77 @@ class FieldRegistry:
                 )
             )
         self._anchors.sort(key=lambda a: a.start)
+
+
+# Catppuccin Lavender — pill background.
+PILL_BG = "#b4befe"
+# Catppuccin Base — dark text on lavender.
+PILL_TEXT = "#1e1e2e"
+# Catppuccin Yellow — outline on the active (cursor-inside) anchor. Reserved for Task 9.
+ACTIVE_OUTLINE = "#f9e2af"
+# Catppuccin Teal — already used for dictation. Filled fields wear this.
+FILLED_TEXT = "#94e2d5"
+
+
+class FieldHighlighter(QSyntaxHighlighter):
+    """Paints field formatting based on the registry's anchor list.
+
+    Unfilled anchors get the pill: lavender background across the entire
+    range, with the bracket characters foreground'd to match the
+    background (visually invisible, structurally present) and the inner
+    text in dark base color.
+
+    Filled anchors get the existing dictation-teal foreground (Task 8).
+    """
+
+    def __init__(self, document, registry: FieldRegistry):
+        super().__init__(document)
+        self._registry = registry
+
+    def highlightBlock(self, text: str) -> None:
+        block_start = self.currentBlock().position()
+        block_end = block_start + len(text)
+        for anchor in self._registry.anchors():
+            # Skip anchors that don't intersect this block
+            if anchor.end <= block_start or anchor.start >= block_end:
+                continue
+            local_start = max(0, anchor.start - block_start)
+            local_end = min(len(text), anchor.end - block_start)
+            if anchor.state == "unfilled":
+                self._paint_pill(block_start, local_start, local_end)
+
+    def _paint_pill(self, block_start: int, start: int, end: int) -> None:
+        """Paint a 3-range pill: invisible bracket, dark inner text, invisible bracket."""
+        if end - start < 2:  # need at least `[]`
+            return
+        bg = QColor(PILL_BG)
+        bracket_fmt = QTextCharFormat()
+        bracket_fmt.setForeground(bg)
+        bracket_fmt.setBackground(bg)
+        inner_fmt = QTextCharFormat()
+        inner_fmt.setForeground(QColor(PILL_TEXT))
+        inner_fmt.setBackground(bg)
+        # Opening bracket
+        self.setFormat(start, 1, bracket_fmt)
+        # Inner text
+        if end - start > 2:
+            self.setFormat(start + 1, end - start - 2, inner_fmt)
+        # Closing bracket
+        self.setFormat(end - 1, 1, bracket_fmt)
+
+        # Also apply directly to document so cursor.charFormat() reflects it
+        doc = self.document()
+        cursor = QTextCursor(doc)
+        # Opening bracket
+        cursor.setPosition(block_start + start)
+        cursor.setPosition(block_start + start + 1, QTextCursor.MoveMode.KeepAnchor)
+        cursor.setCharFormat(bracket_fmt)
+        # Inner text
+        if end - start > 2:
+            cursor.setPosition(block_start + start + 1)
+            cursor.setPosition(block_start + end - 1, QTextCursor.MoveMode.KeepAnchor)
+            cursor.setCharFormat(inner_fmt)
+        # Closing bracket
+        cursor.setPosition(block_start + end - 1)
+        cursor.setPosition(block_start + end, QTextCursor.MoveMode.KeepAnchor)
+        cursor.setCharFormat(bracket_fmt)
