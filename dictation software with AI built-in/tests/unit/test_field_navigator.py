@@ -311,7 +311,7 @@ def test_find_prev_wraps_when_before_first(qtbot):
 
 
 from PyQt6.QtGui import QColor, QTextCursor
-from src.ui.field_navigator import FieldHighlighter, PILL_BG, PILL_TEXT, FILLED_TEXT
+from src.ui.field_navigator import FieldHighlighter, PILL_BG, PILL_TEXT, FILLED_TEXT, ACTIVE_OUTLINE
 
 
 def test_highlighter_paints_pill_on_unfilled(qtbot):
@@ -379,3 +379,32 @@ def test_highlighter_paints_teal_on_filled(qtbot):
     for pos in range(8):
         assert fmt_at[pos].foreground().color() == QColor(FILLED_TEXT), f"pos {pos} not teal"
         assert fmt_at[pos].background().color() != QColor(PILL_BG), f"pos {pos} has pill bg"
+
+
+def test_highlighter_paints_outline_on_active_anchor(qtbot):
+    """The anchor containing the editor's cursor gets a yellow underline merged
+    with whichever pill/filled formatting it would otherwise receive."""
+    editor = QTextEdit()
+    qtbot.addWidget(editor)
+    editor.setPlainText("[a] [b]")  # 0-3 and 4-7
+
+    registry = FieldRegistry(editor)
+    highlighter = FieldHighlighter(editor.document(), registry, editor)
+
+    # Place cursor inside the second field (position 5 = inside [b])
+    cursor = editor.textCursor()
+    cursor.setPosition(5)
+    editor.setTextCursor(cursor)
+    highlighter.rehighlight()
+
+    block = editor.document().firstBlock()
+    fmt_at = {}
+    for fr in block.layout().formats():
+        for offset in range(fr.start, fr.start + fr.length):
+            fmt_at[offset] = fr.format
+
+    # First anchor: pill present, no underline
+    assert fmt_at[1].fontUnderline() is False
+    # Second anchor: pill + underline (yellow)
+    assert fmt_at[5].fontUnderline() is True
+    assert fmt_at[5].underlineColor() == QColor(ACTIVE_OUTLINE)

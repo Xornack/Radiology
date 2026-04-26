@@ -239,26 +239,34 @@ class FieldHighlighter(QSyntaxHighlighter):
     background (visually invisible, structurally present) and the inner
     text in dark base color.
 
-    Filled anchors get the existing dictation-teal foreground (Task 8).
+    Filled anchors get the existing dictation-teal foreground.
+
+    The anchor containing the editor's cursor (if any) additionally gets
+    a yellow underline merged with the pill or filled format.
     """
 
-    def __init__(self, document, registry: FieldRegistry):
+    def __init__(self, document, registry: FieldRegistry, editor: "QTextEdit | None" = None):
         super().__init__(document)
         self._registry = registry
+        self._editor = editor
 
     def highlightBlock(self, text: str) -> None:
         block_start = self.currentBlock().position()
         block_end = block_start + len(text)
+        active_pos = self._editor.textCursor().position() if self._editor else -1
         for anchor in self._registry.anchors():
             # Skip anchors that don't intersect this block
             if anchor.end <= block_start or anchor.start >= block_end:
                 continue
             local_start = max(0, anchor.start - block_start)
             local_end = min(len(text), anchor.end - block_start)
+            is_active = anchor.start <= active_pos <= anchor.end
             if anchor.state == "unfilled":
                 self._paint_pill(local_start, local_end)
             else:
                 self._paint_filled(local_start, local_end)
+            if is_active:
+                self._paint_active_outline(local_start, local_end)
 
     def _paint_pill(self, start: int, end: int) -> None:
         """Paint a 3-range pill: invisible bracket, dark inner text, invisible bracket."""
@@ -284,3 +292,12 @@ class FieldHighlighter(QSyntaxHighlighter):
         fmt = QTextCharFormat()
         fmt.setForeground(QColor(FILLED_TEXT))
         self.setFormat(start, end - start, fmt)
+
+    def _paint_active_outline(self, start: int, end: int) -> None:
+        """Add yellow underline to each char in [start, end), preserving
+        whatever pill/filled format is already applied."""
+        for offset in range(start, end):
+            existing = self.format(offset)
+            existing.setFontUnderline(True)
+            existing.setUnderlineColor(QColor(ACTIVE_OUTLINE))
+            self.setFormat(offset, 1, existing)
