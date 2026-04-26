@@ -10,8 +10,11 @@ See docs/superpowers/specs/2026-04-26-field-navigation-design.md for
 the full design and decision log.
 """
 import re
+import uuid
 from dataclasses import dataclass
 from typing import Literal
+
+from PyQt6.QtWidgets import QTextEdit
 
 
 @dataclass
@@ -99,3 +102,37 @@ def update_anchor_position(anchor: FieldAnchor, pos: int, removed: int, added: i
     else:
         # Edit overlaps anchor's end — clamp to insertion endpoint.
         anchor.end = pos + added
+
+
+class FieldRegistry:
+    """Owns the list of FieldAnchors and keeps their positions in sync with
+    the editor.
+
+    Anchors live as long as their text is in the document. Positions update
+    on every `contentsChange` from the underlying QTextDocument; state
+    (`unfilled` vs `filled`) is recomputed by re-checking whether the text
+    at each anchor's current range still matches the bracket regex.
+    """
+
+    def __init__(self, editor: QTextEdit):
+        self._editor = editor
+        self._anchors: list[FieldAnchor] = []
+        self._seed_from_text()
+
+    def anchors(self) -> list[FieldAnchor]:
+        """Anchors in document order. Returns the live list — callers must
+        not mutate it."""
+        return self._anchors
+
+    def _seed_from_text(self) -> None:
+        text = self._editor.toPlainText()
+        for start, end, default in find_brackets(text):
+            self._anchors.append(
+                FieldAnchor(
+                    id=str(uuid.uuid4()),
+                    default=default,
+                    state="unfilled",
+                    start=start,
+                    end=end,
+                )
+            )

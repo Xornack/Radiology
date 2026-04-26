@@ -156,3 +156,31 @@ def test_update_insert_at_anchor_end_grows_anchor():
     a = _anchor(10, 15)
     update_anchor_position(a, pos=15, removed=0, added=1)  # insert at end
     assert (a.start, a.end) == (10, 16)
+
+
+from PyQt6.QtWidgets import QTextEdit
+from src.ui.field_navigator import FieldRegistry
+
+
+def test_registry_seeds_from_existing_text(qtbot):
+    """Constructing a FieldRegistry on an editor with bracketed text creates one anchor per field, in document order."""
+    editor = QTextEdit()
+    qtbot.addWidget(editor)
+    editor.setPlainText("The pancreas is [normal] and the liver shows [size] disease.")
+
+    registry = FieldRegistry(editor)
+
+    anchors = registry.anchors()
+    assert len(anchors) == 2
+    assert (anchors[0].start, anchors[0].end, anchors[0].default) == (16, 24, "normal")
+    assert (anchors[1].start, anchors[1].end, anchors[1].default) == (45, 51, "size")
+    assert all(a.state == "unfilled" for a in anchors)
+    assert all(a.id for a in anchors)  # non-empty UUIDs
+    assert anchors[0].id != anchors[1].id  # unique
+
+
+def test_registry_empty_editor_has_no_anchors(qtbot):
+    editor = QTextEdit()
+    qtbot.addWidget(editor)
+    registry = FieldRegistry(editor)
+    assert registry.anchors() == []
