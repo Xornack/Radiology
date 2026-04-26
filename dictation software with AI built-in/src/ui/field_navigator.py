@@ -256,11 +256,11 @@ class FieldHighlighter(QSyntaxHighlighter):
             local_start = max(0, anchor.start - block_start)
             local_end = min(len(text), anchor.end - block_start)
             if anchor.state == "unfilled":
-                self._paint_pill(block_start, local_start, local_end)
+                self._paint_pill(local_start, local_end)
             else:
                 self._paint_filled(local_start, local_end)
 
-    def _paint_pill(self, block_start: int, start: int, end: int) -> None:
+    def _paint_pill(self, start: int, end: int) -> None:
         """Paint a 3-range pill: invisible bracket, dark inner text, invisible bracket."""
         if end - start < 2:  # need at least `[]`
             return
