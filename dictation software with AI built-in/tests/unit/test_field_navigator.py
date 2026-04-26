@@ -490,3 +490,29 @@ def test_ctrl_tab_no_fields_is_silent_noop(qtbot):
     sel = editor.textCursor()
     assert not sel.hasSelection()
     assert sel.position() == pre_pos
+
+
+def test_ctrl_tab_dropped_during_recording(qtbot):
+    """When recording is active, Ctrl+Tab is dropped — selection unchanged."""
+    editor = QTextEdit()
+    qtbot.addWidget(editor)
+    editor.setPlainText("[a] [b]")
+
+    registry = FieldRegistry(editor)
+    is_recording = {"value": True}
+    nav = FieldNavigator(editor, registry, is_recording_fn=lambda: is_recording["value"])
+
+    cursor = editor.textCursor()
+    cursor.setPosition(0)
+    editor.setTextCursor(cursor)
+
+    QTest.keyClick(editor, Qt.Key.Key_Tab, Qt.KeyboardModifier.ControlModifier)
+
+    sel = editor.textCursor()
+    assert not sel.hasSelection(), "Ctrl+Tab during recording must not change selection"
+
+    # Once recording stops, Ctrl+Tab works again
+    is_recording["value"] = False
+    QTest.keyClick(editor, Qt.Key.Key_Tab, Qt.KeyboardModifier.ControlModifier)
+    sel = editor.textCursor()
+    assert sel.hasSelection()

@@ -12,7 +12,7 @@ the full design and decision log.
 import re
 import uuid
 from dataclasses import dataclass
-from typing import Literal
+from typing import Callable, Literal, Optional
 
 from PyQt6.QtCore import Qt, QObject, QEvent
 from PyQt6.QtGui import QColor, QSyntaxHighlighter, QTextCharFormat, QKeyEvent, QTextCursor
@@ -308,10 +308,16 @@ class FieldNavigator(QObject):
     next/previous field. Plain Tab falls through to QTextEdit's default
     (which inserts a `\\t`)."""
 
-    def __init__(self, editor: QTextEdit, registry: FieldRegistry):
+    def __init__(
+        self,
+        editor: QTextEdit,
+        registry: FieldRegistry,
+        is_recording_fn: Optional[Callable[[], bool]] = None,
+    ):
         super().__init__(editor)
         self._editor = editor
         self._registry = registry
+        self._is_recording = is_recording_fn or (lambda: False)
         editor.installEventFilter(self)
 
     def eventFilter(self, obj: QObject, event: QEvent) -> bool:
@@ -328,11 +334,15 @@ class FieldNavigator(QObject):
                 key == Qt.Key.Key_Backtab
                 or (shift and key == Qt.Key.Key_Tab)
             )
-            if is_tab_forward:
-                self.jump_next()
-                return True
-            if is_tab_backward:
-                self.jump_prev()
+            if is_tab_forward or is_tab_backward:
+                if self._is_recording():
+                    # Drop the navigation event during recording. Returning True
+                    # also prevents the editor's default handling of Ctrl+Tab.
+                    return True
+                if is_tab_forward:
+                    self.jump_next()
+                else:
+                    self.jump_prev()
                 return True
         return super().eventFilter(obj, event)
 
