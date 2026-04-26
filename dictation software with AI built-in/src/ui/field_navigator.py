@@ -14,8 +14,8 @@ import uuid
 from dataclasses import dataclass
 from typing import Literal
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor, QSyntaxHighlighter, QTextCharFormat
+from PyQt6.QtCore import Qt, QObject, QEvent
+from PyQt6.QtGui import QColor, QSyntaxHighlighter, QTextCharFormat, QKeyEvent, QTextCursor
 from PyQt6.QtWidgets import QTextEdit
 
 
@@ -149,14 +149,14 @@ class FieldRegistry:
         return self._anchors[0]
 
     def find_prev(self, pos: int) -> "FieldAnchor | None":
-        """Anchor with the largest end strictly less than `pos`.
+        """Anchor with the largest end <= `pos`.
 
         Wraps to the last anchor if none qualify and the list is non-empty.
         """
         if not self._anchors:
             return None
         for a in reversed(self._anchors):
-            if a.end < pos:
+            if a.end <= pos:
                 return a
         return self._anchors[-1]
 
@@ -301,3 +301,59 @@ class FieldHighlighter(QSyntaxHighlighter):
             existing.setFontUnderline(True)
             existing.setUnderlineColor(QColor(ACTIVE_OUTLINE))
             self.setFormat(offset, 1, existing)
+
+
+class FieldNavigator(QObject):
+    """Captures Ctrl+Tab / Ctrl+Shift+Tab on the editor and selects the
+    next/previous field. Plain Tab falls through to QTextEdit's default
+    (which inserts a `\\t`)."""
+
+    def __init__(self, editor: QTextEdit, registry: FieldRegistry):
+        super().__init__(editor)
+        self._editor = editor
+        self._registry = registry
+        editor.installEventFilter(self)
+
+    def eventFilter(self, obj: QObject, event: QEvent) -> bool:
+        if obj is self._editor and event.type() == QEvent.Type.KeyPress:
+            ke: QKeyEvent = event  # type: ignore[assignment]
+            mods = ke.modifiers()
+            ctrl = bool(mods & Qt.KeyboardModifier.ControlModifier)
+            shift = bool(mods & Qt.KeyboardModifier.ShiftModifier)
+            key = ke.key()
+            # Qt sends Key_Backtab when Shift is held with Tab; also accept
+            # Key_Tab + Shift for completeness.
+            is_tab_forward = ctrl and not shift and key == Qt.Key.Key_Tab
+            is_tab_backward = ctrl and (
+                key == Qt.Key.Key_Backtab
+                or (shift and key == Qt.Key.Key_Tab)
+            )
+            if is_tab_forward:
+                self.jump_next()
+                return True
+            if is_tab_backward:
+                self.jump_prev()
+                return True
+        return super().eventFilter(obj, event)
+
+    def jump_next(self) -> None:
+        self._registry.cleanup_zombies()
+        pos = self._editor.textCursor().position()
+        anchor = self._registry.find_next(pos)
+        if anchor is None:
+            return
+        self._select_anchor(anchor)
+
+    def jump_prev(self) -> None:
+        self._registry.cleanup_zombies()
+        pos = self._editor.textCursor().position()
+        anchor = self._registry.find_prev(pos)
+        if anchor is None:
+            return
+        self._select_anchor(anchor)
+
+    def _select_anchor(self, anchor: FieldAnchor) -> None:
+        cursor = QTextCursor(self._editor.document())
+        cursor.setPosition(anchor.start)
+        cursor.setPosition(anchor.end, QTextCursor.MoveMode.KeepAnchor)
+        self._editor.setTextCursor(cursor)

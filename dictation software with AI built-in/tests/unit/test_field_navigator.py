@@ -408,3 +408,85 @@ def test_highlighter_paints_outline_on_active_anchor(qtbot):
     # Second anchor: pill + underline (yellow)
     assert fmt_at[5].fontUnderline() is True
     assert fmt_at[5].underlineColor() == QColor(ACTIVE_OUTLINE)
+
+
+from PyQt6.QtTest import QTest
+from PyQt6.QtCore import Qt
+from src.ui.field_navigator import FieldNavigator
+
+
+def test_ctrl_tab_selects_first_field(qtbot):
+    """Ctrl+Tab from cursor at position 0 selects the first field's full range (brackets included)."""
+    editor = QTextEdit()
+    qtbot.addWidget(editor)
+    editor.setPlainText("text [first] mid [second]")  # 5-12 and 17-25
+
+    registry = FieldRegistry(editor)
+    nav = FieldNavigator(editor, registry)
+
+    cursor = editor.textCursor()
+    cursor.setPosition(0)
+    editor.setTextCursor(cursor)
+
+    QTest.keyClick(editor, Qt.Key.Key_Tab, Qt.KeyboardModifier.ControlModifier)
+
+    sel = editor.textCursor()
+    assert sel.hasSelection()
+    assert (sel.selectionStart(), sel.selectionEnd()) == (5, 12)
+
+
+def test_plain_tab_does_not_navigate(qtbot):
+    """Plain Tab inserts a tab character — does NOT trigger field navigation."""
+    editor = QTextEdit()
+    qtbot.addWidget(editor)
+    editor.setPlainText("[a] [b]")
+    cursor = editor.textCursor()
+    cursor.setPosition(3)
+    editor.setTextCursor(cursor)
+
+    registry = FieldRegistry(editor)
+    nav = FieldNavigator(editor, registry)
+
+    QTest.keyClick(editor, Qt.Key.Key_Tab)  # no modifier
+
+    sel = editor.textCursor()
+    # Plain Tab inserted a `\t` — no selection
+    assert not sel.hasSelection()
+    assert "\t" in editor.toPlainText()
+
+
+def test_ctrl_shift_tab_walks_backwards(qtbot):
+    editor = QTextEdit()
+    qtbot.addWidget(editor)
+    editor.setPlainText("[a] mid [b]")  # 0-3 and 8-11
+    cursor = editor.textCursor()
+    cursor.setPosition(11)  # past last
+    editor.setTextCursor(cursor)
+
+    registry = FieldRegistry(editor)
+    nav = FieldNavigator(editor, registry)
+
+    QTest.keyClick(editor, Qt.Key.Key_Backtab, Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier)
+
+    sel = editor.textCursor()
+    assert (sel.selectionStart(), sel.selectionEnd()) == (8, 11)
+
+
+def test_ctrl_tab_no_fields_is_silent_noop(qtbot):
+    editor = QTextEdit()
+    qtbot.addWidget(editor)
+    editor.setPlainText("no fields here")
+
+    registry = FieldRegistry(editor)
+    nav = FieldNavigator(editor, registry)
+
+    cursor = editor.textCursor()
+    cursor.setPosition(3)
+    editor.setTextCursor(cursor)
+    pre_pos = editor.textCursor().position()
+
+    QTest.keyClick(editor, Qt.Key.Key_Tab, Qt.KeyboardModifier.ControlModifier)
+
+    sel = editor.textCursor()
+    assert not sel.hasSelection()
+    assert sel.position() == pre_pos
