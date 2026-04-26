@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor, QSyntaxHighlighter, QTextCharFormat, QTextCursor
+from PyQt6.QtGui import QColor, QSyntaxHighlighter, QTextCharFormat
 from PyQt6.QtWidgets import QTextEdit
 
 
@@ -276,20 +276,3 @@ class FieldHighlighter(QSyntaxHighlighter):
             self.setFormat(start + 1, end - start - 2, inner_fmt)
         # Closing bracket
         self.setFormat(end - 1, 1, bracket_fmt)
-
-        # Also apply directly to document so cursor.charFormat() reflects it
-        doc = self.document()
-        cursor = QTextCursor(doc)
-        # Opening bracket
-        cursor.setPosition(block_start + start)
-        cursor.setPosition(block_start + start + 1, QTextCursor.MoveMode.KeepAnchor)
-        cursor.setCharFormat(bracket_fmt)
-        # Inner text
-        if end - start > 2:
-            cursor.setPosition(block_start + start + 1)
-            cursor.setPosition(block_start + end - 1, QTextCursor.MoveMode.KeepAnchor)
-            cursor.setCharFormat(inner_fmt)
-        # Closing bracket
-        cursor.setPosition(block_start + end - 1)
-        cursor.setPosition(block_start + end, QTextCursor.MoveMode.KeepAnchor)
-        cursor.setCharFormat(bracket_fmt)

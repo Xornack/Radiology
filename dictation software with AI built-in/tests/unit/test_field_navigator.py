@@ -322,28 +322,27 @@ def test_highlighter_paints_pill_on_unfilled(qtbot):
 
     registry = FieldRegistry(editor)
     highlighter = FieldHighlighter(editor.document(), registry)
-    highlighter.rehighlight()  # force pass
+    highlighter.rehighlight()
 
-    doc = editor.document()
-    cursor = QTextCursor(doc)
+    # QSyntaxHighlighter applies layout-level format overlays (not document
+    # character formats). Read them via QTextLayout.formats().
+    block = editor.document().firstBlock()
+    layout_formats = block.layout().formats()
 
-    # Opening bracket at position 0
-    cursor.setPosition(0)
-    cursor.setPosition(1, cursor.MoveMode.KeepAnchor)
-    fmt_open = cursor.charFormat()
-    assert fmt_open.foreground().color() == QColor(PILL_BG)
-    assert fmt_open.background().color() == QColor(PILL_BG)
+    # Build position → format map. Each FormatRange covers [start, start+length).
+    fmt_at = {}
+    for fr in layout_formats:
+        for offset in range(fr.start, fr.start + fr.length):
+            fmt_at[offset] = fr.format
 
-    # Inner char at position 1
-    cursor.setPosition(1)
-    cursor.setPosition(2, cursor.MoveMode.KeepAnchor)
-    fmt_inner = cursor.charFormat()
-    assert fmt_inner.foreground().color() == QColor(PILL_TEXT)
-    assert fmt_inner.background().color() == QColor(PILL_BG)
+    # Opening bracket at position 0: invisible (fg matches bg)
+    assert fmt_at[0].foreground().color() == QColor(PILL_BG)
+    assert fmt_at[0].background().color() == QColor(PILL_BG)
 
-    # Closing bracket at position 2
-    cursor.setPosition(2)
-    cursor.setPosition(3, cursor.MoveMode.KeepAnchor)
-    fmt_close = cursor.charFormat()
-    assert fmt_close.foreground().color() == QColor(PILL_BG)
-    assert fmt_close.background().color() == QColor(PILL_BG)
+    # Inner char at position 1: dark text on lavender
+    assert fmt_at[1].foreground().color() == QColor(PILL_TEXT)
+    assert fmt_at[1].background().color() == QColor(PILL_BG)
+
+    # Closing bracket at position 2: invisible
+    assert fmt_at[2].foreground().color() == QColor(PILL_BG)
+    assert fmt_at[2].background().color() == QColor(PILL_BG)
