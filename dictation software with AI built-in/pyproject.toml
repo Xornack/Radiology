@@ -55,6 +55,12 @@ medasr = [
     "transformers>=4.57",
     "torch>=2.3",
 ]
+# Optional: build a standalone Windows .exe via Nuitka.
+# pip install -e '.[build]'  then  build_exe.bat
+build = [
+    "nuitka>=2.4",
+    "zstandard>=0.22",
+]
 
 [project.scripts]
 radiology-dictation = "src.main:main"

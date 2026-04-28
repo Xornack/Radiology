@@ -1,5 +1,9 @@
 # Radiology Dictation Platform
 
+> **Status: archived — no further development planned.**
+> Proof-of-concept proved out; kept around as a personal-use dictation tool.
+> Pull requests / issues are not being monitored. Code is provided as-is.
+
 Local, privacy-first AI dictation for radiology workflows. Audio is captured,
 transcribed via Whisper, PHI-scrubbed, and typed into any focused application
 via a Win32 keyboard wedge. An optional local LLM generates impressions from
@@ -15,16 +19,26 @@ findings. No PHI leaves the machine.
 - **UI controls** — Record / Stop / Clear / Generate Impression buttons, microphone picker.
 - **Keyboard fallback** — `F4` toggles recording when no HID mic is connected.
 - **DICOM PACS C-FIND** client for fetching patient priors (library-ready; not yet wired into UI).
+- **Field templates** — `[bracket]` placeholders auto-highlight as pills; `Ctrl+Tab` / `Ctrl+Shift+Tab` walks between them, dictation replaces the active field.
+- **Local LLM impression / structuring** via Ollama (default `qwen2.5:3b`), with a six-section ACR-style report layout.
 - **Resilience** — Whisper retry with backoff, fast-fail on connection-refused, PACS connection timeouts, thread-safe audio buffer, shutdown cleanup.
 
 ## Quick Start
+
+### Option A — run the packaged .exe (no Python needed)
+
+If you have a build of `RadiologyDictation.exe` (see [Packaging](#packaging-as-an-exe)
+below), just double-click it. The first launch downloads the default Whisper
+model (`base.en`, ~140 MB) into your user Hugging Face cache.
+
+### Option B — run from source
 
 ```bash
 pip install -e .
 python -m src.main
 ```
 
-For development (adds `pytest`, `pytest-qt`):
+For development (adds `pytest`, `pytest-qt`, `pyinstrument`):
 
 ```bash
 pip install -e '.[dev]'
@@ -32,8 +46,9 @@ pip install -e '.[dev]'
 
 The first launch downloads the default Whisper model (`base.en`, ~140 MB) from Hugging Face.
 
-Press `F4` or click **● Record** to dictate. Click **■ Stop** when done — the
-final transcript replaces the live partial and is typed into the foreground app.
+Press `F4` or click **● Record** to dictate. Click `F4` again or click **■ Stop**
+when done — the final transcript replaces the live partial and is typed into
+the foreground app.
 
 ## STT Backends
 
@@ -100,8 +115,8 @@ python -m pytest tests/
 ```
 
 Unit and integration tests cover the audio pipeline, HID listener, PHI scrubber,
-keyboard wedge, LLM client, PACS query (against a local DICOM SCP), and UI.
-51 tests currently passing.
+keyboard wedge, LLM client, PACS query (against a local DICOM SCP), field
+navigator, profiling harness, and UI. 393 tests currently passing.
 
 ## Profiling
 
@@ -118,10 +133,37 @@ First run downloads ~350 MB of LibriSpeech test-clean into `benchmarks/`
 Pass `--dry-run` to swap in a fixed-latency STT stub (no SenseVoice
 required); useful for smoke-testing the harness itself.
 
-## Known Limitations
+## Packaging as an .exe
 
-- **Punctuation** — dictated commands like "comma", "period", "new paragraph" are not recognized. Relies on Whisper's own punctuation inference, which is imperfect for clinical speech. A spoken-punctuation post-processor would help.
-- **Streaming on long dictations** — each tick re-transcribes the full growing buffer, so `>30s` recordings see ticks skipped (UI updates slow). A VAD-based committed/partial split is the next improvement.
+A standalone Windows folder (containing a single `RadiologyDictation.exe`
+plus its DLLs and data files) can be built with [Nuitka](https://nuitka.net/):
+
+```bash
+pip install -e '.[build]'
+build_exe.bat
+```
+
+The resulting binary lives at `build/main.dist/RadiologyDictation.exe`. Copy
+the entire `main.dist/` folder anywhere — it has no external Python dependency.
+
+Notes:
+
+- First Nuitka run takes 10–20 minutes and may auto-download MinGW64.
+- The Whisper model is **not** bundled (it would add ~140 MB to the build and
+  is downloaded on first launch into the user's Hugging Face cache anyway).
+- Only the default Whisper-CPU backend is bundled. SenseVoice / MedASR pull in
+  PyTorch + funasr (~2 GB) and are excluded from the .exe; install those extras
+  in a source checkout if you want them.
+- LLM impression generation requires a local Ollama instance at
+  `http://localhost:11434`; it is not bundled.
+
+## Known Caveats
+
+This was a proof of concept for personal use; the rough edges below are
+**not** going to be fixed.
+
+- **Punctuation** — dictated commands like "comma", "period", "new paragraph" are not recognized. Relies on Whisper's own punctuation inference, which is imperfect for clinical speech.
+- **Streaming on long dictations** — each tick re-transcribes the full growing buffer, so `>30s` recordings see ticks skipped (UI updates slow).
 - **PACS not in UI** — `PACSClient.get_priors()` works but has no button wired in.
 - **Local cache encryption** — `src/security/encryption.py` is implemented but not yet used by any store.
 - **Windows only** — the keyboard wedge and HID paths use Win32 APIs.
