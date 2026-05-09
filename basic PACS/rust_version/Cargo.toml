@@ -1,0 +1,17 @@
+[package]
+name = "rustradstack"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.102"
+dicom-dictionary-std = "0.9.0"
+dicom-object = "0.9.1"
+dicom-pixeldata = "0.9.1"
+image = "0.25.6"
+thiserror = "2.0.18"
+
+[dev-dependencies]
+dicom-core = "0.9.1"
+dicom-encoding = "0.9.1"
+tempfile = "3.27.0"
