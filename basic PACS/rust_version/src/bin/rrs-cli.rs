@@ -1,10 +1,10 @@
-//! `rrs-cli` — command-line interface for RustRadStack.
+//! `rrs-cli` — command-line interface for `RustRadStack`.
 //!
 //! Subcommands:
 //!   info <FILE>   Print key DICOM tags from a single file.
 
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use anyhow::{anyhow, Context, Result};
@@ -40,7 +40,7 @@ fn run() -> Result<()> {
 
 const USAGE: &str = "Usage:\n  rrs-cli info <FILE>";
 
-fn cmd_info(path: &std::path::Path) -> Result<()> {
+fn cmd_info(path: &Path) -> Result<()> {
     // Read tags directly via dicom-object for the metadata-only fields
     // (PatientName, Modality), then call extract_pixels for dims + W/L.
     let obj = open_file(path).with_context(|| format!("opening {}", path.display()))?;
@@ -48,12 +48,12 @@ fn cmd_info(path: &std::path::Path) -> Result<()> {
     let patient_name = obj
         .element(tags::PATIENT_NAME)
         .ok()
-        .and_then(|e| e.to_str().ok().map(|s| s.into_owned()))
+        .and_then(|e| e.to_str().ok().map(std::borrow::Cow::into_owned))
         .unwrap_or_else(|| "(missing)".into());
     let modality = obj
         .element(tags::MODALITY)
         .ok()
-        .and_then(|e| e.to_str().ok().map(|s| s.into_owned()))
+        .and_then(|e| e.to_str().ok().map(std::borrow::Cow::into_owned))
         .unwrap_or_else(|| "(missing)".into());
     let instance_number: Option<i32> = obj
         .element(tags::INSTANCE_NUMBER)
@@ -68,9 +68,7 @@ fn cmd_info(path: &std::path::Path) -> Result<()> {
     println!("Modality:        {modality}");
     println!(
         "InstanceNumber:  {}",
-        instance_number
-            .map(|n| n.to_string())
-            .unwrap_or_else(|| "(missing)".into())
+        instance_number.map_or_else(|| "(missing)".into(), |n| n.to_string())
     );
     println!("Rows x Cols:     {rows} x {cols}");
     println!("WindowCenter:    {}", ws.center);

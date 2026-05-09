@@ -33,9 +33,10 @@ pub fn write_synthetic(dir: &Path, name: &str, fx: DicomFixture) -> PathBuf {
     let cols = fx.cols.unwrap_or(4);
     // Default ramp wraps modulo 2^16. Only meaningful for rows*cols <= 65535;
     // pass an explicit `pixels` Vec for larger images where pixel values matter.
+    #[allow(clippy::cast_possible_truncation)] // intentional wrap: ramp is test-only, docs above
     let pixels = fx
         .pixels
-        .unwrap_or_else(|| (0..(rows as u32 * cols as u32)).map(|v| v as u16).collect());
+        .unwrap_or_else(|| (0..(u32::from(rows) * u32::from(cols))).map(|v| v as u16).collect());
     assert_eq!(pixels.len(), rows as usize * cols as usize);
 
     let mut obj = InMemDicomObject::new_empty();
@@ -102,7 +103,7 @@ pub fn write_synthetic(dir: &Path, name: &str, fx: DicomFixture) -> PathBuf {
     ));
 
     // Build file meta with Explicit VR Little Endian transfer syntax.
-    // `with_meta` takes the builder directly (not .build()) and returns a Result.
+    // dicom-object 0.9.1: with_meta takes the builder, not a pre-built meta object.
     let path = dir.join(name);
     let file_obj = obj
         .with_meta(

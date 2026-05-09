@@ -1,4 +1,4 @@
-//! RustRadStack — DICOM stack viewer library.
+//! `RustRadStack` — DICOM stack viewer library.
 
 pub mod errors;
 pub mod windowing;

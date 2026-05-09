@@ -19,6 +19,8 @@ pub struct WindowSettings {
 }
 
 impl Default for WindowSettings {
+    /// Generic midpoint defaults — safe for any modality.
+    /// Not CT-specific (CT abdomen would be center=40, width=400).
     fn default() -> Self {
         Self {
             center: 128.0,
@@ -29,13 +31,19 @@ impl Default for WindowSettings {
     }
 }
 
-/// Read a DICOM file and return (stored pixel values as i32, (rows, cols), window settings).
+/// Decoded frame: (stored pixel values as i32, (rows, cols), window settings).
+/// Stored values are pre-rescale — call sites apply slope/intercept inside `apply_window`.
+type ExtractResult = (Vec<i32>, (u32, u32), WindowSettings);
+
+/// Read a DICOM file and return the decoded frame plus window/level settings.
 ///
 /// Stored values are pre-rescale — call sites apply slope/intercept inside `apply_window`.
-/// Returns an error if the file can't be parsed or pixel decoding fails.
-pub fn extract_pixels(
-    path: &Path,
-) -> Result<(Vec<i32>, (u32, u32), WindowSettings), RrsError> {
+///
+/// # Errors
+/// Returns `RrsError::Dicom` if the file cannot be parsed or pixel decoding fails.
+/// Returns `RrsError::MissingTag` if `Rows` or `Columns` tags are absent.
+/// Returns `RrsError::UnsupportedPixels` if the decoded frame length doesn't match dimensions.
+pub fn extract_pixels(path: &Path) -> Result<ExtractResult, RrsError> {
     let obj = open_file(path).map_err(|e| RrsError::Dicom(e.to_string()))?;
 
     let rows = read_u32(&obj, tags::ROWS, "Rows")?;
