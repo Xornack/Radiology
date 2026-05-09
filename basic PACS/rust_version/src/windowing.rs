@@ -39,6 +39,9 @@ type ExtractResult = (Vec<i32>, (u32, u32), WindowSettings);
 ///
 /// Stored values are pre-rescale — call sites apply slope/intercept inside `apply_window`.
 ///
+/// Note: slice-2 will likely change this to accept `&DefaultDicomObject` so callers
+/// that already opened the file (e.g. `rrs-cli info`) don't pay for a second open.
+///
 /// # Errors
 /// Returns `RrsError::Dicom` if the file cannot be parsed or pixel decoding fails.
 /// Returns `RrsError::MissingTag` if `Rows` or `Columns` tags are absent.

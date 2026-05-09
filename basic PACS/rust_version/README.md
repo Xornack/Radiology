@@ -20,15 +20,15 @@ cargo run --bin rrs-cli -- info path\to\file.dcm
 Output:
 
 ```
-File:            path\to\file.dcm
-PatientName:     Smith^John
-Modality:        CT
-InstanceNumber:  3
-Rows x Cols:     512 x 512
-WindowCenter:    40
-WindowWidth:     400
-RescaleSlope:    1
-RescaleIntercept:-1024
+File:             path\to\file.dcm
+PatientName:      Smith^John
+Modality:         CT
+InstanceNumber:   3
+Rows x Cols:      512 x 512
+WindowCenter:     40
+WindowWidth:      400
+RescaleSlope:     1
+RescaleIntercept: -1024
 ```
 
 ## Tests

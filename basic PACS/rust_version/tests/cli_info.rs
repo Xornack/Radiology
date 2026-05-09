@@ -33,13 +33,13 @@ fn cli_info_prints_expected_fields() {
     );
 
     let stdout = String::from_utf8(out.stdout).unwrap();
-    assert!(stdout.contains("PatientName:     Smith^John"), "stdout: {stdout}");
-    assert!(stdout.contains("Modality:        CT"), "stdout: {stdout}");
-    assert!(stdout.contains("InstanceNumber:  3"), "stdout: {stdout}");
-    assert!(stdout.contains("Rows x Cols:     4 x 4"), "stdout: {stdout}");
-    assert!(stdout.contains("WindowCenter:    40"), "stdout: {stdout}");
-    assert!(stdout.contains("WindowWidth:     400"), "stdout: {stdout}");
-    // Also assert on RescaleSlope/Intercept to guard label-alignment regressions.
-    assert!(stdout.contains("RescaleSlope:    1"), "stdout: {stdout}");
-    assert!(stdout.contains("RescaleIntercept:-1024"), "stdout: {stdout}");
+    // Labels are padded to 18 columns; expect at least one space between label and value.
+    assert!(stdout.contains("PatientName:      Smith^John"), "stdout: {stdout}");
+    assert!(stdout.contains("Modality:         CT"), "stdout: {stdout}");
+    assert!(stdout.contains("InstanceNumber:   3"), "stdout: {stdout}");
+    assert!(stdout.contains("Rows x Cols:      4 x 4"), "stdout: {stdout}");
+    assert!(stdout.contains("WindowCenter:     40"), "stdout: {stdout}");
+    assert!(stdout.contains("WindowWidth:      400"), "stdout: {stdout}");
+    assert!(stdout.contains("RescaleSlope:     1"), "stdout: {stdout}");
+    assert!(stdout.contains("RescaleIntercept: -1024"), "stdout: {stdout}");
 }

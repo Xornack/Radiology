@@ -41,8 +41,9 @@ fn run() -> Result<()> {
 const USAGE: &str = "Usage:\n  rrs-cli info <FILE>";
 
 fn cmd_info(path: &Path) -> Result<()> {
-    // Read tags directly via dicom-object for the metadata-only fields
-    // (PatientName, Modality), then call extract_pixels for dims + W/L.
+    // Reads metadata-only tags via dicom-object, then calls extract_pixels
+    // (which re-opens the file). TODO(slice-2): pass `obj` into extract_pixels
+    // so we don't open the file twice.
     let obj = open_file(path).with_context(|| format!("opening {}", path.display()))?;
 
     let patient_name = obj
@@ -63,18 +64,20 @@ fn cmd_info(path: &Path) -> Result<()> {
     let (_pixels, (rows, cols), ws) =
         extract_pixels(path).with_context(|| format!("extracting pixels from {}", path.display()))?;
 
-    println!("File:            {}", path.display());
-    println!("PatientName:     {patient_name}");
-    println!("Modality:        {modality}");
+    // Labels left-padded to 18 cols so RescaleIntercept (17 chars) still gets a separator space.
+    println!("{:<18}{}", "File:", path.display());
+    println!("{:<18}{patient_name}", "PatientName:");
+    println!("{:<18}{modality}", "Modality:");
     println!(
-        "InstanceNumber:  {}",
+        "{:<18}{}",
+        "InstanceNumber:",
         instance_number.map_or_else(|| "(missing)".into(), |n| n.to_string())
     );
-    println!("Rows x Cols:     {rows} x {cols}");
-    println!("WindowCenter:    {}", ws.center);
-    println!("WindowWidth:     {}", ws.width);
-    println!("RescaleSlope:    {}", ws.slope);
-    println!("RescaleIntercept:{}", ws.intercept);
+    println!("{:<18}{rows} x {cols}", "Rows x Cols:");
+    println!("{:<18}{}", "WindowCenter:", ws.center);
+    println!("{:<18}{}", "WindowWidth:", ws.width);
+    println!("{:<18}{}", "RescaleSlope:", ws.slope);
+    println!("{:<18}{}", "RescaleIntercept:", ws.intercept);
 
     Ok(())
 }
