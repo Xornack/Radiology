@@ -56,13 +56,15 @@ pub fn extract_pixels(
         .to_vec_with_options(&options)
         .map_err(|e| RrsError::Dicom(e.to_string()))?;
 
-    if frame.len() != (rows * cols) as usize {
+    // Cast to usize before multiplying so dimensions like 65535x65535 don't overflow u32.
+    let expected = rows as usize * cols as usize;
+    if frame.len() != expected {
         return Err(RrsError::UnsupportedPixels(format!(
             "decoded {} values, expected {}x{}={}",
             frame.len(),
             rows,
             cols,
-            rows * cols
+            expected
         )));
     }
 
