@@ -39,4 +39,7 @@ fn cli_info_prints_expected_fields() {
     assert!(stdout.contains("Rows x Cols:     4 x 4"), "stdout: {stdout}");
     assert!(stdout.contains("WindowCenter:    40"), "stdout: {stdout}");
     assert!(stdout.contains("WindowWidth:     400"), "stdout: {stdout}");
+    // Also assert on RescaleSlope/Intercept to guard label-alignment regressions.
+    assert!(stdout.contains("RescaleSlope:    1"), "stdout: {stdout}");
+    assert!(stdout.contains("RescaleIntercept:-1024"), "stdout: {stdout}");
 }
