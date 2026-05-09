@@ -55,3 +55,11 @@ See [the design spec](../docs/superpowers/specs/2026-05-08-rust-port-design.md).
 - `src/bin/rrs-cli.rs` — CLI binary
 - `tests/common/mod.rs` — synthetic DICOM builder
 - `tests/*.rs` — integration tests
+
+## Performance notes
+
+Slice 1 baseline (4x4 synthetic DICOM, release build, Windows):
+- `cargo test --release --test cli_info`: ~20ms total, median of 3 runs.
+- Hot path: `dicom_object::open_file` (file I/O + parse). Pixel decode is dominated by parser overhead at this size.
+
+These numbers exist to compare against later slices. Real-world (512x512) latency will be measured when a real DICOM is wired in.
