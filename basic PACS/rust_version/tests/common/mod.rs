@@ -31,6 +31,8 @@ pub struct DicomFixture {
 pub fn write_synthetic(dir: &Path, name: &str, fx: DicomFixture) -> PathBuf {
     let rows = fx.rows.unwrap_or(4);
     let cols = fx.cols.unwrap_or(4);
+    // Default ramp wraps modulo 2^16. Only meaningful for rows*cols <= 65535;
+    // pass an explicit `pixels` Vec for larger images where pixel values matter.
     let pixels = fx
         .pixels
         .unwrap_or_else(|| (0..(rows as u32 * cols as u32)).map(|v| v as u16).collect());
