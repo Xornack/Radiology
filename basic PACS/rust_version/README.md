@@ -28,7 +28,13 @@ Rows x Cols:      512 x 512
 WindowCenter:     40
 WindowWidth:      400
 RescaleSlope:     1
-RescaleIntercept: -1024
+RescaleIntercept: 0
+```
+
+Render a DICOM as an 8-bit grayscale PNG (W/L from file's tags):
+
+```powershell
+cargo run --bin rrs-cli -- render path\to\file.dcm out.png
 ```
 
 ## Tests
@@ -41,8 +47,8 @@ cargo test
 
 See [the design spec](../docs/superpowers/specs/2026-05-08-rust-port-design.md). Slice plan:
 
-1. **Slice 1 (this slice)** — CLI prints DICOM tags
-2. Slice 2 — `apply_window` + `rrs-cli render` writes PNG
+1. ✅ Slice 1 — CLI prints DICOM tags
+2. **Slice 2 (this slice)** — `apply_window` + `rrs-cli render` writes PNG
 3. Slice 3 — folder scan + DICOM sort + `rrs-cli list`
 4. Slice 4 — egui window displays a single DICOM
 5. Slice 5 — egui app loads a folder, mouse wheel scrolls
@@ -51,15 +57,26 @@ See [the design spec](../docs/superpowers/specs/2026-05-08-rust-port-design.md).
 
 - `src/lib.rs` — library entry; re-exports `errors` and `windowing`
 - `src/errors.rs` — `RrsError`
-- `src/windowing.rs` — `WindowSettings`, `extract_pixels`
+- `src/windowing.rs` — `WindowSettings`, `extract_pixels`, `apply_window`
 - `src/bin/rrs-cli.rs` — CLI binary
 - `tests/common/mod.rs` — synthetic DICOM builder
 - `tests/*.rs` — integration tests
 
 ## Performance notes
 
-Slice 1 baseline (4x4 synthetic DICOM, release build, Windows):
-- `cargo test --release --test cli_info`: ~20ms total, median of 3 runs.
-- Hot path: `dicom_object::open_file` (file I/O + parse). Pixel decode is dominated by parser overhead at this size.
+Release-build, Windows, median of 3 runs:
 
-These numbers exist to compare against later slices. Real-world (512x512) latency will be measured when a real DICOM is wired in.
+| Operation | Synthetic 8×8 | Real MR 512×512 |
+|---|---|---|
+| `rrs-cli render` (full pipeline: open → decode → W/L → encode → write PNG) | ~20ms | ~39ms |
+
+Hot path on real files: `decode_pixel_data` (decoding) and `image::save` (PNG encoding) dominate. The W/L pass is negligible. These numbers compare against later slices.
+
+## Real-DICOM validation
+
+Slice 2 was smoke-tested by rendering one slice from each of 6 anonymized
+MR knee series (mix of 256×256 and 512×512, axial and sagittal). Resulting
+PNGs displayed expected anatomy with correct W/L per file — no byte-order or
+scaling artifacts. Real-data testing is currently manual; formal regression
+tests against real files are deferred until a stable test-data location is
+decided.
