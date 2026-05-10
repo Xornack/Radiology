@@ -41,9 +41,6 @@ fn run() -> Result<()> {
 const USAGE: &str = "Usage:\n  rrs-cli info <FILE>";
 
 fn cmd_info(path: &Path) -> Result<()> {
-    // Reads metadata-only tags via dicom-object, then calls extract_pixels
-    // (which re-opens the file). TODO(slice-2): pass `obj` into extract_pixels
-    // so we don't open the file twice.
     let obj = open_file(path).with_context(|| format!("opening {}", path.display()))?;
 
     let patient_name = obj
@@ -62,7 +59,7 @@ fn cmd_info(path: &Path) -> Result<()> {
         .and_then(|e| e.to_int::<i32>().ok());
 
     let (_pixels, (rows, cols), ws) =
-        extract_pixels(path).with_context(|| format!("extracting pixels from {}", path.display()))?;
+        extract_pixels(&obj).with_context(|| format!("extracting pixels from {}", path.display()))?;
 
     // Labels left-padded to 18 cols so RescaleIntercept (17 chars) still gets a separator space.
     println!("{:<18}{}", "File:", path.display());

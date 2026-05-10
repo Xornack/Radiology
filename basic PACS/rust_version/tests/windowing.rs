@@ -1,6 +1,7 @@
 mod common;
 
 use common::{fresh_dir, write_synthetic, DicomFixture};
+use dicom_object::open_file;
 use rustradstack::windowing::{extract_pixels, WindowSettings};
 
 #[test]
@@ -20,11 +21,11 @@ fn extract_pixels_returns_dims_and_window_settings() {
         },
     );
 
-    let (pixels, dims, ws) = extract_pixels(&path).expect("extract");
+    let obj = open_file(&path).expect("open");
+    let (pixels, dims, ws) = extract_pixels(&obj).expect("extract");
 
     assert_eq!(dims, (4, 4));
     assert_eq!(pixels.len(), 16);
-    // Default ramp is 0..16 stored values.
     assert_eq!(pixels[0], 0);
     assert_eq!(pixels[15], 15);
     assert_eq!(

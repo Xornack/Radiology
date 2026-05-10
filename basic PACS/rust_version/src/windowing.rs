@@ -1,15 +1,11 @@
 //! DICOM window/level math and pixel extraction.
 
-use std::path::Path;
-
 use dicom_dictionary_std::tags;
-use dicom_object::{open_file, DefaultDicomObject, Tag};
+use dicom_object::{DefaultDicomObject, Tag};
 use dicom_pixeldata::{ConvertOptions, ModalityLutOption, PixelDecoder};
 
 use crate::errors::RrsError;
 
-/// Window/Level + rescale parameters needed to convert stored pixel values
-/// to a displayable 8-bit image.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct WindowSettings {
     pub center: f64,
@@ -35,33 +31,27 @@ impl Default for WindowSettings {
 /// Stored values are pre-rescale — call sites apply slope/intercept inside `apply_window`.
 type ExtractResult = (Vec<i32>, (u32, u32), WindowSettings);
 
-/// Read a DICOM file and return the decoded frame plus window/level settings.
+/// Extract dims, pre-rescale stored pixel values, and W/L tags from an already-opened DICOM object.
 ///
-/// Stored values are pre-rescale — call sites apply slope/intercept inside `apply_window`.
-///
-/// Note: slice-2 will likely change this to accept `&DefaultDicomObject` so callers
-/// that already opened the file (e.g. `rrs-cli info`) don't pay for a second open.
+/// Stored values are pre-rescale; `apply_window` does the slope/intercept transform.
 ///
 /// # Errors
-/// Returns `RrsError::Dicom` if the file cannot be parsed or pixel decoding fails.
+/// Returns `RrsError::Dicom` if pixel decoding fails.
 /// Returns `RrsError::MissingTag` if `Rows` or `Columns` tags are absent.
 /// Returns `RrsError::UnsupportedPixels` if the decoded frame length doesn't match dimensions.
-pub fn extract_pixels(path: &Path) -> Result<ExtractResult, RrsError> {
-    let obj = open_file(path).map_err(|e| RrsError::Dicom(e.to_string()))?;
+pub fn extract_pixels(obj: &DefaultDicomObject) -> Result<ExtractResult, RrsError> {
+    let rows = read_u32(obj, tags::ROWS, "Rows")?;
+    let cols = read_u32(obj, tags::COLUMNS, "Columns")?;
 
-    let rows = read_u32(&obj, tags::ROWS, "Rows")?;
-    let cols = read_u32(&obj, tags::COLUMNS, "Columns")?;
-
-    let center = read_f64_or_default(&obj, tags::WINDOW_CENTER, 128.0);
-    let width = read_f64_or_default(&obj, tags::WINDOW_WIDTH, 256.0);
-    let slope = read_f64_or_default(&obj, tags::RESCALE_SLOPE, 1.0);
-    let intercept = read_f64_or_default(&obj, tags::RESCALE_INTERCEPT, 0.0);
+    let center = read_f64_or_default(obj, tags::WINDOW_CENTER, 128.0);
+    let width = read_f64_or_default(obj, tags::WINDOW_WIDTH, 256.0);
+    let slope = read_f64_or_default(obj, tags::RESCALE_SLOPE, 1.0);
+    let intercept = read_f64_or_default(obj, tags::RESCALE_INTERCEPT, 0.0);
 
     // Decode without applying the Modality LUT so we get raw stored pixel values.
     let decoded = obj
         .decode_pixel_data()
         .map_err(|e| RrsError::Dicom(e.to_string()))?;
-
     let options = ConvertOptions::new().with_modality_lut(ModalityLutOption::None);
     let frame: Vec<i32> = decoded
         .to_vec_with_options(&options)
@@ -79,21 +69,15 @@ pub fn extract_pixels(path: &Path) -> Result<ExtractResult, RrsError> {
         )));
     }
 
-    Ok((
-        frame,
-        (rows, cols),
-        WindowSettings { center, width, slope, intercept },
-    ))
+    Ok((frame, (rows, cols), WindowSettings { center, width, slope, intercept }))
 }
 
-/// Extract a u32 value from a DICOM element by tag, returning an error if absent.
 fn read_u32(obj: &DefaultDicomObject, tag: Tag, name: &'static str) -> Result<u32, RrsError> {
     let elt = obj.element(tag).map_err(|_| RrsError::MissingTag(name))?;
     elt.to_int::<u32>()
         .map_err(|e| RrsError::Dicom(format!("{name}: {e}")))
 }
 
-/// Read an f64 DICOM attribute, returning `default` if the tag is absent or unparseable.
 fn read_f64_or_default(obj: &DefaultDicomObject, tag: Tag, default: f64) -> f64 {
     obj.element(tag)
         .ok()
