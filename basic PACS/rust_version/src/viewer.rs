@@ -8,18 +8,22 @@ use crate::stack::ImageStack;
 pub struct ViewerApp {
     stack: Option<ImageStack>,
     texture: Option<egui::TextureHandle>,
-    /// Index whose pixels are currently in `texture`. Re-upload when this != stack.current().
+    /// Index whose pixels are currently in `texture`. Re-upload when this != `stack.current()`.
     texture_idx: Option<usize>,
 }
 
 impl ViewerApp {
     #[must_use]
+    // egui::TextureHandle is not const-constructible; suppress nursery lint.
+    #[allow(clippy::missing_const_for_fn)]
     pub fn new(stack: ImageStack) -> Self {
         Self { stack: Some(stack), texture: None, texture_idx: None }
     }
 
     /// Construct an empty viewer (no stack). Used for error cases.
     #[must_use]
+    // egui::TextureHandle is not const-constructible; suppress nursery lint.
+    #[allow(clippy::missing_const_for_fn)]
     pub fn empty() -> Self {
         Self { stack: None, texture: None, texture_idx: None }
     }
@@ -43,22 +47,22 @@ impl eframe::App for ViewerApp {
         // Re-upload texture if the current slice changed.
         if let Some(stack) = &self.stack {
             let need_upload = self.texture_idx != Some(stack.current());
-            if need_upload {
-                if let Ok(img) = stack.get_current_image() {
-                    let (w, h) = img.dimensions();
-                    let pixels = img.into_raw();
-                    let rgba: Vec<u8> = pixels.iter().flat_map(|&v| [v, v, v, 255]).collect();
-                    let color_img = egui::ColorImage::from_rgba_unmultiplied(
-                        [w as usize, h as usize],
-                        &rgba,
-                    );
-                    self.texture = Some(ctx.load_texture(
-                        "dicom-frame",
-                        color_img,
-                        egui::TextureOptions::default(),
-                    ));
-                    self.texture_idx = Some(stack.current());
-                }
+            if need_upload
+                && let Ok(img) = stack.get_current_image()
+            {
+                let (w, h) = img.dimensions();
+                let pixels = img.into_raw();
+                let rgba: Vec<u8> = pixels.iter().flat_map(|&v| [v, v, v, 255]).collect();
+                let color_img = egui::ColorImage::from_rgba_unmultiplied(
+                    [w as usize, h as usize],
+                    &rgba,
+                );
+                self.texture = Some(ctx.load_texture(
+                    "dicom-frame",
+                    color_img,
+                    egui::TextureOptions::default(),
+                ));
+                self.texture_idx = Some(stack.current());
             }
         }
 

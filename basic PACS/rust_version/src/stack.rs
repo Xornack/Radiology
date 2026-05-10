@@ -21,26 +21,36 @@ pub struct ImageStack {
 
 impl ImageStack {
     #[must_use]
+    // Vec heap-allocation makes this non-const; suppress nursery lint.
+    #[allow(clippy::missing_const_for_fn)]
     pub fn new(paths: Vec<PathBuf>) -> Self {
         Self { paths, current: 0, cache: std::cell::RefCell::new(None) }
     }
 
     #[must_use]
+    // Vec::len is not const-stable; suppress nursery lint.
+    #[allow(clippy::missing_const_for_fn)]
     pub fn len(&self) -> usize {
         self.paths.len()
     }
 
     #[must_use]
+    // Vec::is_empty is not const-stable; suppress nursery lint.
+    #[allow(clippy::missing_const_for_fn)]
     pub fn is_empty(&self) -> bool {
         self.paths.is_empty()
     }
 
     #[must_use]
-    pub fn current(&self) -> usize {
+    pub const fn current(&self) -> usize {
         self.current
     }
 
     /// Advance one slice (saturating at last index). Returns the new index.
+    // `next` mirrors egui's scroll direction naming; not an Iterator impl.
+    #[allow(clippy::should_implement_trait)]
+    // Vec::len call prevents `const fn` here.
+    #[allow(clippy::missing_const_for_fn)]
     pub fn next(&mut self) -> usize {
         if self.current + 1 < self.paths.len() {
             self.current += 1;
@@ -49,7 +59,7 @@ impl ImageStack {
     }
 
     /// Go back one slice (saturating at 0). Returns the new index.
-    pub fn prev(&mut self) -> usize {
+    pub const fn prev(&mut self) -> usize {
         self.current = self.current.saturating_sub(1);
         self.current
     }
@@ -65,13 +75,13 @@ impl ImageStack {
             return Err(RrsError::UnsupportedPixels("empty stack".into()));
         }
 
-        // Cached?
+        // Cached? Use let-chain to collapse the nested if.
         {
             let cache = self.cache.borrow();
-            if let Some((idx, img)) = cache.as_ref() {
-                if *idx == self.current {
-                    return Ok(img.clone());
-                }
+            if let Some((idx, img)) = cache.as_ref()
+                && *idx == self.current
+            {
+                return Ok(img.clone());
             }
         }
 
