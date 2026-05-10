@@ -9,6 +9,16 @@ Slice 1 ships a CLI; the GUI viewer lands in slice 4.
 cargo build --release
 ```
 
+## GUI usage
+
+Open a single DICOM in a window:
+
+```powershell
+cargo run --bin rustradstack -- path\to\file.dcm
+```
+
+Slice 4 displays the image; mouse-wheel scrolling and folder loading land in slice 5.
+
 ## CLI usage
 
 Print key tags from a DICOM file:
@@ -64,8 +74,8 @@ See [the design spec](../docs/superpowers/specs/2026-05-08-rust-port-design.md).
 
 1. ✅ Slice 1 — CLI prints DICOM tags
 2. ✅ Slice 2 — `apply_window` + `rrs-cli render` writes PNG
-3. **Slice 3 (this slice)** — folder scan + DICOM sort + `rrs-cli list`
-4. Slice 4 — egui window displays a single DICOM
+3. ✅ Slice 3 — folder scan + DICOM sort + `rrs-cli list`
+4. **Slice 4 (this slice)** — egui window displays a single DICOM
 5. Slice 5 — egui app loads a folder, mouse wheel scrolls
 
 ## Crate layout
@@ -74,8 +84,10 @@ See [the design spec](../docs/superpowers/specs/2026-05-08-rust-port-design.md).
 - `src/errors.rs` — `RrsError`
 - `src/loader.rs` — `scan_directory`
 - `src/sorting.rs` — `sort_files`
+- `src/viewer.rs` — `ViewerApp` (egui)
 - `src/windowing.rs` — `WindowSettings`, `read_metadata`, `extract_pixels`, `apply_window`
 - `src/bin/rrs-cli.rs` — CLI binary
+- `src/main.rs` — `rustradstack` GUI binary
 - `tests/common/mod.rs` — synthetic DICOM builder
 - `tests/*.rs` — integration tests
 
