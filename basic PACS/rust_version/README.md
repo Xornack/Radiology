@@ -37,6 +37,21 @@ Render a DICOM as an 8-bit grayscale PNG (W/L from file's tags):
 cargo run --bin rrs-cli -- render path\to\file.dcm out.png
 ```
 
+List DICOM files in a folder, sorted by InstanceNumber:
+
+```powershell
+cargo run --bin rrs-cli -- list path\to\series\
+```
+
+Output:
+
+```
+24 DICOM(s) in path\to\series\:
+     1  image-000001.dcm
+     2  image-000002.dcm
+     ...
+```
+
 ## Tests
 
 ```powershell
@@ -48,8 +63,8 @@ cargo test
 See [the design spec](../docs/superpowers/specs/2026-05-08-rust-port-design.md). Slice plan:
 
 1. ✅ Slice 1 — CLI prints DICOM tags
-2. **Slice 2 (this slice)** — `apply_window` + `rrs-cli render` writes PNG
-3. Slice 3 — folder scan + DICOM sort + `rrs-cli list`
+2. ✅ Slice 2 — `apply_window` + `rrs-cli render` writes PNG
+3. **Slice 3 (this slice)** — folder scan + DICOM sort + `rrs-cli list`
 4. Slice 4 — egui window displays a single DICOM
 5. Slice 5 — egui app loads a folder, mouse wheel scrolls
 
@@ -57,7 +72,9 @@ See [the design spec](../docs/superpowers/specs/2026-05-08-rust-port-design.md).
 
 - `src/lib.rs` — library entry; re-exports `errors` and `windowing`
 - `src/errors.rs` — `RrsError`
-- `src/windowing.rs` — `WindowSettings`, `extract_pixels`, `apply_window`
+- `src/loader.rs` — `scan_directory`
+- `src/sorting.rs` — `sort_files`
+- `src/windowing.rs` — `WindowSettings`, `read_metadata`, `extract_pixels`, `apply_window`
 - `src/bin/rrs-cli.rs` — CLI binary
 - `tests/common/mod.rs` — synthetic DICOM builder
 - `tests/*.rs` — integration tests
