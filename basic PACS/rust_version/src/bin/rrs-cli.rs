@@ -3,7 +3,7 @@
 //! Subcommands:
 //!   info <FILE>              Print key DICOM tags from a single file.
 //!   render <FILE> <OUT.png>  Window/level a DICOM and write it as a PNG.
-//!   list <FOLDER>            List DICOM files in a folder, sorted by InstanceNumber.
+//!   list <FOLDER>            List DICOM files in a folder, sorted by `InstanceNumber`.
 
 use std::env;
 use std::path::{Path, PathBuf};

@@ -32,6 +32,5 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) -> io::Result<()> {
 fn is_dicom(path: &Path) -> bool {
     path.extension()
         .and_then(|ext| ext.to_str())
-        .map(|ext| ext.eq_ignore_ascii_case("dcm"))
-        .unwrap_or(false)
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("dcm"))
 }

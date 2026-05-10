@@ -33,6 +33,7 @@ impl Default for WindowSettings {
 type ExtractResult = (Vec<i32>, (u32, u32), WindowSettings);
 
 /// Read just the dims + W/L tags from an already-opened DICOM object.
+///
 /// Cheap — does not touch pixel data. Use this when you only need metadata
 /// (sorting, listing) and want to avoid decode cost on hundreds of files.
 ///

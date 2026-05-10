@@ -25,9 +25,9 @@ pub struct DicomFixture {
     /// Stored pixel values (raw, pre-rescale). Length must be rows*cols.
     /// If None, a flat ramp from 0..(rows*cols) is generated.
     pub pixels: Option<Vec<u16>>,
-    /// If Some, write this ImagePositionPatient ([x, y, z]).
+    /// If Some, write this `ImagePositionPatient` ([x, y, z]).
     pub image_position_patient: Option<[f64; 3]>,
-    /// If true, omit the InstanceNumber tag entirely (for fallback-sort tests).
+    /// If true, omit the `InstanceNumber` tag entirely (for fallback-sort tests).
     pub skip_instance_number: bool,
 }
 
@@ -64,9 +64,9 @@ pub fn write_synthetic(dir: &Path, name: &str, fx: DicomFixture) -> PathBuf {
         ));
     }
 
-    if let Some(ipp) = fx.image_position_patient {
+    if let Some([ipp_0, ipp_1, ipp_2, ..]) = fx.image_position_patient {
         // DS multi-valued: write as backslash-separated decimal strings
-        let s = format!("{}\\{}\\{}", ipp[0], ipp[1], ipp[2]);
+        let s = format!("{ipp_0}\\{ipp_1}\\{ipp_2}");
         obj.put(DataElement::new(
             tags::IMAGE_POSITION_PATIENT,
             VR::DS,
