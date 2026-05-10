@@ -3,6 +3,7 @@
 use dicom_dictionary_std::tags;
 use dicom_object::{DefaultDicomObject, Tag};
 use dicom_pixeldata::{ConvertOptions, ModalityLutOption, PixelDecoder};
+use image::{GrayImage, ImageBuffer, Luma};
 
 use crate::errors::RrsError;
 
@@ -83,4 +84,109 @@ fn read_f64_or_default(obj: &DefaultDicomObject, tag: Tag, default: f64) -> f64 
         .ok()
         .and_then(|e| e.to_float64().ok())
         .unwrap_or(default)
+}
+
+/// Apply rescale + Window/Level to stored pixel values to produce a displayable 8-bit image.
+///
+/// Steps per DICOM PS3.3 C.11.1:
+/// 1. HU/VOI input = stored * slope + intercept
+/// 2. Clamp to [center - width/2, center + width/2]
+/// 3. Linearly rescale clamped values to 0..=255
+///
+/// `dims` is `(rows, cols)`; the returned `GrayImage` has `dimensions() == (cols, rows)`
+/// because the `image` crate uses `(width, height)`.
+///
+/// # Panics
+/// Panics if `pixels.len() != dims.0 * dims.1`. Use `extract_pixels` to get a `(pixels, dims)`
+/// tuple where this invariant holds.
+#[must_use]
+pub fn apply_window(pixels: &[i32], dims: (u32, u32), w: WindowSettings) -> GrayImage {
+    let (rows, cols) = dims;
+    assert_eq!(
+        pixels.len(),
+        rows as usize * cols as usize,
+        "pixels.len() ({}) doesn't match dims ({rows}x{cols})",
+        pixels.len()
+    );
+
+    let lower = w.center - w.width / 2.0;
+    let upper = w.center + w.width / 2.0;
+    // .max(EPSILON) avoids divide-by-zero when WindowWidth is 0 (degenerate but seen in the wild).
+    let span = (upper - lower).max(f64::EPSILON);
+
+    // Values are clamped to [0, 255] before the cast; truncation and sign loss are intentional.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let bytes: Vec<u8> = pixels
+        .iter()
+        .map(|&v| {
+            let hu = f64::from(v) * w.slope + w.intercept;
+            let clamped = hu.clamp(lower, upper);
+            let scaled = (clamped - lower) / span * 255.0;
+            scaled.round() as u8
+        })
+        .collect();
+
+    ImageBuffer::<Luma<u8>, _>::from_raw(cols, rows, bytes)
+        .expect("dims/pixel-count invariant verified by assert above")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ws(center: f64, width: f64, slope: f64, intercept: f64) -> WindowSettings {
+        WindowSettings { center, width, slope, intercept }
+    }
+
+    #[test]
+    fn maps_window_midpoint_to_127_or_128() {
+        // center=128, width=256, slope=1, intercept=0 → window [0, 256], midpoint 128
+        // Maps to (128-0)/256*255 = 127.5 → rounds to 128 (Rust's f64::round is half-away-from-zero)
+        let img = apply_window(&[128], (1, 1), ws(128.0, 256.0, 1.0, 0.0));
+        let value = img.as_raw()[0];
+        assert!(value == 127 || value == 128, "midpoint should be ~127-128, got {value}");
+    }
+
+    #[test]
+    fn clamps_values_below_window_to_0() {
+        let img = apply_window(&[-1000], (1, 1), ws(128.0, 256.0, 1.0, 0.0));
+        assert_eq!(img.as_raw()[0], 0);
+    }
+
+    #[test]
+    fn clamps_values_above_window_to_255() {
+        let img = apply_window(&[10_000], (1, 1), ws(128.0, 256.0, 1.0, 0.0));
+        assert_eq!(img.as_raw()[0], 255);
+    }
+
+    #[test]
+    fn applies_rescale_slope_and_intercept_before_windowing() {
+        // CT-style: stored=1024, slope=1, intercept=-1024 → HU=0
+        // window center=40, width=400 → [-160, 240], 0 at (0-(-160))/400 = 0.4 → 102 (rounded)
+        let img = apply_window(&[1024], (1, 1), ws(40.0, 400.0, 1.0, -1024.0));
+        let value = img.as_raw()[0];
+        assert!(
+            (101..=103).contains(&value),
+            "expected ~102 for HU=0 in window [-160, 240], got {value}"
+        );
+    }
+
+    #[test]
+    fn produces_image_with_correct_dimensions() {
+        // 2 rows × 3 cols = 6 pixels. image's dimensions() returns (width, height) = (cols, rows).
+        let img = apply_window(&[0, 64, 128, 192, 255, 255], (2, 3), ws(128.0, 256.0, 1.0, 0.0));
+        assert_eq!(img.dimensions(), (3, 2));
+        assert_eq!(img.as_raw().len(), 6);
+    }
+
+    #[test]
+    fn handles_zero_width_without_dividing_by_zero() {
+        // Degenerate: width=0 means lower==upper. Output isn't meaningfully defined,
+        // but the function must not panic or produce NaN.
+        let img = apply_window(&[100, 200, 300], (1, 3), ws(128.0, 0.0, 1.0, 0.0));
+        let raw = img.as_raw();
+        assert_eq!(raw.len(), 3);
+        assert_eq!(raw[0], raw[1]);
+        assert_eq!(raw[1], raw[2]);
+    }
 }
