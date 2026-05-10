@@ -109,9 +109,12 @@ pub fn apply_window(pixels: &[i32], dims: (u32, u32), w: WindowSettings) -> Gray
         pixels.len()
     );
 
-    let lower = w.center - w.width / 2.0;
-    let upper = w.center + w.width / 2.0;
-    // .max(EPSILON) avoids divide-by-zero when WindowWidth is 0 (degenerate but seen in the wild).
+    // Negative WindowWidth would invert lower/upper and panic in f64::clamp.
+    // Treat negative width as zero (degenerate but non-panicking) — malformed metadata happens.
+    let effective_width = w.width.max(0.0);
+    let lower = w.center - effective_width / 2.0;
+    let upper = w.center + effective_width / 2.0;
+    // .max(EPSILON) avoids divide-by-zero when effective_width is 0.
     let span = (upper - lower).max(f64::EPSILON);
 
     // Values are clamped to [0, 255] before the cast; truncation and sign loss are intentional.
@@ -139,12 +142,11 @@ mod tests {
     }
 
     #[test]
-    fn maps_window_midpoint_to_127_or_128() {
+    fn maps_window_midpoint_to_128() {
         // center=128, width=256, slope=1, intercept=0 → window [0, 256], midpoint 128
-        // Maps to (128-0)/256*255 = 127.5 → rounds to 128 (Rust's f64::round is half-away-from-zero)
+        // (128-0)/256*255 = 127.5 → rounds to 128 (Rust's f64::round is half-away-from-zero, deterministic).
         let img = apply_window(&[128], (1, 1), ws(128.0, 256.0, 1.0, 0.0));
-        let value = img.as_raw()[0];
-        assert!(value == 127 || value == 128, "midpoint should be ~127-128, got {value}");
+        assert_eq!(img.as_raw()[0], 128);
     }
 
     #[test]
@@ -162,13 +164,9 @@ mod tests {
     #[test]
     fn applies_rescale_slope_and_intercept_before_windowing() {
         // CT-style: stored=1024, slope=1, intercept=-1024 → HU=0
-        // window center=40, width=400 → [-160, 240], 0 at (0-(-160))/400 = 0.4 → 102 (rounded)
+        // window center=40, width=400 → [-160, 240], 0 at (160/400)*255 = 102.0 (exact, rounds to 102).
         let img = apply_window(&[1024], (1, 1), ws(40.0, 400.0, 1.0, -1024.0));
-        let value = img.as_raw()[0];
-        assert!(
-            (101..=103).contains(&value),
-            "expected ~102 for HU=0 in window [-160, 240], got {value}"
-        );
+        assert_eq!(img.as_raw()[0], 102);
     }
 
     #[test]
@@ -181,12 +179,17 @@ mod tests {
 
     #[test]
     fn handles_zero_width_without_dividing_by_zero() {
-        // Degenerate: width=0 means lower==upper. Output isn't meaningfully defined,
-        // but the function must not panic or produce NaN.
+        // Degenerate: width=0 means lower==upper==center. (clamped - lower)/EPSILON*255 = 0.
+        // All pixels map to 0; the function must not panic or produce NaN.
         let img = apply_window(&[100, 200, 300], (1, 3), ws(128.0, 0.0, 1.0, 0.0));
-        let raw = img.as_raw();
-        assert_eq!(raw.len(), 3);
-        assert_eq!(raw[0], raw[1]);
-        assert_eq!(raw[1], raw[2]);
+        assert_eq!(img.as_raw(), &[0, 0, 0]);
+    }
+
+    #[test]
+    fn handles_negative_width_without_panic() {
+        // Malformed metadata (DICOM PS3.3 requires width >= 1). Negative width
+        // would invert clamp bounds and panic. Treat as zero-width (output = 0s).
+        let img = apply_window(&[100, 200], (1, 2), ws(128.0, -10.0, 1.0, 0.0));
+        assert_eq!(img.as_raw(), &[0, 0]);
     }
 }
