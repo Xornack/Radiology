@@ -109,6 +109,7 @@ Release-build, Windows, median of 3 runs:
 | `rrs-cli render` (full pipeline: open → decode → W/L → encode → write PNG) | ~20ms | ~39ms |
 | `rrs-cli list` (24-file MR series, sort by InstanceNumber) | — | ~38ms |
 | `rustradstack` GUI cold-start to image visible (real 512×512 MR) | — | binary load: ~80ms (no-args exit, before window creation; headless environment — window-open time not measurable) |
+| `rustradstack` GUI scroll through 24-slice MR series | — | deferred to user manual test |
 
 Hot path on real files: `decode_pixel_data` (decoding) and `image::save` (PNG encoding) dominate. The W/L pass is negligible. These numbers compare against later slices.
 
