@@ -3,6 +3,7 @@
 //! Subcommands:
 //!   info <FILE>              Print key DICOM tags from a single file.
 //!   render <FILE> <OUT.png>  Window/level a DICOM and write it as a PNG.
+//!   list <FOLDER>            List DICOM files in a folder, sorted by InstanceNumber.
 
 use std::env;
 use std::path::{Path, PathBuf};
@@ -12,6 +13,8 @@ use anyhow::{anyhow, Context, Result};
 
 use dicom_dictionary_std::tags;
 use dicom_object::open_file;
+use rustradstack::loader::scan_directory;
+use rustradstack::sorting::sort_files;
 use rustradstack::windowing::{apply_window, extract_pixels, read_metadata};
 
 fn main() -> ExitCode {
@@ -46,11 +49,18 @@ fn run() -> Result<()> {
                 .into();
             cmd_render(&input, &output)
         }
+        "list" => {
+            let folder: PathBuf = args
+                .next()
+                .ok_or_else(|| anyhow!("list requires a <FOLDER> argument\n\n{USAGE}"))?
+                .into();
+            cmd_list(&folder)
+        }
         other => Err(anyhow!("unknown subcommand: {other}\n\n{USAGE}")),
     }
 }
 
-const USAGE: &str = "Usage:\n  rrs-cli info <FILE>\n  rrs-cli render <FILE> <OUT.png>";
+const USAGE: &str = "Usage:\n  rrs-cli info <FILE>\n  rrs-cli render <FILE> <OUT.png>\n  rrs-cli list <FOLDER>";
 
 fn cmd_info(path: &Path) -> Result<()> {
     let obj = open_file(path).with_context(|| format!("opening {}", path.display()))?;
@@ -99,5 +109,17 @@ fn cmd_render(input: &Path, output: &Path) -> Result<()> {
     img.save(output)
         .with_context(|| format!("writing {}", output.display()))?;
     println!("wrote {}", output.display());
+    Ok(())
+}
+
+fn cmd_list(folder: &Path) -> Result<()> {
+    let paths = scan_directory(folder)
+        .with_context(|| format!("scanning {}", folder.display()))?;
+    let sorted = sort_files(paths);
+    println!("{} DICOM(s) in {}:", sorted.len(), folder.display());
+    for (idx, path) in sorted.iter().enumerate() {
+        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("(?)");
+        println!("  {:>4}  {}", idx + 1, name);
+    }
     Ok(())
 }
