@@ -63,3 +63,12 @@ Slice 1 baseline (4x4 synthetic DICOM, release build, Windows):
 - Hot path: `dicom_object::open_file` (file I/O + parse). Pixel decode is dominated by parser overhead at this size.
 
 These numbers exist to compare against later slices. Real-world (512x512) latency will be measured when a real DICOM is wired in.
+
+## Real-DICOM validation
+
+Slice 2 was smoke-tested by rendering one slice from each of 6 anonymized
+MR knee series (mix of 256×256 and 512×512, axial and sagittal). Resulting
+PNGs displayed expected anatomy with correct W/L per file — no byte-order or
+scaling artifacts. Real-data testing is currently manual; formal regression
+tests against real files are deferred until a stable test-data location is
+decided.
