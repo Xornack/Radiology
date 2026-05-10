@@ -38,6 +38,8 @@ fn cli_render_writes_a_png_with_correct_dimensions() {
 
     let img = image::open(&png).expect("decode written PNG");
     assert_eq!(img.dimensions(), (8, 8), "PNG dimensions don't match input");
+    // Confirm the PNG is single-channel grayscale, not accidentally RGB(A).
+    assert_eq!(img.color(), image::ColorType::L8, "PNG should be 8-bit grayscale");
 }
 
 #[test]

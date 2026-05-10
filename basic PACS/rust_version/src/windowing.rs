@@ -73,12 +73,16 @@ pub fn extract_pixels(obj: &DefaultDicomObject) -> Result<ExtractResult, RrsErro
     Ok((frame, (rows, cols), WindowSettings { center, width, slope, intercept }))
 }
 
+// Any element() failure is reported as MissingTag; if the tag exists with an unexpected VR
+// the user gets a misleading "missing" error. Refine when real-world files surface the case.
 fn read_u32(obj: &DefaultDicomObject, tag: Tag, name: &'static str) -> Result<u32, RrsError> {
     let elt = obj.element(tag).map_err(|_| RrsError::MissingTag(name))?;
     elt.to_int::<u32>()
         .map_err(|e| RrsError::Dicom(format!("{name}: {e}")))
 }
 
+// Silently falls back on missing or unparseable tags — W/L is optional and a viewer
+// should still open the image. Caller can't distinguish "missing" from "parse failed".
 fn read_f64_or_default(obj: &DefaultDicomObject, tag: Tag, default: f64) -> f64 {
     obj.element(tag)
         .ok()
