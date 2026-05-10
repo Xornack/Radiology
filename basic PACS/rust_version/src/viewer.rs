@@ -1,64 +1,90 @@
 //! egui-based image viewer.
 
 use eframe::egui;
-use image::GrayImage;
 
-/// State for the GUI viewer. Holds at most one uploaded image.
+use crate::stack::ImageStack;
+
+/// State for the GUI viewer. Holds a stack and the currently-uploaded texture.
 pub struct ViewerApp {
-    /// Pre-windowed grayscale image to display. `None` until `set_image` is called.
-    pending: Option<GrayImage>,
-    /// Cached GPU texture once uploaded.
+    stack: Option<ImageStack>,
     texture: Option<egui::TextureHandle>,
+    /// Index whose pixels are currently in `texture`. Re-upload when this != stack.current().
+    texture_idx: Option<usize>,
 }
 
 impl ViewerApp {
     #[must_use]
-    pub const fn new() -> Self {
-        Self { pending: None, texture: None }
+    pub fn new(stack: ImageStack) -> Self {
+        Self { stack: Some(stack), texture: None, texture_idx: None }
     }
 
-    /// Provide the image to display. Texture upload happens on the next frame.
-    pub fn set_image(&mut self, img: GrayImage) {
-        self.pending = Some(img);
-        self.texture = None;
-    }
-}
-
-impl Default for ViewerApp {
-    fn default() -> Self {
-        Self::new()
+    /// Construct an empty viewer (no stack). Used for error cases.
+    #[must_use]
+    pub fn empty() -> Self {
+        Self { stack: None, texture: None, texture_idx: None }
     }
 }
 
 impl eframe::App for ViewerApp {
-    // eframe 0.34.x: the required method is `ui`, not `update`.
-    // `update` is a provided method that wraps `ui` via CentralPanel::show_inside.
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        // Upload pending image to a texture on the first frame after set_image.
-        if let Some(img) = self.pending.take() {
-            let (w, h) = img.dimensions();
-            let pixels = img.into_raw();
-            // egui ColorImage expects RGBA. Expand grayscale → RGBA by replicating each luma byte.
-            let rgba: Vec<u8> = pixels.iter().flat_map(|&v| [v, v, v, 255]).collect();
-            let color_img = egui::ColorImage::from_rgba_unmultiplied(
-                [w as usize, h as usize],
-                &rgba,
-            );
-            self.texture = Some(ui.ctx().load_texture(
-                "dicom-frame",
-                color_img,
-                egui::TextureOptions::default(),
-            ));
+        let ctx = ui.ctx().clone();
+
+        // Handle mouse-wheel scroll. egui exposes scroll as part of input state.
+        // In egui 0.27+, smooth_scroll_delta replaces scroll_delta.
+        let wheel_y = ctx.input(|i| i.smooth_scroll_delta.y);
+        if let Some(stack) = self.stack.as_mut() {
+            if wheel_y > 0.0 {
+                stack.prev();
+            } else if wheel_y < 0.0 {
+                stack.next();
+            }
         }
 
+        // Re-upload texture if the current slice changed.
+        if let Some(stack) = &self.stack {
+            let need_upload = self.texture_idx != Some(stack.current());
+            if need_upload {
+                if let Ok(img) = stack.get_current_image() {
+                    let (w, h) = img.dimensions();
+                    let pixels = img.into_raw();
+                    let rgba: Vec<u8> = pixels.iter().flat_map(|&v| [v, v, v, 255]).collect();
+                    let color_img = egui::ColorImage::from_rgba_unmultiplied(
+                        [w as usize, h as usize],
+                        &rgba,
+                    );
+                    self.texture = Some(ctx.load_texture(
+                        "dicom-frame",
+                        color_img,
+                        egui::TextureOptions::default(),
+                    ));
+                    self.texture_idx = Some(stack.current());
+                }
+            }
+        }
+
+        // Image (centered)
         ui.vertical_centered(|ui| {
             if let Some(tex) = &self.texture {
                 let size = tex.size_vec2();
-                // SizedTexture newtype satisfies Into<ImageSource> — works with egui 0.34.x
                 ui.image(egui::load::SizedTexture::new(tex.id(), size));
             } else {
                 ui.label("(no image loaded)");
             }
         });
+
+        // Status bar: "Slice X / N" at the bottom
+        if let Some(stack) = &self.stack {
+            let current = stack.current() + 1;
+            let total = stack.len();
+            ui.with_layout(
+                egui::Layout::bottom_up(egui::Align::Center),
+                |ui| { ui.label(format!("Slice {current} / {total}")); },
+            );
+        }
+
+        // Request a repaint when the wheel was scrolled (otherwise egui idles).
+        if wheel_y != 0.0 {
+            ctx.request_repaint();
+        }
     }
 }
