@@ -86,6 +86,7 @@ Release-build, Windows, median of 3 runs:
 | Operation | Synthetic 8×8 | Real MR 512×512 |
 |---|---|---|
 | `rrs-cli render` (full pipeline: open → decode → W/L → encode → write PNG) | ~20ms | ~39ms |
+| `rrs-cli list` (24-file MR series, sort by InstanceNumber) | — | ~38ms |
 
 Hot path on real files: `decode_pixel_data` (decoding) and `image::save` (PNG encoding) dominate. The W/L pass is negligible. These numbers compare against later slices.
 
