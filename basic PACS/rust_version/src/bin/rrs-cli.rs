@@ -12,7 +12,7 @@ use anyhow::{anyhow, Context, Result};
 
 use dicom_dictionary_std::tags;
 use dicom_object::open_file;
-use rustradstack::windowing::{apply_window, extract_pixels};
+use rustradstack::windowing::{apply_window, extract_pixels, read_metadata};
 
 fn main() -> ExitCode {
     match run() {
@@ -70,8 +70,8 @@ fn cmd_info(path: &Path) -> Result<()> {
         .ok()
         .and_then(|e| e.to_int::<i32>().ok());
 
-    let (_pixels, (rows, cols), ws) =
-        extract_pixels(&obj).with_context(|| format!("extracting pixels from {}", path.display()))?;
+    let ((rows, cols), ws) = read_metadata(&obj)
+        .with_context(|| format!("reading metadata from {}", path.display()))?;
 
     // Labels left-padded to 18 cols so RescaleIntercept (17 chars) still gets a separator space.
     println!("{:<18}{}", "File:", path.display());
