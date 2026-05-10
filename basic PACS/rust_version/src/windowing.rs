@@ -122,7 +122,7 @@ pub fn apply_window(pixels: &[i32], dims: (u32, u32), w: WindowSettings) -> Gray
     let bytes: Vec<u8> = pixels
         .iter()
         .map(|&v| {
-            let hu = f64::from(v) * w.slope + w.intercept;
+            let hu = f64::from(v).mul_add(w.slope, w.intercept);
             let clamped = hu.clamp(lower, upper);
             let scaled = (clamped - lower) / span * 255.0;
             scaled.round() as u8

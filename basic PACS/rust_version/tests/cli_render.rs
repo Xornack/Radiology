@@ -56,8 +56,9 @@ fn cli_render_errors_when_output_dir_missing() {
 
     assert!(!out.status.success(), "expected non-zero exit on bad output path");
     let stderr = String::from_utf8_lossy(&out.stderr);
+    // "writing <path>" comes from the with_context in cmd_render — platform-independent.
     assert!(
-        stderr.contains("writing") || stderr.contains("does") || stderr.contains("not"),
+        stderr.contains("writing"),
         "stderr should mention the failed write; got: {stderr}"
     );
 }
