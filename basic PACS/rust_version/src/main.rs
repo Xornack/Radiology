@@ -1,4 +1,4 @@
-//! `rustradstack` GUI binary — slice 4 displays a single DICOM in an egui window.
+//! `rustradstack` GUI binary — slice 5 loads a folder of DICOMs and scrolls them.
 
 use std::env;
 use std::path::PathBuf;
@@ -6,11 +6,12 @@ use std::process::ExitCode;
 
 use anyhow::{anyhow, Context, Result};
 
-use dicom_object::open_file;
+use rustradstack::loader::scan_directory;
+use rustradstack::sorting::sort_files;
+use rustradstack::stack::ImageStack;
 use rustradstack::viewer::ViewerApp;
-use rustradstack::windowing::{apply_window, extract_pixels};
 
-const USAGE: &str = "Usage: rustradstack <FILE.dcm>";
+const USAGE: &str = "Usage:\n  rustradstack <FILE.dcm>\n  rustradstack <FOLDER>";
 
 fn main() -> ExitCode {
     match run() {
@@ -23,18 +24,27 @@ fn main() -> ExitCode {
 }
 
 fn run() -> Result<()> {
-    let dcm: PathBuf = env::args()
+    let arg: PathBuf = env::args()
         .nth(1)
         .ok_or_else(|| anyhow!(USAGE))?
         .into();
 
-    let obj = open_file(&dcm).with_context(|| format!("opening {}", dcm.display()))?;
-    let (pixels, dims, ws) = extract_pixels(&obj)
-        .with_context(|| format!("extracting pixels from {}", dcm.display()))?;
-    let img = apply_window(&pixels, dims, ws);
+    let paths: Vec<PathBuf> = if arg.is_dir() {
+        let scanned = scan_directory(&arg)
+            .with_context(|| format!("scanning {}", arg.display()))?;
+        sort_files(scanned)
+    } else if arg.is_file() {
+        vec![arg.clone()]
+    } else {
+        return Err(anyhow!("{} is neither a file nor a directory", arg.display()));
+    };
 
-    let mut app = ViewerApp::new();
-    app.set_image(img);
+    if paths.is_empty() {
+        return Err(anyhow!("no DICOM files found in {}", arg.display()));
+    }
+
+    let stack = ImageStack::new(paths);
+    let app = ViewerApp::new(stack);
 
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
@@ -42,7 +52,6 @@ fn run() -> Result<()> {
             .with_title("RustRadStack"),
         ..Default::default()
     };
-    // AppCreator closure returns Result<Box<dyn App>, Box<dyn Error + Send + Sync>>
     eframe::run_native(
         "RustRadStack",
         options,
