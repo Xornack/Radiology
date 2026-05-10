@@ -64,11 +64,13 @@ See [the design spec](../docs/superpowers/specs/2026-05-08-rust-port-design.md).
 
 ## Performance notes
 
-Slice 1 baseline (4x4 synthetic DICOM, release build, Windows):
-- `cargo test --release --test cli_info`: ~20ms total, median of 3 runs.
-- Hot path: `dicom_object::open_file` (file I/O + parse). Pixel decode is dominated by parser overhead at this size.
+Release-build, Windows, median of 3 runs:
 
-These numbers exist to compare against later slices. Real-world (512x512) latency will be measured when a real DICOM is wired in.
+| Operation | Synthetic 8×8 | Real MR 512×512 |
+|---|---|---|
+| `rrs-cli render` (full pipeline: open → decode → W/L → encode → write PNG) | ~20ms | ~39ms |
+
+Hot path on real files: `decode_pixel_data` (decoding) and `image::save` (PNG encoding) dominate. The W/L pass is negligible. These numbers compare against later slices.
 
 ## Real-DICOM validation
 
