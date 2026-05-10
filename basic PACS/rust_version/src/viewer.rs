@@ -5,7 +5,7 @@ use image::GrayImage;
 
 /// State for the GUI viewer. Holds at most one uploaded image.
 pub struct ViewerApp {
-    /// Pre-windowed grayscale image to display. `None` until set_image is called.
+    /// Pre-windowed grayscale image to display. `None` until `set_image` is called.
     pending: Option<GrayImage>,
     /// Cached GPU texture once uploaded.
     texture: Option<egui::TextureHandle>,
@@ -13,7 +13,7 @@ pub struct ViewerApp {
 
 impl ViewerApp {
     #[must_use]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self { pending: None, texture: None }
     }
 
