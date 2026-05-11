@@ -4,12 +4,23 @@ use eframe::egui;
 
 use crate::stack::ImageStack;
 
+/// Wheel delta units per slice advance. Higher = slower scroll.
+/// Matches PyRadStack's `_DRAG_SCROLL_SENSITIVITY = 10`.
+const WHEEL_SENSITIVITY: f32 = 10.0;
+
+/// Pixels of left-click drag per slice advance.
+const DRAG_SENSITIVITY: f32 = 10.0;
+
 /// State for the GUI viewer. Holds a stack and the currently-uploaded texture.
 pub struct ViewerApp {
     stack: Option<ImageStack>,
     texture: Option<egui::TextureHandle>,
     /// Index whose pixels are currently in `texture`. Re-upload when this != `stack.current()`.
     texture_idx: Option<usize>,
+    /// Accumulated wheel delta; consumed in WHEEL_SENSITIVITY chunks per slice step.
+    wheel_accum: f32,
+    /// Accumulated left-click drag dy; consumed in DRAG_SENSITIVITY chunks per slice step.
+    drag_accum: f32,
 }
 
 impl ViewerApp {
@@ -17,7 +28,7 @@ impl ViewerApp {
     // egui::TextureHandle is not const-constructible; suppress nursery lint.
     #[allow(clippy::missing_const_for_fn)]
     pub fn new(stack: ImageStack) -> Self {
-        Self { stack: Some(stack), texture: None, texture_idx: None }
+        Self { stack: Some(stack), texture: None, texture_idx: None, wheel_accum: 0.0, drag_accum: 0.0 }
     }
 
     /// Construct an empty viewer (no stack). Used for error cases.
@@ -25,7 +36,7 @@ impl ViewerApp {
     // egui::TextureHandle is not const-constructible; suppress nursery lint.
     #[allow(clippy::missing_const_for_fn)]
     pub fn empty() -> Self {
-        Self { stack: None, texture: None, texture_idx: None }
+        Self { stack: None, texture: None, texture_idx: None, wheel_accum: 0.0, drag_accum: 0.0 }
     }
 }
 
