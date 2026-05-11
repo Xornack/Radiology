@@ -23,7 +23,10 @@ Open a folder of DICOMs and scroll through the stack:
 cargo run --bin rustradstack -- path\to\series\
 ```
 
-Mouse wheel navigates slices. Status bar shows "Slice X / N".
+**Controls:**
+- **Mouse wheel** — navigate slices (~10 wheel units per slice)
+- **Left-click drag (vertical)** — navigate slices (~10 pixels per slice; drag down = next slice)
+- Status bar shows "Slice X / N"
 
 ## CLI usage
 
@@ -83,8 +86,9 @@ See [the design spec](../docs/superpowers/specs/2026-05-08-rust-port-design.md).
 3. ✅ Slice 3 — folder scan + DICOM sort + `rrs-cli list`
 4. ✅ Slice 4 — egui window displays a single DICOM
 5. ✅ Slice 5 — egui app loads a folder, mouse wheel scrolls
+6. ✅ Slice 6 (this slice) — scroll polish: throttled wheel + left-click drag scroll
 
-**MVP complete.** Future slices may add: drag-W/L controls, file menu, JPG/PNG support, W/L presets.
+**MVP complete.** Future slices may add: drag-W/L controls (both-button drag), file menu, JPG/PNG support, W/L presets.
 
 ## Crate layout
 
