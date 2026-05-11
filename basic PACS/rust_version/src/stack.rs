@@ -102,7 +102,12 @@ impl ImageStack {
 
         let path = &self.paths[self.current];
         let obj = open_file(path).map_err(|e| RrsError::Dicom(e.to_string()))?;
-        let (pixels, dims, ws) = extract_pixels(&obj)?;
+        let (pixels, dims, mut ws) = extract_pixels(&obj)?;
+        // User-set override replaces only center+width; slope/intercept stay file-derived.
+        if let Some((center, width)) = self.override_window {
+            ws.center = center;
+            ws.width = width;
+        }
         let img = apply_window(&pixels, dims, ws);
 
         *self.cache.borrow_mut() = Some((self.current, img.clone()));
