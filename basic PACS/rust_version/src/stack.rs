@@ -49,6 +49,12 @@ impl ImageStack {
         self.current
     }
 
+    /// Path of the current slice, or `None` if the stack is empty.
+    #[must_use]
+    pub fn current_path(&self) -> Option<&std::path::Path> {
+        self.paths.get(self.current).map(|p| p.as_path())
+    }
+
     /// Advance one slice (saturating at last index). Returns the new index.
     // `next` mirrors egui's scroll direction naming; not an Iterator impl.
     #[allow(clippy::should_implement_trait)]

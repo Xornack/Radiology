@@ -11,6 +11,10 @@ const WHEEL_SENSITIVITY: f32 = 10.0;
 /// Pixels of left-click drag per slice advance.
 const DRAG_SENSITIVITY: f32 = 10.0;
 
+/// W/L drag sensitivity — units of W/L per pixel of mouse motion.
+/// Matches PyRadStack's `_WL_SENSITIVITY = 3.0`.
+const WL_SENSITIVITY: f64 = 3.0;
+
 /// State for the GUI viewer. Holds a stack and the currently-uploaded texture.
 pub struct ViewerApp {
     stack: Option<ImageStack>,
@@ -86,7 +90,10 @@ impl eframe::App for ViewerApp {
         // In egui 0.27+, smooth_scroll_delta replaces scroll_delta.
         let wheel_y = ctx.input(|i| i.smooth_scroll_delta.y);
         let (drag_button_down, drag_dy) = ctx.input(|i| {
-            let down = i.pointer.button_down(egui::PointerButton::Primary);
+            let primary = i.pointer.button_down(egui::PointerButton::Primary);
+            let secondary = i.pointer.button_down(egui::PointerButton::Secondary);
+            // drag-scroll fires only when Primary is held alone (not with Secondary, which means W/L).
+            let down = primary && !secondary;
             let dy = if down { i.pointer.delta().y } else { 0.0 };
             (down, dy)
         });
@@ -94,6 +101,32 @@ impl eframe::App for ViewerApp {
         if let Some(stack) = self.stack.as_mut() {
             handle_wheel(stack, &mut self.wheel_accum, wheel_y);
             handle_drag(stack, &mut self.drag_accum, drag_button_down, drag_dy);
+        }
+
+        // Both-button drag = W/L adjustment. dx → width, dy → center.
+        // While both held, mutate stack.override_window each frame.
+        let (both_buttons_down, wl_drag_delta) = ctx.input(|i| {
+            let primary = i.pointer.button_down(egui::PointerButton::Primary);
+            let secondary = i.pointer.button_down(egui::PointerButton::Secondary);
+            let both = primary && secondary;
+            let delta = if both { i.pointer.delta() } else { egui::Vec2::ZERO };
+            (both, delta)
+        });
+        if both_buttons_down {
+            if let Some(stack) = self.stack.as_mut() {
+                // Read current W/L: override if set, otherwise read from current file's tags
+                // (so the drag starts at where the file's W/L is). Falls back to 128/256 if
+                // the file can't be read — same defaults extract_pixels uses.
+                let (current_center, current_width) = stack
+                    .override_window()
+                    .or_else(|| current_file_window(stack))
+                    .unwrap_or((128.0, 256.0));
+                let new_center = current_center + f64::from(wl_drag_delta.y) * WL_SENSITIVITY;
+                // Width: clamp to [1, 100_000] to prevent degenerate windows and runaway drags.
+                let new_width = (current_width + f64::from(wl_drag_delta.x) * WL_SENSITIVITY)
+                    .clamp(1.0, 100_000.0);
+                stack.set_override_window(Some((new_center, new_width)));
+            }
         }
 
         // Re-upload texture if the current slice changed.
@@ -140,8 +173,20 @@ impl eframe::App for ViewerApp {
 
         // Request continuous repaint while wheel scrolling or dragging — without this,
         // drags only register at events egui happens to repaint for.
-        if wheel_y != 0.0 || drag_button_down {
+        if wheel_y != 0.0 || drag_button_down || both_buttons_down {
             ctx.request_repaint();
         }
     }
+}
+
+/// Read the current slice's W/L from its DICOM tags. Returns None if the file
+/// can't be opened or metadata can't be read.
+fn current_file_window(stack: &crate::stack::ImageStack) -> Option<(f64, f64)> {
+    use dicom_object::open_file;
+    use crate::windowing::read_metadata;
+
+    let path = stack.current_path()?;
+    let obj = open_file(path).ok()?;
+    let (_dims, ws) = read_metadata(&obj).ok()?;
+    Some((ws.center, ws.width))
 }
