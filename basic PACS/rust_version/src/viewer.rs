@@ -5,7 +5,7 @@ use eframe::egui;
 use crate::stack::ImageStack;
 
 /// Wheel delta units per slice advance. Higher = slower scroll.
-/// Matches PyRadStack's `_DRAG_SCROLL_SENSITIVITY = 10`.
+/// Matches `PyRadStack`'s `_DRAG_SCROLL_SENSITIVITY = 10`.
 const WHEEL_SENSITIVITY: f32 = 10.0;
 
 /// Pixels of left-click drag per slice advance.
@@ -17,9 +17,9 @@ pub struct ViewerApp {
     texture: Option<egui::TextureHandle>,
     /// Index whose pixels are currently in `texture`. Re-upload when this != `stack.current()`.
     texture_idx: Option<usize>,
-    /// Accumulated wheel delta; consumed in WHEEL_SENSITIVITY chunks per slice step.
+    /// Accumulated wheel delta; consumed in `WHEEL_SENSITIVITY` chunks per slice step.
     wheel_accum: f32,
-    /// Accumulated left-click drag dy; consumed in DRAG_SENSITIVITY chunks per slice step.
+    /// Accumulated left-click drag dy; consumed in `DRAG_SENSITIVITY` chunks per slice step.
     drag_accum: f32,
 }
 
@@ -40,49 +40,60 @@ impl ViewerApp {
     }
 }
 
+/// Advance `stack` by accumulated `wheel_y` in `WHEEL_SENSITIVITY` chunks.
+/// `wheel_y` > 0 = scroll up = previous slice (matches `PyRadStack` convention).
+// Float while-loop is intentional: we consume accum in fixed-size chunks until
+// it falls below the threshold, which is clearer than a single trunc() step.
+#[allow(clippy::while_float)]
+fn handle_wheel(stack: &mut ImageStack, accum: &mut f32, wheel_y: f32) {
+    *accum += wheel_y;
+    while *accum >= WHEEL_SENSITIVITY {
+        stack.prev();
+        *accum -= WHEEL_SENSITIVITY;
+    }
+    while *accum <= -WHEEL_SENSITIVITY {
+        stack.next();
+        *accum += WHEEL_SENSITIVITY;
+    }
+}
+
+/// Advance `stack` by accumulated drag `dy` in `DRAG_SENSITIVITY` chunks.
+/// `button_down` false → reset accum so next drag starts fresh.
+/// Drag down (positive dy in egui coords) = next slice.
+// Float while-loop is intentional — same rationale as handle_wheel.
+#[allow(clippy::while_float)]
+fn handle_drag(stack: &mut ImageStack, accum: &mut f32, button_down: bool, dy: f32) {
+    if button_down {
+        *accum += dy;
+        while *accum >= DRAG_SENSITIVITY {
+            stack.next();
+            *accum -= DRAG_SENSITIVITY;
+        }
+        while *accum <= -DRAG_SENSITIVITY {
+            stack.prev();
+            *accum += DRAG_SENSITIVITY;
+        }
+    } else {
+        *accum = 0.0;
+    }
+}
+
 impl eframe::App for ViewerApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
 
-        // Handle mouse-wheel scroll. egui exposes scroll as part of input state.
+        // Read all pointer/scroll input in one pass.
         // In egui 0.27+, smooth_scroll_delta replaces scroll_delta.
-        // Accumulate wheel delta and consume in WHEEL_SENSITIVITY chunks so high-res
-        // wheels don't blow past slices. wheel_y > 0 = scroll up = previous slice.
         let wheel_y = ctx.input(|i| i.smooth_scroll_delta.y);
-        if let Some(stack) = self.stack.as_mut() {
-            self.wheel_accum += wheel_y;
-            while self.wheel_accum >= WHEEL_SENSITIVITY {
-                stack.prev();
-                self.wheel_accum -= WHEEL_SENSITIVITY;
-            }
-            while self.wheel_accum <= -WHEEL_SENSITIVITY {
-                stack.next();
-                self.wheel_accum += WHEEL_SENSITIVITY;
-            }
-        }
-
-        // Left-click drag = scroll. Accumulate dy while button held; consume in
-        // DRAG_SENSITIVITY chunks. Drag down = next slice (positive dy in egui coords).
         let (drag_button_down, drag_dy) = ctx.input(|i| {
             let down = i.pointer.button_down(egui::PointerButton::Primary);
             let dy = if down { i.pointer.delta().y } else { 0.0 };
             (down, dy)
         });
+
         if let Some(stack) = self.stack.as_mut() {
-            if drag_button_down {
-                self.drag_accum += drag_dy;
-                while self.drag_accum >= DRAG_SENSITIVITY {
-                    stack.next();
-                    self.drag_accum -= DRAG_SENSITIVITY;
-                }
-                while self.drag_accum <= -DRAG_SENSITIVITY {
-                    stack.prev();
-                    self.drag_accum += DRAG_SENSITIVITY;
-                }
-            } else {
-                // Reset on release so the next drag starts fresh.
-                self.drag_accum = 0.0;
-            }
+            handle_wheel(stack, &mut self.wheel_accum, wheel_y);
+            handle_drag(stack, &mut self.drag_accum, drag_button_down, drag_dy);
         }
 
         // Re-upload texture if the current slice changed.
