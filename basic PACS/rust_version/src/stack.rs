@@ -17,6 +17,9 @@ pub struct ImageStack {
     paths: Vec<PathBuf>,
     current: usize,
     cache: std::cell::RefCell<Option<(usize, GrayImage)>>,
+    /// User-set W/L (center, width) overriding per-file DICOM tags.
+    /// `None` means "use the file's tags" (default).
+    override_window: Option<(f64, f64)>,
 }
 
 impl ImageStack {
@@ -24,7 +27,7 @@ impl ImageStack {
     // Vec heap-allocation makes this non-const; suppress nursery lint.
     #[allow(clippy::missing_const_for_fn)]
     pub fn new(paths: Vec<PathBuf>) -> Self {
-        Self { paths, current: 0, cache: std::cell::RefCell::new(None) }
+        Self { paths, current: 0, cache: std::cell::RefCell::new(None), override_window: None }
     }
 
     #[must_use]
@@ -62,6 +65,18 @@ impl ImageStack {
     pub const fn prev(&mut self) -> usize {
         self.current = self.current.saturating_sub(1);
         self.current
+    }
+
+    #[must_use]
+    pub fn override_window(&self) -> Option<(f64, f64)> {
+        self.override_window
+    }
+
+    /// Set the user override W/L (or `None` to revert to per-file tags).
+    /// Invalidates the cached image so the next `get_current_image` re-renders.
+    pub fn set_override_window(&mut self, ws: Option<(f64, f64)>) {
+        self.override_window = ws;
+        self.cache.borrow_mut().take();
     }
 
     /// Load the current slice (using the cache when possible).

@@ -51,3 +51,18 @@ fn image_stack_empty_reports_correctly() {
     assert_eq!(stack.len(), 0);
     assert!(stack.is_empty());
 }
+
+#[test]
+fn image_stack_override_window_round_trips() {
+    let dir = fresh_dir();
+    let p = write_synthetic(dir.path(), "a.dcm", DicomFixture::default());
+    let mut stack = ImageStack::new(vec![p]);
+
+    assert_eq!(stack.override_window(), None);
+
+    stack.set_override_window(Some((100.0, 500.0)));
+    assert_eq!(stack.override_window(), Some((100.0, 500.0)));
+
+    stack.set_override_window(None);
+    assert_eq!(stack.override_window(), None);
+}
