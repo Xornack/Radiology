@@ -25,6 +25,10 @@ pub struct DicomFixture {
     /// Stored pixel values (raw, pre-rescale). Length must be rows*cols.
     /// If None, a flat ramp from 0..(rows*cols) is generated.
     pub pixels: Option<Vec<u16>>,
+    /// If Some, write this `ImagePositionPatient` ([x, y, z]).
+    pub image_position_patient: Option<[f64; 3]>,
+    /// If true, omit the `InstanceNumber` tag entirely (for fallback-sort tests).
+    pub skip_instance_number: bool,
 }
 
 /// Write a synthetic DICOM into the given temp dir; returns the resulting path.
@@ -52,11 +56,23 @@ pub fn write_synthetic(dir: &Path, name: &str, fx: DicomFixture) -> PathBuf {
         VR::CS,
         PrimitiveValue::from(fx.modality.unwrap_or("CT")),
     ));
-    obj.put(DataElement::new(
-        tags::INSTANCE_NUMBER,
-        VR::IS,
-        PrimitiveValue::from(fx.instance_number.unwrap_or(1).to_string()),
-    ));
+    if !fx.skip_instance_number {
+        obj.put(DataElement::new(
+            tags::INSTANCE_NUMBER,
+            VR::IS,
+            PrimitiveValue::from(fx.instance_number.unwrap_or(1).to_string()),
+        ));
+    }
+
+    if let Some([ipp_0, ipp_1, ipp_2, ..]) = fx.image_position_patient {
+        // DS multi-valued: write as backslash-separated decimal strings
+        let s = format!("{ipp_0}\\{ipp_1}\\{ipp_2}");
+        obj.put(DataElement::new(
+            tags::IMAGE_POSITION_PATIENT,
+            VR::DS,
+            PrimitiveValue::from(s),
+        ));
+    }
 
     // Image-pixel-module tags
     obj.put(DataElement::new(tags::ROWS, VR::US, dicom_value!(U16, rows)));

@@ -32,6 +32,25 @@ impl Default for WindowSettings {
 /// Stored values are pre-rescale — call sites apply slope/intercept inside `apply_window`.
 type ExtractResult = (Vec<i32>, (u32, u32), WindowSettings);
 
+/// Read just the dims + W/L tags from an already-opened DICOM object.
+///
+/// Cheap — does not touch pixel data. Use this when you only need metadata
+/// (sorting, listing) and want to avoid decode cost on hundreds of files.
+///
+/// # Errors
+/// Returns `RrsError::MissingTag` if `Rows` or `Columns` tags are absent.
+pub fn read_metadata(
+    obj: &DefaultDicomObject,
+) -> Result<((u32, u32), WindowSettings), RrsError> {
+    let rows = read_u32(obj, tags::ROWS, "Rows")?;
+    let cols = read_u32(obj, tags::COLUMNS, "Columns")?;
+    let center = read_f64_or_default(obj, tags::WINDOW_CENTER, 128.0);
+    let width = read_f64_or_default(obj, tags::WINDOW_WIDTH, 256.0);
+    let slope = read_f64_or_default(obj, tags::RESCALE_SLOPE, 1.0);
+    let intercept = read_f64_or_default(obj, tags::RESCALE_INTERCEPT, 0.0);
+    Ok(((rows, cols), WindowSettings { center, width, slope, intercept }))
+}
+
 /// Extract dims, pre-rescale stored pixel values, and W/L tags from an already-opened DICOM object.
 ///
 /// Stored values are pre-rescale; `apply_window` does the slope/intercept transform.
@@ -41,13 +60,8 @@ type ExtractResult = (Vec<i32>, (u32, u32), WindowSettings);
 /// Returns `RrsError::MissingTag` if `Rows` or `Columns` tags are absent.
 /// Returns `RrsError::UnsupportedPixels` if the decoded frame length doesn't match dimensions.
 pub fn extract_pixels(obj: &DefaultDicomObject) -> Result<ExtractResult, RrsError> {
-    let rows = read_u32(obj, tags::ROWS, "Rows")?;
-    let cols = read_u32(obj, tags::COLUMNS, "Columns")?;
-
-    let center = read_f64_or_default(obj, tags::WINDOW_CENTER, 128.0);
-    let width = read_f64_or_default(obj, tags::WINDOW_WIDTH, 256.0);
-    let slope = read_f64_or_default(obj, tags::RESCALE_SLOPE, 1.0);
-    let intercept = read_f64_or_default(obj, tags::RESCALE_INTERCEPT, 0.0);
+    let (dims, ws) = read_metadata(obj)?;
+    let (rows, cols) = dims;
 
     // Decode without applying the Modality LUT so we get raw stored pixel values.
     let decoded = obj
@@ -70,7 +84,7 @@ pub fn extract_pixels(obj: &DefaultDicomObject) -> Result<ExtractResult, RrsErro
         )));
     }
 
-    Ok((frame, (rows, cols), WindowSettings { center, width, slope, intercept }))
+    Ok((frame, dims, ws))
 }
 
 // Any element() failure is reported as MissingTag; if the tag exists with an unexpected VR
