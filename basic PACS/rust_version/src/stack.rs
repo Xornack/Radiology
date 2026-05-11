@@ -52,7 +52,7 @@ impl ImageStack {
     /// Path of the current slice, or `None` if the stack is empty.
     #[must_use]
     pub fn current_path(&self) -> Option<&std::path::Path> {
-        self.paths.get(self.current).map(|p| p.as_path())
+        self.paths.get(self.current).map(PathBuf::as_path)
     }
 
     /// Advance one slice (saturating at last index). Returns the new index.
@@ -74,7 +74,7 @@ impl ImageStack {
     }
 
     #[must_use]
-    pub fn override_window(&self) -> Option<(f64, f64)> {
+    pub const fn override_window(&self) -> Option<(f64, f64)> {
         self.override_window
     }
 

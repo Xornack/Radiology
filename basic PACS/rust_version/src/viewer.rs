@@ -12,7 +12,7 @@ const WHEEL_SENSITIVITY: f32 = 10.0;
 const DRAG_SENSITIVITY: f32 = 10.0;
 
 /// W/L drag sensitivity — units of W/L per pixel of mouse motion.
-/// Matches PyRadStack's `_WL_SENSITIVITY = 3.0`.
+/// Matches `PyRadStack`'s `_WL_SENSITIVITY = 3.0`.
 const WL_SENSITIVITY: f64 = 3.0;
 
 /// State for the GUI viewer. Holds a stack and the currently-uploaded texture.
@@ -112,21 +112,21 @@ impl eframe::App for ViewerApp {
             let delta = if both { i.pointer.delta() } else { egui::Vec2::ZERO };
             (both, delta)
         });
-        if both_buttons_down {
-            if let Some(stack) = self.stack.as_mut() {
-                // Read current W/L: override if set, otherwise read from current file's tags
-                // (so the drag starts at where the file's W/L is). Falls back to 128/256 if
-                // the file can't be read — same defaults extract_pixels uses.
-                let (current_center, current_width) = stack
-                    .override_window()
-                    .or_else(|| current_file_window(stack))
-                    .unwrap_or((128.0, 256.0));
-                let new_center = current_center + f64::from(wl_drag_delta.y) * WL_SENSITIVITY;
-                // Width: clamp to [1, 100_000] to prevent degenerate windows and runaway drags.
-                let new_width = (current_width + f64::from(wl_drag_delta.x) * WL_SENSITIVITY)
-                    .clamp(1.0, 100_000.0);
-                stack.set_override_window(Some((new_center, new_width)));
-            }
+        if both_buttons_down
+            && let Some(stack) = self.stack.as_mut() {
+            // Read current W/L: override if set, otherwise read from current file's tags
+            // (so the drag starts at where the file's W/L is). Falls back to 128/256 if
+            // the file can't be read — same defaults extract_pixels uses.
+            let (current_center, current_width) = stack
+                .override_window()
+                .or_else(|| current_file_window(stack))
+                .unwrap_or((128.0, 256.0));
+            let new_center = f64::from(wl_drag_delta.y).mul_add(WL_SENSITIVITY, current_center);
+            // Width: clamp to [1, 100_000] to prevent degenerate windows and runaway drags.
+            let new_width = f64::from(wl_drag_delta.x)
+                .mul_add(WL_SENSITIVITY, current_width)
+                .clamp(1.0, 100_000.0);
+            stack.set_override_window(Some((new_center, new_width)));
         }
 
         // Re-upload texture if the current slice changed.
