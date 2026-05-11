@@ -61,6 +61,30 @@ impl eframe::App for ViewerApp {
             }
         }
 
+        // Left-click drag = scroll. Accumulate dy while button held; consume in
+        // DRAG_SENSITIVITY chunks. Drag down = next slice (positive dy in egui coords).
+        let (drag_button_down, drag_dy) = ctx.input(|i| {
+            let down = i.pointer.button_down(egui::PointerButton::Primary);
+            let dy = if down { i.pointer.delta().y } else { 0.0 };
+            (down, dy)
+        });
+        if let Some(stack) = self.stack.as_mut() {
+            if drag_button_down {
+                self.drag_accum += drag_dy;
+                while self.drag_accum >= DRAG_SENSITIVITY {
+                    stack.next();
+                    self.drag_accum -= DRAG_SENSITIVITY;
+                }
+                while self.drag_accum <= -DRAG_SENSITIVITY {
+                    stack.prev();
+                    self.drag_accum += DRAG_SENSITIVITY;
+                }
+            } else {
+                // Reset on release so the next drag starts fresh.
+                self.drag_accum = 0.0;
+            }
+        }
+
         // Re-upload texture if the current slice changed.
         if let Some(stack) = &self.stack {
             let need_upload = self.texture_idx != Some(stack.current());
@@ -103,8 +127,9 @@ impl eframe::App for ViewerApp {
             );
         }
 
-        // Request a repaint when the wheel was scrolled (otherwise egui idles).
-        if wheel_y != 0.0 {
+        // Request continuous repaint while wheel scrolling or dragging — without this,
+        // drags only register at events egui happens to repaint for.
+        if wheel_y != 0.0 || drag_button_down {
             ctx.request_repaint();
         }
     }
