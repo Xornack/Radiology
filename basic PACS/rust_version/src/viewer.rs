@@ -46,12 +46,18 @@ impl eframe::App for ViewerApp {
 
         // Handle mouse-wheel scroll. egui exposes scroll as part of input state.
         // In egui 0.27+, smooth_scroll_delta replaces scroll_delta.
+        // Accumulate wheel delta and consume in WHEEL_SENSITIVITY chunks so high-res
+        // wheels don't blow past slices. wheel_y > 0 = scroll up = previous slice.
         let wheel_y = ctx.input(|i| i.smooth_scroll_delta.y);
         if let Some(stack) = self.stack.as_mut() {
-            if wheel_y > 0.0 {
+            self.wheel_accum += wheel_y;
+            while self.wheel_accum >= WHEEL_SENSITIVITY {
                 stack.prev();
-            } else if wheel_y < 0.0 {
+                self.wheel_accum -= WHEEL_SENSITIVITY;
+            }
+            while self.wheel_accum <= -WHEEL_SENSITIVITY {
                 stack.next();
+                self.wheel_accum += WHEEL_SENSITIVITY;
             }
         }
 
