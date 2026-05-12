@@ -1,5 +1,5 @@
 //! Convert a user-supplied path (file or folder) into a sorted Vec<PathBuf>
-//! ready to feed into ImageStack::new.
+//! ready to feed into `ImageStack::new`.
 
 use std::path::{Path, PathBuf};
 
@@ -7,6 +7,8 @@ use crate::loader::scan_directory;
 use crate::sorting::sort_files;
 
 /// Result of trying to build a stack from a path.
+// #[non_exhaustive]: future slices will add InvalidContent and similar variants.
+#[non_exhaustive]
 #[derive(Debug)]
 pub enum LoadError {
     /// Path doesn't exist or is neither a file nor a directory.
@@ -29,7 +31,7 @@ impl std::fmt::Display for LoadError {
 
 impl std::error::Error for LoadError {}
 
-/// Build a sorted Vec<PathBuf> from a file or folder path. Returns LoadError
+/// Build a sorted Vec<PathBuf> from a file or folder path. Returns `LoadError`
 /// on missing path, scan failure, or empty folder.
 ///
 /// # Errors

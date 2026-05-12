@@ -30,7 +30,7 @@ pub struct ViewerApp {
     wheel_accum: f32,
     /// Accumulated left-click drag dy; consumed in `DRAG_SENSITIVITY` chunks per slice step.
     drag_accum: f32,
-    /// Non-None when the last load_path call failed; cleared on the next successful load.
+    /// Non-None when the last `load_path` call failed; cleared on the next successful load.
     load_error: Option<String>,
 }
 
@@ -51,7 +51,7 @@ impl ViewerApp {
     }
 
     /// Load a new file or folder into the viewer, replacing the current stack.
-    /// Resets W/L override (via fresh ImageStack) and texture cache so the new
+    /// Resets W/L override (via fresh `ImageStack`) and texture cache so the new
     /// series starts clean. On failure, the previous stack stays visible and an
     /// error label is shown.
     pub fn load_path(&mut self, path: &std::path::Path) {
@@ -114,12 +114,11 @@ impl eframe::App for ViewerApp {
         let ctx = ui.ctx().clone();
 
         // Top menubar — file open dialogs.
-        #[allow(deprecated)] // egui::menu::bar is deprecated in 0.34 but still functional
-        egui::TopBottomPanel::top("menubar").show_inside(ui, |ui| {
-            egui::menu::bar(ui, |ui| {
+        egui::Panel::top("menubar").show_inside(ui, |ui| {
+            egui::MenuBar::new().ui(ui, |ui| {
                 ui.menu_button("File", |ui| {
                     if ui.button("Open Folder…").clicked() {
-                        ui.close_menu();
+                        ui.close_kind(egui::UiKind::Menu);
                         if let Some(folder) = rfd::FileDialog::new()
                             .set_title("Open DICOM folder")
                             .pick_folder()
@@ -128,7 +127,7 @@ impl eframe::App for ViewerApp {
                         }
                     }
                     if ui.button("Open File…").clicked() {
-                        ui.close_menu();
+                        ui.close_kind(egui::UiKind::Menu);
                         if let Some(file) = rfd::FileDialog::new()
                             .set_title("Open DICOM file")
                             .add_filter("DICOM", &["dcm"])
