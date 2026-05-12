@@ -50,6 +50,15 @@ impl ViewerApp {
         Self { stack: None, texture: None, texture_key: None, wheel_accum: 0.0, drag_accum: 0.0, load_error: None }
     }
 
+    /// Parent of the current series folder — i.e. the study folder containing
+    /// sibling series. Used to seed the Open Folder picker so the user lands
+    /// next to the related series instead of wherever the OS defaults.
+    /// Returns None when no stack is loaded or the path has no grandparent.
+    fn study_dir(&self) -> Option<&std::path::Path> {
+        let series_dir = self.stack.as_ref()?.current_path()?.parent()?;
+        series_dir.parent()
+    }
+
     /// Load a new file or folder into the viewer, replacing the current stack.
     /// Resets W/L override (via fresh `ImageStack`) and texture cache so the new
     /// series starts clean. On failure, the previous stack stays visible and an
@@ -119,10 +128,14 @@ impl eframe::App for ViewerApp {
                 ui.menu_button("File", |ui| {
                     if ui.button("Open Folder…").clicked() {
                         ui.close_kind(egui::UiKind::Menu);
-                        if let Some(folder) = rfd::FileDialog::new()
-                            .set_title("Open DICOM folder")
-                            .pick_folder()
-                        {
+                        // When a series is open, default the picker to the study folder
+                        // (parent of the series dir) so sibling series are visible without
+                        // navigation. With nothing open, let the OS choose the start dir.
+                        let mut dialog = rfd::FileDialog::new().set_title("Open DICOM folder");
+                        if let Some(study_dir) = self.study_dir() {
+                            dialog = dialog.set_directory(study_dir);
+                        }
+                        if let Some(folder) = dialog.pick_folder() {
                             self.load_path(&folder);
                         }
                     }
