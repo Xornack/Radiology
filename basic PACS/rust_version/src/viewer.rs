@@ -30,6 +30,8 @@ pub struct ViewerApp {
     wheel_accum: f32,
     /// Accumulated left-click drag dy; consumed in `DRAG_SENSITIVITY` chunks per slice step.
     drag_accum: f32,
+    /// Non-None when the last load_path call failed; cleared on the next successful load.
+    load_error: Option<String>,
 }
 
 impl ViewerApp {
@@ -37,7 +39,7 @@ impl ViewerApp {
     // egui::TextureHandle is not const-constructible; suppress nursery lint.
     #[allow(clippy::missing_const_for_fn)]
     pub fn new(stack: ImageStack) -> Self {
-        Self { stack: Some(stack), texture: None, texture_key: None, wheel_accum: 0.0, drag_accum: 0.0 }
+        Self { stack: Some(stack), texture: None, texture_key: None, wheel_accum: 0.0, drag_accum: 0.0, load_error: None }
     }
 
     /// Construct an empty viewer (no stack). Used for error cases.
@@ -45,7 +47,27 @@ impl ViewerApp {
     // egui::TextureHandle is not const-constructible; suppress nursery lint.
     #[allow(clippy::missing_const_for_fn)]
     pub fn empty() -> Self {
-        Self { stack: None, texture: None, texture_key: None, wheel_accum: 0.0, drag_accum: 0.0 }
+        Self { stack: None, texture: None, texture_key: None, wheel_accum: 0.0, drag_accum: 0.0, load_error: None }
+    }
+
+    /// Load a new file or folder into the viewer, replacing the current stack.
+    /// Resets W/L override (via fresh ImageStack) and texture cache so the new
+    /// series starts clean. On failure, the previous stack stays visible and an
+    /// error label is shown.
+    pub fn load_path(&mut self, path: &std::path::Path) {
+        match crate::loading::paths_for(path) {
+            Ok(paths) => {
+                self.stack = Some(ImageStack::new(paths));
+                self.texture = None;
+                self.texture_key = None;
+                self.wheel_accum = 0.0;
+                self.drag_accum = 0.0;
+                self.load_error = None;
+            }
+            Err(e) => {
+                self.load_error = Some(e.to_string());
+            }
+        }
     }
 }
 
