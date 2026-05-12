@@ -11,12 +11,21 @@ const WHEEL_SENSITIVITY: f32 = 10.0;
 /// Pixels of left-click drag per slice advance.
 const DRAG_SENSITIVITY: f32 = 10.0;
 
+/// W/L drag sensitivity — units of W/L per pixel of mouse motion.
+/// Matches `PyRadStack`'s `_WL_SENSITIVITY = 3.0`.
+const WL_SENSITIVITY: f64 = 3.0;
+
+/// (slice index, override W/L) of whatever pixels are in the texture right now.
+/// Re-upload when this differs from the stack's current state — which catches
+/// both slice changes AND W/L drag (override mutates without index changing).
+type TextureKey = (usize, Option<(f64, f64)>);
+
 /// State for the GUI viewer. Holds a stack and the currently-uploaded texture.
 pub struct ViewerApp {
     stack: Option<ImageStack>,
     texture: Option<egui::TextureHandle>,
-    /// Index whose pixels are currently in `texture`. Re-upload when this != `stack.current()`.
-    texture_idx: Option<usize>,
+    /// Identifies which (slice, W/L) is currently in `texture`. None means "nothing uploaded yet".
+    texture_key: Option<TextureKey>,
     /// Accumulated wheel delta; consumed in `WHEEL_SENSITIVITY` chunks per slice step.
     wheel_accum: f32,
     /// Accumulated left-click drag dy; consumed in `DRAG_SENSITIVITY` chunks per slice step.
@@ -28,7 +37,7 @@ impl ViewerApp {
     // egui::TextureHandle is not const-constructible; suppress nursery lint.
     #[allow(clippy::missing_const_for_fn)]
     pub fn new(stack: ImageStack) -> Self {
-        Self { stack: Some(stack), texture: None, texture_idx: None, wheel_accum: 0.0, drag_accum: 0.0 }
+        Self { stack: Some(stack), texture: None, texture_key: None, wheel_accum: 0.0, drag_accum: 0.0 }
     }
 
     /// Construct an empty viewer (no stack). Used for error cases.
@@ -36,7 +45,7 @@ impl ViewerApp {
     // egui::TextureHandle is not const-constructible; suppress nursery lint.
     #[allow(clippy::missing_const_for_fn)]
     pub fn empty() -> Self {
-        Self { stack: None, texture: None, texture_idx: None, wheel_accum: 0.0, drag_accum: 0.0 }
+        Self { stack: None, texture: None, texture_key: None, wheel_accum: 0.0, drag_accum: 0.0 }
     }
 }
 
@@ -86,7 +95,10 @@ impl eframe::App for ViewerApp {
         // In egui 0.27+, smooth_scroll_delta replaces scroll_delta.
         let wheel_y = ctx.input(|i| i.smooth_scroll_delta.y);
         let (drag_button_down, drag_dy) = ctx.input(|i| {
-            let down = i.pointer.button_down(egui::PointerButton::Primary);
+            let primary = i.pointer.button_down(egui::PointerButton::Primary);
+            let secondary = i.pointer.button_down(egui::PointerButton::Secondary);
+            // drag-scroll fires only when Primary is held alone (not with Secondary, which means W/L).
+            let down = primary && !secondary;
             let dy = if down { i.pointer.delta().y } else { 0.0 };
             (down, dy)
         });
@@ -96,10 +108,37 @@ impl eframe::App for ViewerApp {
             handle_drag(stack, &mut self.drag_accum, drag_button_down, drag_dy);
         }
 
-        // Re-upload texture if the current slice changed.
+        // Both-button drag = W/L adjustment. dx → width, dy → center.
+        // While both held, mutate stack.override_window each frame.
+        let (both_buttons_down, wl_drag_delta) = ctx.input(|i| {
+            let primary = i.pointer.button_down(egui::PointerButton::Primary);
+            let secondary = i.pointer.button_down(egui::PointerButton::Secondary);
+            let both = primary && secondary;
+            let delta = if both { i.pointer.delta() } else { egui::Vec2::ZERO };
+            (both, delta)
+        });
+        if both_buttons_down
+            && let Some(stack) = self.stack.as_mut() {
+            // Read current W/L: override if set, otherwise read from current file's tags
+            // (so the drag starts at where the file's W/L is). Falls back to 128/256 if
+            // the file can't be read — same defaults extract_pixels uses.
+            let (current_center, current_width) = stack
+                .override_window()
+                .or_else(|| current_file_window(stack))
+                .unwrap_or((128.0, 256.0));
+            let new_center = f64::from(wl_drag_delta.y).mul_add(WL_SENSITIVITY, current_center);
+            // Width: clamp to [1, 100_000] to prevent degenerate windows and runaway drags.
+            let new_width = f64::from(wl_drag_delta.x)
+                .mul_add(WL_SENSITIVITY, current_width)
+                .clamp(1.0, 100_000.0);
+            stack.set_override_window(Some((new_center, new_width)));
+        }
+
+        // Re-upload texture when either the slice index OR the override W/L changed.
+        // The composite key catches W/L drag (override mutates without index change).
         if let Some(stack) = &self.stack {
-            let need_upload = self.texture_idx != Some(stack.current());
-            if need_upload
+            let current_key: TextureKey = (stack.current(), stack.override_window());
+            if self.texture_key != Some(current_key)
                 && let Ok(img) = stack.get_current_image()
             {
                 let (w, h) = img.dimensions();
@@ -114,7 +153,7 @@ impl eframe::App for ViewerApp {
                     color_img,
                     egui::TextureOptions::default(),
                 ));
-                self.texture_idx = Some(stack.current());
+                self.texture_key = Some(current_key);
             }
         }
 
@@ -140,8 +179,20 @@ impl eframe::App for ViewerApp {
 
         // Request continuous repaint while wheel scrolling or dragging — without this,
         // drags only register at events egui happens to repaint for.
-        if wheel_y != 0.0 || drag_button_down {
+        if wheel_y != 0.0 || drag_button_down || both_buttons_down {
             ctx.request_repaint();
         }
     }
+}
+
+/// Read the current slice's W/L from its DICOM tags. Returns None if the file
+/// can't be opened or metadata can't be read.
+fn current_file_window(stack: &crate::stack::ImageStack) -> Option<(f64, f64)> {
+    use dicom_object::open_file;
+    use crate::windowing::read_metadata;
+
+    let path = stack.current_path()?;
+    let obj = open_file(path).ok()?;
+    let (_dims, ws) = read_metadata(&obj).ok()?;
+    Some((ws.center, ws.width))
 }

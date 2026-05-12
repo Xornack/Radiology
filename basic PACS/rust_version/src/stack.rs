@@ -17,6 +17,9 @@ pub struct ImageStack {
     paths: Vec<PathBuf>,
     current: usize,
     cache: std::cell::RefCell<Option<(usize, GrayImage)>>,
+    /// User-set W/L (center, width) overriding per-file DICOM tags.
+    /// `None` means "use the file's tags" (default).
+    override_window: Option<(f64, f64)>,
 }
 
 impl ImageStack {
@@ -24,7 +27,7 @@ impl ImageStack {
     // Vec heap-allocation makes this non-const; suppress nursery lint.
     #[allow(clippy::missing_const_for_fn)]
     pub fn new(paths: Vec<PathBuf>) -> Self {
-        Self { paths, current: 0, cache: std::cell::RefCell::new(None) }
+        Self { paths, current: 0, cache: std::cell::RefCell::new(None), override_window: None }
     }
 
     #[must_use]
@@ -46,6 +49,12 @@ impl ImageStack {
         self.current
     }
 
+    /// Path of the current slice, or `None` if the stack is empty.
+    #[must_use]
+    pub fn current_path(&self) -> Option<&std::path::Path> {
+        self.paths.get(self.current).map(PathBuf::as_path)
+    }
+
     /// Advance one slice (saturating at last index). Returns the new index.
     // `next` mirrors egui's scroll direction naming; not an Iterator impl.
     #[allow(clippy::should_implement_trait)]
@@ -62,6 +71,18 @@ impl ImageStack {
     pub const fn prev(&mut self) -> usize {
         self.current = self.current.saturating_sub(1);
         self.current
+    }
+
+    #[must_use]
+    pub const fn override_window(&self) -> Option<(f64, f64)> {
+        self.override_window
+    }
+
+    /// Set the user override W/L (or `None` to revert to per-file tags).
+    /// Invalidates the cached image so the next `get_current_image` re-renders.
+    pub fn set_override_window(&mut self, ws: Option<(f64, f64)>) {
+        self.override_window = ws;
+        self.cache.borrow_mut().take();
     }
 
     /// Load the current slice (using the cache when possible).
@@ -87,7 +108,12 @@ impl ImageStack {
 
         let path = &self.paths[self.current];
         let obj = open_file(path).map_err(|e| RrsError::Dicom(e.to_string()))?;
-        let (pixels, dims, ws) = extract_pixels(&obj)?;
+        let (pixels, dims, mut ws) = extract_pixels(&obj)?;
+        // User-set override replaces only center+width; slope/intercept stay file-derived.
+        if let Some((center, width)) = self.override_window {
+            ws.center = center;
+            ws.width = width;
+        }
         let img = apply_window(&pixels, dims, ws);
 
         *self.cache.borrow_mut() = Some((self.current, img.clone()));

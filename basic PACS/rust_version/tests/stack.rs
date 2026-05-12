@@ -51,3 +51,49 @@ fn image_stack_empty_reports_correctly() {
     assert_eq!(stack.len(), 0);
     assert!(stack.is_empty());
 }
+
+#[test]
+fn image_stack_override_window_round_trips() {
+    let dir = fresh_dir();
+    let p = write_synthetic(dir.path(), "a.dcm", DicomFixture::default());
+    let mut stack = ImageStack::new(vec![p]);
+
+    assert_eq!(stack.override_window(), None);
+
+    stack.set_override_window(Some((100.0, 500.0)));
+    assert_eq!(stack.override_window(), Some((100.0, 500.0)));
+
+    stack.set_override_window(None);
+    assert_eq!(stack.override_window(), None);
+}
+
+#[test]
+fn image_stack_get_current_image_uses_override_when_set() {
+    let dir = fresh_dir();
+    // File W/L: center=128, width=256, slope=1, intercept=0 (defaults from DicomFixture)
+    let p = write_synthetic(
+        dir.path(),
+        "a.dcm",
+        DicomFixture {
+            window_center: Some(128.0),
+            window_width: Some(256.0),
+            rescale_slope: Some(1.0),
+            rescale_intercept: Some(0.0),
+            ..Default::default()
+        },
+    );
+    let mut stack = ImageStack::new(vec![p]);
+
+    let img_default = stack.get_current_image().expect("default render");
+
+    // Tighten window to [60, 70] (center=65, width=10) — most ramp values clamp.
+    stack.set_override_window(Some((65.0, 10.0)));
+    let img_overridden = stack.get_current_image().expect("override render");
+
+    let sum_default: u32 = img_default.as_raw().iter().map(|&b| u32::from(b)).sum();
+    let sum_overridden: u32 = img_overridden.as_raw().iter().map(|&b| u32::from(b)).sum();
+    assert_ne!(
+        sum_default, sum_overridden,
+        "override should produce visibly different pixels (default sum={sum_default}, overridden sum={sum_overridden})"
+    );
+}
