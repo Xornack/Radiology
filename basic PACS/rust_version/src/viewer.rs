@@ -15,12 +15,17 @@ const DRAG_SENSITIVITY: f32 = 10.0;
 /// Matches `PyRadStack`'s `_WL_SENSITIVITY = 3.0`.
 const WL_SENSITIVITY: f64 = 3.0;
 
+/// (slice index, override W/L) of whatever pixels are in the texture right now.
+/// Re-upload when this differs from the stack's current state — which catches
+/// both slice changes AND W/L drag (override mutates without index changing).
+type TextureKey = (usize, Option<(f64, f64)>);
+
 /// State for the GUI viewer. Holds a stack and the currently-uploaded texture.
 pub struct ViewerApp {
     stack: Option<ImageStack>,
     texture: Option<egui::TextureHandle>,
-    /// Index whose pixels are currently in `texture`. Re-upload when this != `stack.current()`.
-    texture_idx: Option<usize>,
+    /// Identifies which (slice, W/L) is currently in `texture`. None means "nothing uploaded yet".
+    texture_key: Option<TextureKey>,
     /// Accumulated wheel delta; consumed in `WHEEL_SENSITIVITY` chunks per slice step.
     wheel_accum: f32,
     /// Accumulated left-click drag dy; consumed in `DRAG_SENSITIVITY` chunks per slice step.
@@ -32,7 +37,7 @@ impl ViewerApp {
     // egui::TextureHandle is not const-constructible; suppress nursery lint.
     #[allow(clippy::missing_const_for_fn)]
     pub fn new(stack: ImageStack) -> Self {
-        Self { stack: Some(stack), texture: None, texture_idx: None, wheel_accum: 0.0, drag_accum: 0.0 }
+        Self { stack: Some(stack), texture: None, texture_key: None, wheel_accum: 0.0, drag_accum: 0.0 }
     }
 
     /// Construct an empty viewer (no stack). Used for error cases.
@@ -40,7 +45,7 @@ impl ViewerApp {
     // egui::TextureHandle is not const-constructible; suppress nursery lint.
     #[allow(clippy::missing_const_for_fn)]
     pub fn empty() -> Self {
-        Self { stack: None, texture: None, texture_idx: None, wheel_accum: 0.0, drag_accum: 0.0 }
+        Self { stack: None, texture: None, texture_key: None, wheel_accum: 0.0, drag_accum: 0.0 }
     }
 }
 
@@ -129,10 +134,11 @@ impl eframe::App for ViewerApp {
             stack.set_override_window(Some((new_center, new_width)));
         }
 
-        // Re-upload texture if the current slice changed.
+        // Re-upload texture when either the slice index OR the override W/L changed.
+        // The composite key catches W/L drag (override mutates without index change).
         if let Some(stack) = &self.stack {
-            let need_upload = self.texture_idx != Some(stack.current());
-            if need_upload
+            let current_key: TextureKey = (stack.current(), stack.override_window());
+            if self.texture_key != Some(current_key)
                 && let Ok(img) = stack.get_current_image()
             {
                 let (w, h) = img.dimensions();
@@ -147,7 +153,7 @@ impl eframe::App for ViewerApp {
                     color_img,
                     egui::TextureOptions::default(),
                 ));
-                self.texture_idx = Some(stack.current());
+                self.texture_key = Some(current_key);
             }
         }
 
