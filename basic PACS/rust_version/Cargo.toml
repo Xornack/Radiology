@@ -10,6 +10,7 @@ dicom-object = "0.9.1"
 dicom-pixeldata = "0.9.1"
 eframe = "0.34.2"
 image = "0.25.6"
+rfd = "0.17.2"
 thiserror = "2.0.18"
 
 [dev-dependencies]
