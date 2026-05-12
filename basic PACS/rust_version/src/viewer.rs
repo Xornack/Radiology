@@ -113,6 +113,34 @@ impl eframe::App for ViewerApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
 
+        // Top menubar — file open dialogs.
+        #[allow(deprecated)] // egui::menu::bar is deprecated in 0.34 but still functional
+        egui::TopBottomPanel::top("menubar").show_inside(ui, |ui| {
+            egui::menu::bar(ui, |ui| {
+                ui.menu_button("File", |ui| {
+                    if ui.button("Open Folder…").clicked() {
+                        ui.close_menu();
+                        if let Some(folder) = rfd::FileDialog::new()
+                            .set_title("Open DICOM folder")
+                            .pick_folder()
+                        {
+                            self.load_path(&folder);
+                        }
+                    }
+                    if ui.button("Open File…").clicked() {
+                        ui.close_menu();
+                        if let Some(file) = rfd::FileDialog::new()
+                            .set_title("Open DICOM file")
+                            .add_filter("DICOM", &["dcm"])
+                            .pick_file()
+                        {
+                            self.load_path(&file);
+                        }
+                    }
+                });
+            });
+        });
+
         // Read all pointer/scroll input in one pass.
         // In egui 0.27+, smooth_scroll_delta replaces scroll_delta.
         let wheel_y = ctx.input(|i| i.smooth_scroll_delta.y);
@@ -181,6 +209,9 @@ impl eframe::App for ViewerApp {
 
         // Image (centered)
         ui.vertical_centered(|ui| {
+            if let Some(err) = &self.load_error {
+                ui.colored_label(egui::Color32::LIGHT_RED, format!("Load error: {err}"));
+            }
             if let Some(tex) = &self.texture {
                 let size = tex.size_vec2();
                 ui.image(egui::load::SizedTexture::new(tex.id(), size));
