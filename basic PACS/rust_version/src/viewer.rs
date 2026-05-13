@@ -128,15 +128,20 @@ impl eframe::App for ViewerApp {
                 ui.menu_button("File", |ui| {
                     if ui.button("Open Folder…").clicked() {
                         ui.close_kind(egui::UiKind::Menu);
-                        // When a series is open, default the picker to the study folder
-                        // (parent of the series dir) so sibling series are visible without
-                        // navigation. With nothing open, let the OS choose the start dir.
-                        let mut dialog = rfd::FileDialog::new().set_title("Open DICOM folder");
+                        // The OS folder picker hides files (FOS_PICKFOLDERS), so the user
+                        // can't preview a folder's contents before picking it. Workaround:
+                        // use the file picker and load the picked file's parent dir.
+                        // Default to the study dir so sibling series are immediately visible.
+                        let mut dialog = rfd::FileDialog::new()
+                            .set_title("Open folder (pick any image inside)")
+                            .add_filter("Images (DICOM, JPG, PNG)", &["dcm", "jpg", "jpeg", "png"]);
                         if let Some(study_dir) = self.study_dir() {
                             dialog = dialog.set_directory(study_dir);
                         }
-                        if let Some(folder) = dialog.pick_folder() {
-                            self.load_path(&folder);
+                        if let Some(file) = dialog.pick_file()
+                            && let Some(folder) = file.parent()
+                        {
+                            self.load_path(folder);
                         }
                     }
                     if ui.button("Open File…").clicked() {
