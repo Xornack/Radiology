@@ -122,7 +122,47 @@ fn handle_drag(stack: &mut ImageStack, accum: &mut f32, button_down: bool, dy: f
     }
 }
 
+/// Read this frame's preset-key input. Returns `(Some(N), _)` if 1..=6 was
+/// pressed, and `(_, true)` if 0 was pressed. Both can be set if the user
+/// somehow pressed two number keys in the same frame; preset wins.
+fn read_preset_keys(ctx: &egui::Context) -> (Option<usize>, bool) {
+    let preset_index = ctx.input(|i| {
+        for (n, key) in [
+            (1usize, egui::Key::Num1), (2, egui::Key::Num2), (3, egui::Key::Num3),
+            (4, egui::Key::Num4), (5, egui::Key::Num5), (6, egui::Key::Num6),
+        ] {
+            if i.key_pressed(key) { return Some(n); }
+        }
+        None
+    });
+    let clear_pressed = ctx.input(|i| i.key_pressed(egui::Key::Num0));
+    (preset_index, clear_pressed)
+}
+
+/// Apply a preset key event to the stack and the viewer's active-preset state.
+/// Preset key sets both override + name; clear key drops both.
+fn apply_preset_keys(
+    stack: &mut ImageStack,
+    active_preset_name: &mut Option<&'static str>,
+    preset_index: Option<usize>,
+    clear_pressed: bool,
+) {
+    if let Some(n) = preset_index
+        && let Some(preset) = crate::presets::PRESETS.get(n - 1)
+    {
+        stack.set_override_window(Some((preset.center, preset.width)));
+        *active_preset_name = Some(preset.name);
+    } else if clear_pressed {
+        stack.set_override_window(None);
+        *active_preset_name = None;
+    }
+}
+
 impl eframe::App for ViewerApp {
+    // egui immediate-mode style: ui() bundles input read, state updates, and
+    // render in one pass. Further splitting hurts readability more than it
+    // helps; targeted helpers are extracted for the heavier sub-blocks.
+    #[allow(clippy::too_many_lines)]
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
 
@@ -182,27 +222,9 @@ impl eframe::App for ViewerApp {
         }
 
         // Preset keys: 1..=6 apply PRESETS[N-1]; 0 clears the override back to file tags.
-        let preset_index = ctx.input(|i| {
-            for (n, key) in [
-                (1usize, egui::Key::Num1), (2, egui::Key::Num2), (3, egui::Key::Num3),
-                (4, egui::Key::Num4), (5, egui::Key::Num5), (6, egui::Key::Num6),
-            ] {
-                if i.key_pressed(key) { return Some(n); }
-            }
-            None
-        });
-        let clear_pressed = ctx.input(|i| i.key_pressed(egui::Key::Num0));
-
+        let (preset_index, clear_pressed) = read_preset_keys(&ctx);
         if let Some(stack) = self.stack.as_mut() {
-            if let Some(n) = preset_index
-                && let Some(preset) = crate::presets::PRESETS.get(n - 1)
-            {
-                stack.set_override_window(Some((preset.center, preset.width)));
-                self.active_preset_name = Some(preset.name);
-            } else if clear_pressed {
-                stack.set_override_window(None);
-                self.active_preset_name = None;
-            }
+            apply_preset_keys(stack, &mut self.active_preset_name, preset_index, clear_pressed);
         }
 
         // Both-button drag = W/L adjustment. dx → width, dy → center.
@@ -273,6 +295,8 @@ impl eframe::App for ViewerApp {
         if let Some(stack) = &self.stack {
             let current = stack.current() + 1;
             let total = stack.len();
+            // map_or_else reads worse than the if-let here — two format! arms in one line is dense.
+            #[allow(clippy::option_if_let_else)]
             let label = if let Some(name) = self.active_preset_name {
                 format!("Slice {current} / {total} — {name}")
             } else {
