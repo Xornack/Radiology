@@ -32,6 +32,9 @@ pub struct ViewerApp {
     drag_accum: f32,
     /// Non-None when the last `load_path` call failed; cleared on the next successful load.
     load_error: Option<String>,
+    /// Name of the active W/L preset, or None if user is on file defaults or has
+    /// dragged W/L manually ("Custom" mode). Cleared on W/L drag and on `load_path`.
+    active_preset_name: Option<&'static str>,
 }
 
 impl ViewerApp {
@@ -39,7 +42,7 @@ impl ViewerApp {
     // egui::TextureHandle is not const-constructible; suppress nursery lint.
     #[allow(clippy::missing_const_for_fn)]
     pub fn new(stack: ImageStack) -> Self {
-        Self { stack: Some(stack), texture: None, texture_key: None, wheel_accum: 0.0, drag_accum: 0.0, load_error: None }
+        Self { stack: Some(stack), texture: None, texture_key: None, wheel_accum: 0.0, drag_accum: 0.0, load_error: None, active_preset_name: None }
     }
 
     /// Construct an empty viewer (no stack). Used for error cases.
@@ -47,7 +50,7 @@ impl ViewerApp {
     // egui::TextureHandle is not const-constructible; suppress nursery lint.
     #[allow(clippy::missing_const_for_fn)]
     pub fn empty() -> Self {
-        Self { stack: None, texture: None, texture_key: None, wheel_accum: 0.0, drag_accum: 0.0, load_error: None }
+        Self { stack: None, texture: None, texture_key: None, wheel_accum: 0.0, drag_accum: 0.0, load_error: None, active_preset_name: None }
     }
 
     /// Parent of the current series folder — i.e. the study folder containing
@@ -72,6 +75,7 @@ impl ViewerApp {
                 self.wheel_accum = 0.0;
                 self.drag_accum = 0.0;
                 self.load_error = None;
+                self.active_preset_name = None;
             }
             Err(e) => {
                 self.load_error = Some(e.to_string());
@@ -177,6 +181,30 @@ impl eframe::App for ViewerApp {
             handle_drag(stack, &mut self.drag_accum, drag_button_down, drag_dy);
         }
 
+        // Preset keys: 1..=6 apply PRESETS[N-1]; 0 clears the override back to file tags.
+        let preset_index = ctx.input(|i| {
+            for (n, key) in [
+                (1usize, egui::Key::Num1), (2, egui::Key::Num2), (3, egui::Key::Num3),
+                (4, egui::Key::Num4), (5, egui::Key::Num5), (6, egui::Key::Num6),
+            ] {
+                if i.key_pressed(key) { return Some(n); }
+            }
+            None
+        });
+        let clear_pressed = ctx.input(|i| i.key_pressed(egui::Key::Num0));
+
+        if let Some(stack) = self.stack.as_mut() {
+            if let Some(n) = preset_index
+                && let Some(preset) = crate::presets::PRESETS.get(n - 1)
+            {
+                stack.set_override_window(Some((preset.center, preset.width)));
+                self.active_preset_name = Some(preset.name);
+            } else if clear_pressed {
+                stack.set_override_window(None);
+                self.active_preset_name = None;
+            }
+        }
+
         // Both-button drag = W/L adjustment. dx → width, dy → center.
         // While both held, mutate stack.override_window each frame.
         let (both_buttons_down, wl_drag_delta) = ctx.input(|i| {
@@ -201,6 +229,8 @@ impl eframe::App for ViewerApp {
                 .mul_add(WL_SENSITIVITY, current_width)
                 .clamp(1.0, 100_000.0);
             stack.set_override_window(Some((new_center, new_width)));
+            // Manual W/L drag → no longer on a named preset.
+            self.active_preset_name = None;
         }
 
         // Re-upload texture when either the slice index OR the override W/L changed.
@@ -239,13 +269,18 @@ impl eframe::App for ViewerApp {
             }
         });
 
-        // Status bar: "Slice X / N" at the bottom
+        // Status bar: "Slice X / N" (plus active preset name when applicable) at the bottom.
         if let Some(stack) = &self.stack {
             let current = stack.current() + 1;
             let total = stack.len();
+            let label = if let Some(name) = self.active_preset_name {
+                format!("Slice {current} / {total} — {name}")
+            } else {
+                format!("Slice {current} / {total}")
+            };
             ui.with_layout(
                 egui::Layout::bottom_up(egui::Align::Center),
-                |ui| { ui.label(format!("Slice {current} / {total}")); },
+                |ui| { ui.label(label); },
             );
         }
 
