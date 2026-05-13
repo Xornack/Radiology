@@ -72,3 +72,19 @@ fn sort_files_puts_files_with_no_sort_key_at_the_end() {
 fn sort_files_handles_empty_input() {
     assert!(sort_files(vec![]).is_empty());
 }
+
+use std::fs;
+
+#[test]
+fn sort_files_puts_non_dicom_files_after_dicoms_in_alphabetical_order() {
+    let dir = fresh_dir();
+    let d1 = write_synthetic(dir.path(), "ct1.dcm", DicomFixture { instance_number: Some(1), ..Default::default() });
+    let d2 = write_synthetic(dir.path(), "ct2.dcm", DicomFixture { instance_number: Some(2), ..Default::default() });
+    let png = dir.path().join("zebra.png");
+    fs::write(&png, b"placeholder").unwrap();
+    let jpg = dir.path().join("apple.jpg");
+    fs::write(&jpg, b"placeholder").unwrap();
+
+    let sorted = sort_files(vec![png.clone(), d2.clone(), jpg.clone(), d1.clone()]);
+    assert_eq!(sorted, vec![d1, d2, jpg, png]);
+}
