@@ -97,3 +97,36 @@ fn image_stack_get_current_image_uses_override_when_set() {
         "override should produce visibly different pixels (default sum={sum_default}, overridden sum={sum_overridden})"
     );
 }
+
+#[test]
+fn image_stack_renders_png_via_image_crate() {
+    use image::{ImageBuffer, Luma};
+    let dir = fresh_dir();
+    // Values are 0-15, so cast to u8 is safe; allow rather than use try_from for readability.
+    #[allow(clippy::cast_possible_truncation)]
+    let buf: ImageBuffer<Luma<u8>, Vec<u8>> =
+        ImageBuffer::from_fn(4, 4, |x, y| Luma([(y * 4 + x) as u8 * 16]));
+    let png_path = dir.path().join("ramp.png");
+    buf.save(&png_path).expect("save png");
+
+    let stack = ImageStack::new(vec![png_path]);
+    let img = stack.get_current_image().expect("decode png");
+    assert_eq!(img.dimensions(), (4, 4));
+    // Ramp pixel (2, 1) should be (1*4+2)*16 = 96
+    assert_eq!(img.get_pixel(2, 1).0[0], 96);
+}
+
+#[test]
+fn image_stack_ignores_override_window_for_png() {
+    use image::{ImageBuffer, Luma};
+    let dir = fresh_dir();
+    let buf: ImageBuffer<Luma<u8>, Vec<u8>> = ImageBuffer::from_fn(2, 2, |_, _| Luma([100]));
+    let png_path = dir.path().join("flat.png");
+    buf.save(&png_path).expect("save png");
+
+    let mut stack = ImageStack::new(vec![png_path]);
+    let img_no_override = stack.get_current_image().expect("decode");
+    stack.set_override_window(Some((10.0, 5.0))); // would clamp to black if applied
+    let img_with_override = stack.get_current_image().expect("decode");
+    assert_eq!(img_no_override.as_raw(), img_with_override.as_raw());
+}

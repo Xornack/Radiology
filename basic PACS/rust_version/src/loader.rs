@@ -3,7 +3,7 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
-/// Recursively walk `dir` and return all `.dcm` files (case-insensitive extension match)
+/// Recursively walk `dir` and return all supported image files (DICOM, JPG, JPEG, PNG …)
 /// in alphabetical-by-path order.
 ///
 /// # Errors
@@ -22,15 +22,19 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) -> io::Result<()> {
         let file_type = entry.file_type()?;
         if file_type.is_dir() {
             walk(&path, out)?;
-        } else if file_type.is_file() && is_dicom(&path) {
+        } else if file_type.is_file() && is_supported(&path) {
             out.push(path);
         }
     }
     Ok(())
 }
 
-fn is_dicom(path: &Path) -> bool {
-    path.extension()
-        .and_then(|ext| ext.to_str())
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("dcm"))
+fn is_supported(path: &Path) -> bool {
+    let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
+        return false;
+    };
+    matches!(
+        ext.to_ascii_lowercase().as_str(),
+        "dcm" | "jpg" | "jpeg" | "png"
+    )
 }

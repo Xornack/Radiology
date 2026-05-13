@@ -31,6 +31,10 @@ cargo run --bin rustradstack -- path\to\series\
 
 **Loading new series:** use **File → Open Folder…** or **File → Open File…** to switch series mid-session. Native OS picker. Window/Level resets to per-file defaults on each load.
 
+**Supported file types:** DICOM (`.dcm`), plus JPG/JPEG/PNG (rendered as 8-bit grayscale,
+no Window/Level applied). Mixed folders are supported; DICOMs sort first by InstanceNumber,
+non-DICOMs alphabetically by filename.
+
 ## CLI usage
 
 Print key tags from a DICOM file:
@@ -91,9 +95,10 @@ See [the design spec](../docs/superpowers/specs/2026-05-08-rust-port-design.md).
 5. ✅ Slice 5 — egui app loads a folder, mouse wheel scrolls
 6. ✅ Slice 6 — scroll polish: throttled wheel + left-click drag scroll
 7. ✅ Slice 7 — both-button drag adjusts W/L
-8. ✅ Slice 8 (this slice) — File menu + Open Folder/File dialogs
+8. ✅ Slice 8 — File menu + Open Folder/File dialogs
+9. ✅ Slice 9 (this slice) — JPG/JPEG/PNG support in viewer + scan + sort
 
-**MVP+ in progress.** Future slices: JPG/PNG support, Nuitka build, W/L presets.
+**MVP+ in progress.** Future slices: Nuitka-equivalent build (cargo packaging), W/L presets, recent-files list.
 
 ## Crate layout
 

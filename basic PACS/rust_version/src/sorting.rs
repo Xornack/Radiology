@@ -5,18 +5,31 @@ use std::path::PathBuf;
 use dicom_dictionary_std::tags;
 use dicom_object::open_file;
 
-/// Sort DICOM file paths by `InstanceNumber` ascending.
+/// Sort a mixed list of DICOM and non-DICOM paths.
 ///
-/// Files missing `InstanceNumber` fall back to `ImagePositionPatient[2]` (Z-coordinate).
-/// Files missing both keys (or that fail to parse) sort to the end.
+/// DICOMs (`.dcm`) come first, ordered by `InstanceNumber` ascending, falling back to
+/// `ImagePositionPatient[2]`. Non-DICOM files follow, sorted alphabetically by filename.
 #[must_use]
-pub fn sort_files(mut paths: Vec<PathBuf>) -> Vec<PathBuf> {
-    paths.sort_by(|a, b| {
+pub fn sort_files(paths: Vec<PathBuf>) -> Vec<PathBuf> {
+    let (mut dicoms, mut others): (Vec<_>, Vec<_>) =
+        paths.into_iter().partition(|p| is_dicom_extension(p));
+    dicoms.sort_by(|a, b| {
         let ka = sort_key(a);
         let kb = sort_key(b);
         ka.partial_cmp(&kb).unwrap_or(std::cmp::Ordering::Equal)
     });
-    paths
+    others.sort_by(|a, b| {
+        let na = a.file_name().and_then(|n| n.to_str()).unwrap_or("").to_ascii_lowercase();
+        let nb = b.file_name().and_then(|n| n.to_str()).unwrap_or("").to_ascii_lowercase();
+        na.cmp(&nb)
+    });
+    dicoms.into_iter().chain(others).collect()
+}
+
+fn is_dicom_extension(path: &std::path::Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("dcm"))
 }
 
 fn sort_key(path: &std::path::Path) -> f64 {
