@@ -27,7 +27,16 @@ cargo run --bin rustradstack -- path\to\series\
 - **Mouse wheel** — navigate slices (~10 wheel units per slice)
 - **Left-click drag (vertical)** — navigate slices (~10 pixels per slice; drag down = next slice)
 - **Both-button drag** — adjust Window/Level (drag right/left = width, drag down/up = center)
-- Status bar shows "Slice X / N"
+- **Number keys 1–6** — apply W/L preset:
+  - 1 = Soft Tissue (C 40 / W 400)
+  - 2 = Lung (C −600 / W 1500)
+  - 3 = Bone (C 400 / W 1800)
+  - 4 = Brain (C 40 / W 80)
+  - 5 = Mediastinum (C 40 / W 350)
+  - 6 = Liver (C 60 / W 160)
+- **0** — clear preset / revert W/L to per-file DICOM tags
+- Status bar shows "Slice X / N", appended with the active preset name (e.g. "— Lung").
+  A both-button W/L drag clears the preset name (you are now in custom W/L).
 
 **Loading new series:** use **File → Open Folder…** or **File → Open File…** to switch series mid-session. Native OS picker. Window/Level resets to per-file defaults on each load.
 
@@ -96,9 +105,10 @@ See [the design spec](../docs/superpowers/specs/2026-05-08-rust-port-design.md).
 6. ✅ Slice 6 — scroll polish: throttled wheel + left-click drag scroll
 7. ✅ Slice 7 — both-button drag adjusts W/L
 8. ✅ Slice 8 — File menu + Open Folder/File dialogs
-9. ✅ Slice 9 (this slice) — JPG/JPEG/PNG support in viewer + scan + sort
+9. ✅ Slice 9 — JPG/JPEG/PNG support in viewer + scan + sort
+10. ✅ Slice 10 (this slice) — W/L presets (number keys 1–6) + status bar shows active preset
 
-**MVP+ in progress.** Future slices: Nuitka-equivalent build (cargo packaging), W/L presets, recent-files list.
+**MVP+ in progress.** Future slices: Nuitka-equivalent build (cargo packaging), recent-files list.
 
 ## Crate layout
 
@@ -106,6 +116,7 @@ See [the design spec](../docs/superpowers/specs/2026-05-08-rust-port-design.md).
 - `src/errors.rs` — `RrsError`
 - `src/loader.rs` — `scan_directory`
 - `src/loading.rs` — `paths_for` (path → sorted Vec<PathBuf>)
+- `src/presets.rs` — `WindowPreset` + `PRESETS` (canonical CT W/L list)
 - `src/sorting.rs` — `sort_files`
 - `src/stack.rs` — `ImageStack` data model
 - `src/viewer.rs` — `ViewerApp` (egui)
