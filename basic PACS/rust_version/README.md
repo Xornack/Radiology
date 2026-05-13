@@ -29,6 +29,8 @@ cargo run --bin rustradstack -- path\to\series\
 - **Both-button drag** — adjust Window/Level (drag right/left = width, drag down/up = center)
 - Status bar shows "Slice X / N"
 
+**Loading new series:** use **File → Open Folder…** or **File → Open File…** to switch series mid-session. Native OS picker. Window/Level resets to per-file defaults on each load.
+
 ## CLI usage
 
 Print key tags from a DICOM file:
@@ -88,15 +90,17 @@ See [the design spec](../docs/superpowers/specs/2026-05-08-rust-port-design.md).
 4. ✅ Slice 4 — egui window displays a single DICOM
 5. ✅ Slice 5 — egui app loads a folder, mouse wheel scrolls
 6. ✅ Slice 6 — scroll polish: throttled wheel + left-click drag scroll
-7. ✅ Slice 7 (this slice) — both-button drag adjusts W/L
+7. ✅ Slice 7 — both-button drag adjusts W/L
+8. ✅ Slice 8 (this slice) — File menu + Open Folder/File dialogs
 
-**MVP+ in progress.** Future slices: file menu (Open Folder dialog), JPG/PNG support, Nuitka build, W/L presets.
+**MVP+ in progress.** Future slices: JPG/PNG support, Nuitka build, W/L presets.
 
 ## Crate layout
 
 - `src/lib.rs` — library entry; re-exports `errors` and `windowing`
 - `src/errors.rs` — `RrsError`
 - `src/loader.rs` — `scan_directory`
+- `src/loading.rs` — `paths_for` (path → sorted Vec<PathBuf>)
 - `src/sorting.rs` — `sort_files`
 - `src/stack.rs` — `ImageStack` data model
 - `src/viewer.rs` — `ViewerApp` (egui)

@@ -30,6 +30,8 @@ pub struct ViewerApp {
     wheel_accum: f32,
     /// Accumulated left-click drag dy; consumed in `DRAG_SENSITIVITY` chunks per slice step.
     drag_accum: f32,
+    /// Non-None when the last `load_path` call failed; cleared on the next successful load.
+    load_error: Option<String>,
 }
 
 impl ViewerApp {
@@ -37,7 +39,7 @@ impl ViewerApp {
     // egui::TextureHandle is not const-constructible; suppress nursery lint.
     #[allow(clippy::missing_const_for_fn)]
     pub fn new(stack: ImageStack) -> Self {
-        Self { stack: Some(stack), texture: None, texture_key: None, wheel_accum: 0.0, drag_accum: 0.0 }
+        Self { stack: Some(stack), texture: None, texture_key: None, wheel_accum: 0.0, drag_accum: 0.0, load_error: None }
     }
 
     /// Construct an empty viewer (no stack). Used for error cases.
@@ -45,7 +47,36 @@ impl ViewerApp {
     // egui::TextureHandle is not const-constructible; suppress nursery lint.
     #[allow(clippy::missing_const_for_fn)]
     pub fn empty() -> Self {
-        Self { stack: None, texture: None, texture_key: None, wheel_accum: 0.0, drag_accum: 0.0 }
+        Self { stack: None, texture: None, texture_key: None, wheel_accum: 0.0, drag_accum: 0.0, load_error: None }
+    }
+
+    /// Parent of the current series folder — i.e. the study folder containing
+    /// sibling series. Used to seed the Open Folder picker so the user lands
+    /// next to the related series instead of wherever the OS defaults.
+    /// Returns None when no stack is loaded or the path has no grandparent.
+    fn study_dir(&self) -> Option<&std::path::Path> {
+        let series_dir = self.stack.as_ref()?.current_path()?.parent()?;
+        series_dir.parent()
+    }
+
+    /// Load a new file or folder into the viewer, replacing the current stack.
+    /// Resets W/L override (via fresh `ImageStack`) and texture cache so the new
+    /// series starts clean. On failure, the previous stack stays visible and an
+    /// error label is shown.
+    pub fn load_path(&mut self, path: &std::path::Path) {
+        match crate::loading::paths_for(path) {
+            Ok(paths) => {
+                self.stack = Some(ImageStack::new(paths));
+                self.texture = None;
+                self.texture_key = None;
+                self.wheel_accum = 0.0;
+                self.drag_accum = 0.0;
+                self.load_error = None;
+            }
+            Err(e) => {
+                self.load_error = Some(e.to_string());
+            }
+        }
     }
 }
 
@@ -90,6 +121,37 @@ fn handle_drag(stack: &mut ImageStack, accum: &mut f32, button_down: bool, dy: f
 impl eframe::App for ViewerApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+
+        // Top menubar — file open dialogs.
+        egui::Panel::top("menubar").show_inside(ui, |ui| {
+            egui::MenuBar::new().ui(ui, |ui| {
+                ui.menu_button("File", |ui| {
+                    if ui.button("Open Folder…").clicked() {
+                        ui.close_kind(egui::UiKind::Menu);
+                        // When a series is open, default the picker to the study folder
+                        // (parent of the series dir) so sibling series are visible without
+                        // navigation. With nothing open, let the OS choose the start dir.
+                        let mut dialog = rfd::FileDialog::new().set_title("Open DICOM folder");
+                        if let Some(study_dir) = self.study_dir() {
+                            dialog = dialog.set_directory(study_dir);
+                        }
+                        if let Some(folder) = dialog.pick_folder() {
+                            self.load_path(&folder);
+                        }
+                    }
+                    if ui.button("Open File…").clicked() {
+                        ui.close_kind(egui::UiKind::Menu);
+                        if let Some(file) = rfd::FileDialog::new()
+                            .set_title("Open DICOM file")
+                            .add_filter("DICOM", &["dcm"])
+                            .pick_file()
+                        {
+                            self.load_path(&file);
+                        }
+                    }
+                });
+            });
+        });
 
         // Read all pointer/scroll input in one pass.
         // In egui 0.27+, smooth_scroll_delta replaces scroll_delta.
@@ -159,6 +221,9 @@ impl eframe::App for ViewerApp {
 
         // Image (centered)
         ui.vertical_centered(|ui| {
+            if let Some(err) = &self.load_error {
+                ui.colored_label(egui::Color32::LIGHT_RED, format!("Load error: {err}"));
+            }
             if let Some(tex) = &self.texture {
                 let size = tex.size_vec2();
                 ui.image(egui::load::SizedTexture::new(tex.id(), size));
