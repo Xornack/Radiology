@@ -107,16 +107,31 @@ impl ImageStack {
         }
 
         let path = &self.paths[self.current];
-        let obj = open_file(path).map_err(|e| RrsError::Dicom(e.to_string()))?;
-        let (pixels, dims, mut ws) = extract_pixels(&obj)?;
-        // User-set override replaces only center+width; slope/intercept stay file-derived.
-        if let Some((center, width)) = self.override_window {
-            ws.center = center;
-            ws.width = width;
-        }
-        let img = apply_window(&pixels, dims, ws);
+        let img = if is_dicom_path(path) {
+            let obj = open_file(path).map_err(|e| RrsError::Dicom(e.to_string()))?;
+            let (pixels, dims, mut ws) = extract_pixels(&obj)?;
+            // User-set override replaces only center+width; slope/intercept stay file-derived.
+            if let Some((center, width)) = self.override_window {
+                ws.center = center;
+                ws.width = width;
+            }
+            apply_window(&pixels, dims, ws)
+        } else {
+            // JPG/PNG: open via the image crate, force-convert to 8-bit grayscale.
+            // Override W/L is intentionally ignored — no HU values to map.
+            image::open(path)
+                .map_err(|e| RrsError::Dicom(format!("decode {}: {}", path.display(), e)))?
+                .into_luma8()
+        };
 
         *self.cache.borrow_mut() = Some((self.current, img.clone()));
         Ok(img)
     }
+}
+
+// `.dcm` extension → use DICOM pipeline; anything else → image crate.
+fn is_dicom_path(path: &std::path::Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("dcm"))
 }
