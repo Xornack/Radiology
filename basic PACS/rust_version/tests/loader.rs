@@ -51,6 +51,8 @@ fn scan_directory_returns_empty_for_empty_dir() {
 use std::io::Write;
 
 #[test]
+// `jpg` and `jpeg` are deliberately distinct bindings for .jpg vs .jpeg extensions.
+#[allow(clippy::similar_names)]
 fn scan_directory_includes_jpg_jpeg_png_files() {
     let dir = fresh_dir();
     let dcm = write_synthetic(dir.path(), "ct.dcm", DicomFixture::default());

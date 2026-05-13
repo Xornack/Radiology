@@ -102,6 +102,8 @@ fn image_stack_get_current_image_uses_override_when_set() {
 fn image_stack_renders_png_via_image_crate() {
     use image::{ImageBuffer, Luma};
     let dir = fresh_dir();
+    // Values are 0-15, so cast to u8 is safe; allow rather than use try_from for readability.
+    #[allow(clippy::cast_possible_truncation)]
     let buf: ImageBuffer<Luma<u8>, Vec<u8>> =
         ImageBuffer::from_fn(4, 4, |x, y| Luma([(y * 4 + x) as u8 * 16]));
     let png_path = dir.path().join("ramp.png");
