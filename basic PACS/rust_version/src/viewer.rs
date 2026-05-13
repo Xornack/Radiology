@@ -141,9 +141,11 @@ impl eframe::App for ViewerApp {
                     }
                     if ui.button("Open File…").clicked() {
                         ui.close_kind(egui::UiKind::Menu);
+                        // Single combined filter so all supported types are visible
+                        // (slice 9 added JPG/PNG; the old .dcm-only filter hid them).
                         if let Some(file) = rfd::FileDialog::new()
-                            .set_title("Open DICOM file")
-                            .add_filter("DICOM", &["dcm"])
+                            .set_title("Open image file")
+                            .add_filter("Images (DICOM, JPG, PNG)", &["dcm", "jpg", "jpeg", "png"])
                             .pick_file()
                         {
                             self.load_path(&file);
