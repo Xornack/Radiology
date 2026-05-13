@@ -47,3 +47,25 @@ fn scan_directory_returns_empty_for_empty_dir() {
     let found = scan_directory(dir.path()).expect("scan");
     assert!(found.is_empty());
 }
+
+use std::io::Write;
+
+#[test]
+fn scan_directory_includes_jpg_jpeg_png_files() {
+    let dir = fresh_dir();
+    let dcm = write_synthetic(dir.path(), "ct.dcm", DicomFixture::default());
+    let jpg = dir.path().join("photo.jpg");
+    std::fs::File::create(&jpg).unwrap().write_all(b"placeholder").unwrap();
+    let jpeg = dir.path().join("photo.jpeg");
+    std::fs::File::create(&jpeg).unwrap().write_all(b"placeholder").unwrap();
+    let png = dir.path().join("photo.png");
+    std::fs::File::create(&png).unwrap().write_all(b"placeholder").unwrap();
+    fs::write(dir.path().join("notes.txt"), "ignore").unwrap();
+
+    let found = scan_directory(dir.path()).expect("scan");
+    assert_eq!(found.len(), 4, "should find dcm + jpg + jpeg + png, not txt: {found:?}");
+    assert!(found.contains(&dcm));
+    assert!(found.contains(&jpg));
+    assert!(found.contains(&jpeg));
+    assert!(found.contains(&png));
+}
