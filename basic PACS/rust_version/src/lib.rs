@@ -3,6 +3,7 @@
 pub mod errors;
 pub mod loader;
 pub mod loading;
+pub mod presets;
 pub mod sorting;
 pub mod stack;
 pub mod viewer;
