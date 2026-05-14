@@ -257,31 +257,38 @@ impl eframe::App for ViewerApp {
 
         // Re-upload texture when either the slice index OR the override W/L changed.
         // The composite key catches W/L drag (override mutates without index change).
-        if let Some(stack) = &self.stack {
+        if let Some(stack) = self.stack.as_ref() {
             let current_key: TextureKey = (stack.current(), stack.override_window());
-            if self.texture_key != Some(current_key)
-                && let Ok(img) = stack.get_current_image()
-            {
-                let (w, h) = img.dimensions();
-                let pixels = img.into_raw();
-                let rgba: Vec<u8> = pixels.iter().flat_map(|&v| [v, v, v, 255]).collect();
-                let color_img = egui::ColorImage::from_rgba_unmultiplied(
-                    [w as usize, h as usize],
-                    &rgba,
-                );
-                self.texture = Some(ctx.load_texture(
-                    "dicom-frame",
-                    color_img,
-                    egui::TextureOptions::default(),
-                ));
-                self.texture_key = Some(current_key);
+            if self.texture_key != Some(current_key) {
+                match stack.get_current_image() {
+                    Ok(img) => {
+                        let (w, h) = img.dimensions();
+                        let pixels = img.into_raw();
+                        let rgba: Vec<u8> = pixels.iter().flat_map(|&v| [v, v, v, 255]).collect();
+                        let color_img = egui::ColorImage::from_rgba_unmultiplied(
+                            [w as usize, h as usize],
+                            &rgba,
+                        );
+                        self.texture = Some(ctx.load_texture(
+                            "dicom-frame",
+                            color_img,
+                            egui::TextureOptions::default(),
+                        ));
+                        self.texture_key = Some(current_key);
+                        self.load_error = None;
+                    }
+                    // Surface decode errors — silent failure would just freeze on the prior slice.
+                    Err(e) => {
+                        self.load_error = Some(format!("decode: {e}"));
+                    }
+                }
             }
         }
 
         // Image (centered)
         ui.vertical_centered(|ui| {
             if let Some(err) = &self.load_error {
-                ui.colored_label(egui::Color32::LIGHT_RED, format!("Load error: {err}"));
+                ui.colored_label(egui::Color32::LIGHT_RED, format!("Error: {err}"));
             }
             if let Some(tex) = &self.texture {
                 let size = tex.size_vec2();

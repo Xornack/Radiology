@@ -12,19 +12,22 @@ use crate::sorting::sort_files;
 #[derive(Debug)]
 pub enum LoadError {
     /// Path doesn't exist or is neither a file nor a directory.
-    NotFile(PathBuf),
+    NotFound(PathBuf),
     /// Recursive scan failed (permission denied, etc.).
     ScanFailed(std::io::Error),
     /// Folder scanned successfully but contained no DICOM files.
     Empty(PathBuf),
+    /// Path is a file but has no recognised image extension.
+    UnsupportedFile(PathBuf),
 }
 
 impl std::fmt::Display for LoadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::NotFile(p) => write!(f, "not a file or directory: {}", p.display()),
+            Self::NotFound(p) => write!(f, "not found: {}", p.display()),
             Self::ScanFailed(e) => write!(f, "scan failed: {e}"),
             Self::Empty(p) => write!(f, "no DICOM files found in {}", p.display()),
+            Self::UnsupportedFile(p) => write!(f, "unsupported file type: {}", p.display()),
         }
     }
 }
@@ -32,7 +35,7 @@ impl std::fmt::Display for LoadError {
 impl std::error::Error for LoadError {}
 
 /// Build a sorted Vec<PathBuf> from a file or folder path. Returns `LoadError`
-/// on missing path, scan failure, or empty folder.
+/// on missing path, scan failure, empty folder, or unsupported file type.
 ///
 /// # Errors
 /// See `LoadError` variants.
@@ -45,8 +48,24 @@ pub fn paths_for(arg: &Path) -> Result<Vec<PathBuf>, LoadError> {
         }
         Ok(sorted)
     } else if arg.is_file() {
+        // Reject .txt, .exe, DICOMDIR, etc. early — otherwise the viewer would
+        // accept the path, then silently fail on first decode.
+        if !is_supported_extension(arg) {
+            return Err(LoadError::UnsupportedFile(arg.to_path_buf()));
+        }
         Ok(vec![arg.to_path_buf()])
     } else {
-        Err(LoadError::NotFile(arg.to_path_buf()))
+        Err(LoadError::NotFound(arg.to_path_buf()))
     }
+}
+
+fn is_supported_extension(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|ext| {
+            matches!(
+                ext.to_ascii_lowercase().as_str(),
+                "dcm" | "jpg" | "jpeg" | "png"
+            )
+        })
 }

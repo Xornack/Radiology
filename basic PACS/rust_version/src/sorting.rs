@@ -11,19 +11,18 @@ use dicom_object::open_file;
 /// `ImagePositionPatient[2]`. Non-DICOM files follow, sorted alphabetically by filename.
 #[must_use]
 pub fn sort_files(paths: Vec<PathBuf>) -> Vec<PathBuf> {
-    let (mut dicoms, mut others): (Vec<_>, Vec<_>) =
+    let (dicoms, mut others): (Vec<_>, Vec<_>) =
         paths.into_iter().partition(|p| is_dicom_extension(p));
-    dicoms.sort_by(|a, b| {
-        let ka = sort_key(a);
-        let kb = sort_key(b);
-        ka.partial_cmp(&kb).unwrap_or(std::cmp::Ordering::Equal)
-    });
+    // Pre-compute keys so each DICOM is opened exactly once (not O(log n) times per sort_by).
+    let mut keyed: Vec<(f64, PathBuf)> =
+        dicoms.into_iter().map(|p| (sort_key(&p), p)).collect();
+    keyed.sort_by(|(a, _), (b, _)| a.total_cmp(b));
     others.sort_by(|a, b| {
         let na = a.file_name().and_then(|n| n.to_str()).unwrap_or("").to_ascii_lowercase();
         let nb = b.file_name().and_then(|n| n.to_str()).unwrap_or("").to_ascii_lowercase();
         na.cmp(&nb)
     });
-    dicoms.into_iter().chain(others).collect()
+    keyed.into_iter().map(|(_, p)| p).chain(others).collect()
 }
 
 fn is_dicom_extension(path: &std::path::Path) -> bool {

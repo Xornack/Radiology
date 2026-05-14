@@ -1,4 +1,4 @@
-//! Scrollable stack of DICOM slices with one-slot image cache.
+//! Scrollable stack of DICOM slices with one-slot decoded-pixel cache.
 
 use std::path::PathBuf;
 
@@ -6,17 +6,29 @@ use dicom_object::open_file;
 use image::GrayImage;
 
 use crate::errors::RrsError;
-use crate::windowing::{apply_window, extract_pixels};
+use crate::windowing::{apply_window, extract_pixels, WindowSettings};
 
-/// Sorted DICOM series with a current-slice cursor and one-slot image cache.
+/// One-slot cache of the most recently loaded slice's decoded payload.
+/// DICOM holds raw stored pixels so W/L drags re-window without re-decoding the file;
+/// non-DICOM holds the final 8-bit image (no W/L applies).
+enum Cached {
+    Dicom {
+        pixels: Vec<i32>,
+        dims: (u32, u32),
+        ws: WindowSettings,
+    },
+    NonDicom(GrayImage),
+}
+
+/// Sorted DICOM series with a current-slice cursor and one-slot pixel cache.
 ///
 /// Slices are loaded on demand via `get_current_image`. The cache holds the most
-/// recently loaded slice so repeated calls (e.g. across egui repaints) don't
-/// re-decode the same file.
+/// recently loaded slice's raw (pre-window) pixels so repeated calls — including
+/// W/L drags — don't re-decode the same file.
 pub struct ImageStack {
     paths: Vec<PathBuf>,
     current: usize,
-    cache: std::cell::RefCell<Option<(usize, GrayImage)>>,
+    cache: std::cell::RefCell<Option<(usize, Cached)>>,
     /// User-set W/L (center, width) overriding per-file DICOM tags.
     /// `None` means "use the file's tags" (default).
     override_window: Option<(f64, f64)>,
@@ -79,10 +91,10 @@ impl ImageStack {
     }
 
     /// Set the user override W/L (or `None` to revert to per-file tags).
-    /// Invalidates the cached image so the next `get_current_image` re-renders.
-    pub fn set_override_window(&mut self, ws: Option<(f64, f64)>) {
+    /// Does NOT invalidate the cache — cache holds pre-window pixels, so the next
+    /// `get_current_image` re-applies windowing without re-decoding the file.
+    pub const fn set_override_window(&mut self, ws: Option<(f64, f64)>) {
         self.override_window = ws;
-        self.cache.borrow_mut().take();
     }
 
     /// Load the current slice (using the cache when possible).
@@ -96,36 +108,45 @@ impl ImageStack {
             return Err(RrsError::UnsupportedPixels("empty stack".into()));
         }
 
-        // Cached? Use let-chain to collapse the nested if.
-        {
-            let cache = self.cache.borrow();
-            if let Some((idx, img)) = cache.as_ref()
-                && *idx == self.current
-            {
-                return Ok(img.clone());
-            }
+        // Reload cache only when the slice index changed.
+        let needs_load = self
+            .cache
+            .borrow()
+            .as_ref()
+            .is_none_or(|(idx, _)| *idx != self.current);
+        if needs_load {
+            let cached = self.load_slice(self.current)?;
+            *self.cache.borrow_mut() = Some((self.current, cached));
         }
 
-        let path = &self.paths[self.current];
-        let img = if is_dicom_path(path) {
-            let obj = open_file(path).map_err(|e| RrsError::Dicom(e.to_string()))?;
-            let (pixels, dims, mut ws) = extract_pixels(&obj)?;
-            // User-set override replaces only center+width; slope/intercept stay file-derived.
-            if let Some((center, width)) = self.override_window {
-                ws.center = center;
-                ws.width = width;
+        let cache = self.cache.borrow();
+        let (_, cached) = cache.as_ref().expect("just filled");
+        Ok(match cached {
+            Cached::NonDicom(img) => img.clone(),
+            Cached::Dicom { pixels, dims, ws } => {
+                let mut ws = *ws;
+                if let Some((center, width)) = self.override_window {
+                    ws.center = center;
+                    ws.width = width;
+                }
+                apply_window(pixels, *dims, ws)
             }
-            apply_window(&pixels, dims, ws)
-        } else {
-            // JPG/PNG: open via the image crate, force-convert to 8-bit grayscale.
-            // Override W/L is intentionally ignored — no HU values to map.
-            image::open(path)
-                .map_err(|e| RrsError::Dicom(format!("decode {}: {}", path.display(), e)))?
-                .into_luma8()
-        };
+        })
+    }
 
-        *self.cache.borrow_mut() = Some((self.current, img.clone()));
-        Ok(img)
+    fn load_slice(&self, idx: usize) -> Result<Cached, RrsError> {
+        let path = &self.paths[idx];
+        if is_dicom_path(path) {
+            let obj = open_file(path).map_err(|e| RrsError::Dicom(e.to_string()))?;
+            let (pixels, dims, ws) = extract_pixels(&obj)?;
+            Ok(Cached::Dicom { pixels, dims, ws })
+        } else {
+            // JPG/PNG: image crate decode; override W/L is intentionally ignored — no HU values to map.
+            let img = image::open(path)
+                .map_err(|e| RrsError::Dicom(format!("decode {}: {}", path.display(), e)))?
+                .into_luma8();
+            Ok(Cached::NonDicom(img))
+        }
     }
 }
 
