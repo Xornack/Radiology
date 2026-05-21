@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(source:*)",
-      "Bash(pip install:*)",
-      "Bash(pytest:*)"
-    ]
-  }
-}

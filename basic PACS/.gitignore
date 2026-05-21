@@ -1,4 +1,6 @@
 # Claude Code session artifacts (worktrees, settings)
-.claude/worktrees/
-# Stray dir from Claude Code worktree bug (anthropics/claude-code#31984)
-.claire/
+/target
+.claude/
+/.antigravitycli
+/DICOM_test_files
+/docs
