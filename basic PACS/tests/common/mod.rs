@@ -27,6 +27,10 @@ pub struct DicomFixture {
     pub pixels: Option<Vec<u16>>,
     /// If Some, write this `ImagePositionPatient` ([x, y, z]).
     pub image_position_patient: Option<[f64; 3]>,
+    /// If Some, write this `PixelSpacing` ([row_spacing, col_spacing]).
+    pub pixel_spacing: Option<(f64, f64)>,
+    /// If Some, write this `ImagerPixelSpacing` ([row_spacing, col_spacing]).
+    pub imager_pixel_spacing: Option<(f64, f64)>,
     /// If true, omit the `InstanceNumber` tag entirely (for fallback-sort tests).
     pub skip_instance_number: bool,
 }
@@ -71,6 +75,24 @@ pub fn write_synthetic(dir: &Path, name: &str, fx: DicomFixture) -> PathBuf {
         let s = format!("{ipp_0}\\{ipp_1}\\{ipp_2}");
         obj.put(DataElement::new(
             tags::IMAGE_POSITION_PATIENT,
+            VR::DS,
+            PrimitiveValue::from(s),
+        ));
+    }
+
+    if let Some((row_sp, col_sp)) = fx.pixel_spacing {
+        let s = format!("{row_sp}\\{col_sp}");
+        obj.put(DataElement::new(
+            tags::PIXEL_SPACING,
+            VR::DS,
+            PrimitiveValue::from(s),
+        ));
+    }
+
+    if let Some((row_sp, col_sp)) = fx.imager_pixel_spacing {
+        let s = format!("{row_sp}\\{col_sp}");
+        obj.put(DataElement::new(
+            tags::IMAGER_PIXEL_SPACING,
             VR::DS,
             PrimitiveValue::from(s),
         ));
