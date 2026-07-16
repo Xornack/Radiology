@@ -1,3 +1,3 @@
-Show radiology cases, which students review on their personal devices (would have be vendor agnostic, so maybe website would be best).
-Then when they review the case, have option to anonymously vote or just move onto the answer. Then next case, next case...etc. Like a really
-interactive case converence, where they get a chance to guess. Possibly even write-in answers.
+Custom DICOM viewer preloaded with cases related to a body part or type of study. Place to write in answers, and check with an attending "read out." Tailored for nucs with some reader nuclear medicine capability. Could do all in Rust, but might eventually need a wen interface?
+
+Have a Rust DICOM viewer bare bones already elsewhere. Cases have to be de-intentified. Have access to google scripts API. Own our repository in google.
