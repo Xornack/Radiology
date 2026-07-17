@@ -1,0 +1,16 @@
+# cargo-audit configuration — documented accepted risks.
+# Re-evaluate these when dicom-rs or eframe/winit publish new releases.
+
+[advisories]
+ignore = [
+    # jxl-grid < 0.6.2: out-of-bounds writes from integer overflow on 32-bit
+    # platforms only. Pulled via dicom-transfer-syntax-registry (JPEG-XL
+    # decoding); no semver-compatible fix until dicom-rs bumps jxl-oxide to
+    # 0.11+. This project builds 64-bit only, where the bug can't trigger.
+    "RUSTSEC-2026-0151",
+    # quick-xml < 0.41: DoS issues in XML parsing. Pulled via wayland-scanner,
+    # a Linux-only build-time code generator — it parses trusted Wayland
+    # protocol definitions during compilation and is never part of the binary.
+    "RUSTSEC-2026-0194",
+    "RUSTSEC-2026-0195",
+]

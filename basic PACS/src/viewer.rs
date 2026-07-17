@@ -88,6 +88,18 @@ pub struct ViewerApp {
     dragged_label_offset: egui::Vec2,
     /// Track last slice index to clear selection on change.
     last_slice: Option<usize>,
+    /// Pixel value readout ("HU: -56") under the cursor, shown in the status bar.
+    hover_readout: Option<String>,
+    /// Window title to push on the next frame (set when a stack loads —
+    /// `load_path` has no `Context`, so the title is applied from `ui`).
+    pending_title: Option<String>,
+}
+
+/// Window title for a loaded stack: "RustRadStack — <series folder>".
+fn title_for(stack: &ImageStack) -> Option<String> {
+    let path = stack.current_path()?;
+    let folder = path.parent()?.file_name()?.to_string_lossy();
+    Some(format!("RustRadStack — {folder}"))
 }
 
 impl ViewerApp {
@@ -95,6 +107,7 @@ impl ViewerApp {
     // egui::TextureHandle is not const-constructible; suppress nursery lint.
     #[allow(clippy::missing_const_for_fn)]
     pub fn new(stack: ImageStack) -> Self {
+        let pending_title = title_for(&stack);
         Self {
             stack: Some(stack),
             texture: None,
@@ -111,6 +124,8 @@ impl ViewerApp {
             dragged_label: None,
             dragged_label_offset: egui::Vec2::ZERO,
             last_slice: None,
+            hover_readout: None,
+            pending_title,
         }
     }
 
@@ -135,6 +150,8 @@ impl ViewerApp {
             dragged_label: None,
             dragged_label_offset: egui::Vec2::ZERO,
             last_slice: None,
+            hover_readout: None,
+            pending_title: None,
         }
     }
 
@@ -152,6 +169,24 @@ impl ViewerApp {
     /// series starts clean. On failure, the previous stack stays visible and an
     /// error label is shown.
     pub fn load_path(&mut self, path: &std::path::Path) {
+        // Replacing the stack silently drops its measurements — confirm first.
+        if self
+            .stack
+            .as_ref()
+            .is_some_and(ImageStack::has_measurements)
+        {
+            let choice = rfd::MessageDialog::new()
+                .set_level(rfd::MessageLevel::Warning)
+                .set_title("Discard measurements?")
+                .set_description(
+                    "Loading a new series discards all measurements on the current one.",
+                )
+                .set_buttons(rfd::MessageButtons::YesNo)
+                .show();
+            if choice != rfd::MessageDialogResult::Yes {
+                return;
+            }
+        }
         match crate::loading::paths_for(path) {
             Ok(paths) => {
                 self.stack = Some(ImageStack::new(paths));
@@ -169,6 +204,8 @@ impl ViewerApp {
                 self.dragged_label = None;
                 self.dragged_label_offset = egui::Vec2::ZERO;
                 self.last_slice = None;
+                self.hover_readout = None;
+                self.pending_title = self.stack.as_ref().and_then(title_for);
             }
             Err(e) => {
                 self.load_error = Some(e.to_string());
@@ -265,11 +302,18 @@ impl eframe::App for ViewerApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
 
+        if let Some(title) = self.pending_title.take() {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Title(title));
+        }
+
         let current_slice = self.stack.as_ref().map(|s| s.current());
         if current_slice != self.last_slice {
             self.selected_indices.clear();
             self.dragged_label = None;
             self.selection_box = None;
+            // Abandon any in-progress drawing — finishing it after a scroll
+            // would silently drop the measurement onto the wrong slice.
+            self.drawing_measurement = None;
             self.last_slice = current_slice;
         }
 
@@ -290,13 +334,13 @@ impl eframe::App for ViewerApp {
             } else if i.key_pressed(egui::Key::Escape) {
                 self.drawing_measurement = None;
             } else if i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace) {
-                if let Some(stack) = self.stack.as_mut() {
-                    if !self.selected_indices.is_empty() {
-                        stack.remove_measurements(&self.selected_indices);
-                        self.selected_indices.clear();
-                    } else {
-                        stack.clear_current_measurements();
-                    }
+                // Only removes the selection — with nothing selected this is a
+                // no-op, not a clear-the-slice surprise (that's the Clear button).
+                if let Some(stack) = self.stack.as_mut()
+                    && !self.selected_indices.is_empty()
+                {
+                    stack.remove_measurements(&self.selected_indices);
+                    self.selected_indices.clear();
                 }
                 self.drawing_measurement = None;
             }
@@ -337,6 +381,37 @@ impl eframe::App for ViewerApp {
                         }
                     }
                 });
+                // Same presets the number keys apply — the menu makes them
+                // discoverable and doubles as the shortcut reference.
+                ui.menu_button("W/L", |ui| {
+                    for (n, preset) in crate::presets::PRESETS.iter().enumerate() {
+                        let text = format!(
+                            "{}  {} (C {:.0} / W {:.0})",
+                            n + 1,
+                            preset.name,
+                            preset.center,
+                            preset.width
+                        );
+                        if ui.button(text).clicked() {
+                            ui.close_kind(egui::UiKind::Menu);
+                            if let Some(stack) = self.stack.as_mut() {
+                                apply_preset_keys(
+                                    stack,
+                                    &mut self.active_preset_name,
+                                    Some(n + 1),
+                                    false,
+                                );
+                            }
+                        }
+                    }
+                    ui.separator();
+                    if ui.button("0  File default").clicked() {
+                        ui.close_kind(egui::UiKind::Menu);
+                        if let Some(stack) = self.stack.as_mut() {
+                            apply_preset_keys(stack, &mut self.active_preset_name, None, true);
+                        }
+                    }
+                });
             });
         });
 
@@ -348,6 +423,7 @@ impl eframe::App for ViewerApp {
                 let mut tool_changed = false;
                 if ui
                     .selectable_label(self.active_tool == Tool::PanScroll, "🖐 Pan/Scroll")
+                    .on_hover_text("Shortcut: P. Wheel or left-drag scrolls slices.")
                     .clicked()
                 {
                     self.active_tool = Tool::PanScroll;
@@ -355,6 +431,7 @@ impl eframe::App for ViewerApp {
                 }
                 if ui
                     .selectable_label(self.active_tool == Tool::Line, "📏 1D Line")
+                    .on_hover_text("Shortcut: L. Esc cancels; Del removes selected.")
                     .clicked()
                 {
                     self.active_tool = Tool::Line;
@@ -362,6 +439,7 @@ impl eframe::App for ViewerApp {
                 }
                 if ui
                     .selectable_label(self.active_tool == Tool::Orthogonal, "➕ 2D Ortho")
+                    .on_hover_text("Shortcut: O. Esc cancels; Del removes selected.")
                     .clicked()
                 {
                     self.active_tool = Tool::Orthogonal;
@@ -369,6 +447,7 @@ impl eframe::App for ViewerApp {
                 }
                 if ui
                     .selectable_label(self.active_tool == Tool::Circle, "⭕ Circle ROI")
+                    .on_hover_text("Shortcut: C. Esc cancels; Del removes selected.")
                     .clicked()
                 {
                     self.active_tool = Tool::Circle;
@@ -381,14 +460,22 @@ impl eframe::App for ViewerApp {
 
                 ui.separator();
 
-                if ui.button("Clear Slice").clicked() {
+                if ui
+                    .button("Clear Slice")
+                    .on_hover_text("Remove all measurements on this slice")
+                    .clicked()
+                {
                     if let Some(stack) = self.stack.as_mut() {
                         stack.clear_current_measurements();
                     }
                     self.drawing_measurement = None;
                     self.selected_indices.clear();
                 }
-                if ui.button("Clear All").clicked() {
+                if ui
+                    .button("Clear All")
+                    .on_hover_text("Remove measurements on every slice")
+                    .clicked()
+                {
                     if let Some(stack) = self.stack.as_mut() {
                         stack.clear_all_measurements();
                     }
@@ -413,7 +500,9 @@ impl eframe::App for ViewerApp {
         let is_measuring = self.active_tool != Tool::PanScroll;
         if let Some(stack) = self.stack.as_mut() {
             handle_wheel(stack, &mut self.wheel_accum, wheel_y);
-            if !is_measuring {
+            // Drag-scroll is off while measuring or while dragging a label —
+            // otherwise moving a label would also scrub through the stack.
+            if !is_measuring && self.dragged_label.is_none() {
                 handle_drag(stack, &mut self.drag_accum, drag_button_down, drag_dy);
             }
         }
@@ -443,13 +532,16 @@ impl eframe::App for ViewerApp {
             (both, delta)
         });
         if both_buttons_down && let Some(stack) = self.stack.as_mut() {
-            // Read current W/L: override if set, otherwise read from current file's tags
-            // (so the drag starts at where the file's W/L is). Falls back to 128/256 if
-            // the file can't be read — same defaults extract_pixels uses.
-            let (current_center, current_width) = stack
-                .override_window()
-                .or_else(|| current_file_window(stack))
-                .unwrap_or((128.0, 256.0));
+            // W/L drag takes over both buttons — cancel any marquee selection the
+            // right button may have started, or releasing it would mangle the
+            // user's measurement selection mid-drag.
+            self.selection_start_pos = None;
+            self.selection_box = None;
+            // Read current W/L: override if set, otherwise the current file's tags
+            // (so the drag starts at where the file's W/L is). Falls back to 128/256
+            // for non-DICOM slices — same defaults extract_pixels uses.
+            let (current_center, current_width) =
+                stack.effective_window().unwrap_or((128.0, 256.0));
             let new_center = f64::from(wl_drag_delta.y).mul_add(WL_SENSITIVITY, current_center);
             // Width: clamp to [1, 100_000] to prevent degenerate windows and runaway drags.
             let new_width = f64::from(wl_drag_delta.x)
@@ -468,17 +560,19 @@ impl eframe::App for ViewerApp {
                 match stack.get_current_image() {
                     Ok(img) => {
                         let (w, h) = img.dimensions();
-                        let pixels = img.into_raw();
-                        let rgba: Vec<u8> = pixels.iter().flat_map(|&v| [v, v, v, 255]).collect();
-                        let color_img = egui::ColorImage::from_rgba_unmultiplied(
-                            [w as usize, h as usize],
-                            &rgba,
-                        );
-                        self.texture = Some(ctx.load_texture(
-                            "dicom-frame",
-                            color_img,
-                            egui::TextureOptions::default(),
-                        ));
+                        let color_img =
+                            egui::ColorImage::from_gray([w as usize, h as usize], img.as_raw());
+                        match &mut self.texture {
+                            // Update in place — no new GPU texture per W/L step.
+                            Some(tex) => tex.set(color_img, egui::TextureOptions::default()),
+                            None => {
+                                self.texture = Some(ctx.load_texture(
+                                    "dicom-frame",
+                                    color_img,
+                                    egui::TextureOptions::default(),
+                                ));
+                            }
+                        }
                         self.texture_key = Some(current_key);
                         self.load_error = None;
                     }
@@ -490,6 +584,27 @@ impl eframe::App for ViewerApp {
             }
         }
 
+        // Status bar (bottom panel so a full-height image can't push it off screen):
+        // slice position, live W/L values, active preset, and cursor pixel value.
+        egui::Panel::bottom("statusbar").show_inside(ui, |ui| {
+            if let Some(stack) = &self.stack {
+                use std::fmt::Write;
+                let mut label = format!("Slice {} / {}", stack.current() + 1, stack.len());
+                if let Some((center, width)) = stack.effective_window() {
+                    let _ = write!(label, "  —  W: {width:.0} L: {center:.0}");
+                }
+                if let Some(name) = self.active_preset_name {
+                    let _ = write!(label, " ({name})");
+                }
+                if let Some(readout) = &self.hover_readout {
+                    let _ = write!(label, "  —  {readout}");
+                }
+                ui.vertical_centered(|ui| {
+                    ui.label(label);
+                });
+            }
+        });
+
         // Image (centered)
         ui.vertical_centered(|ui| {
             if let Some(err) = &self.load_error {
@@ -497,7 +612,14 @@ impl eframe::App for ViewerApp {
             }
             if let Some(tex) = &self.texture {
                 let size = tex.size_vec2();
-                let response = ui.image(egui::load::SizedTexture::new(tex.id(), size));
+                // Fit the image to the remaining panel space, preserving aspect
+                // ratio (scales both up and down). Measurement mapping goes
+                // through the displayed rect, so image coordinates are unaffected.
+                let avail = ui.available_size();
+                let scale = (avail.x / size.x).min(avail.y / size.y).max(0.001);
+                let display = size * scale;
+                ui.add_space(((avail.y - display.y) / 2.0).max(0.0));
+                let response = ui.image(egui::load::SizedTexture::new(tex.id(), display));
 
                 if let Some(stack) = self.stack.as_mut() {
                     let rect = response.rect;
@@ -577,6 +699,21 @@ impl eframe::App for ViewerApp {
                     let font_id = egui::FontId::proportional(14.0);
                     let spacing = stack.current_spacing();
 
+                    // Pixel value under the cursor for the status bar. Labelled HU
+                    // when spacing exists (same convention as ROI stats).
+                    self.hover_readout = pointer_pos
+                        .filter(|p| rect.contains(*p))
+                        .and_then(|p| {
+                            let (ix, iy) = unmap_pt(p);
+                            stack.value_at(ix.floor(), iy.floor()).map(|v| {
+                                if spacing.is_some() {
+                                    format!("HU: {v:.0}")
+                                } else {
+                                    format!("Val: {v:.0}")
+                                }
+                            })
+                        });
+
                     if self.dragged_label.is_none()
                         && let Some(pos) = pointer_pos
                         && rect.contains(pos)
@@ -605,9 +742,12 @@ impl eframe::App for ViewerApp {
                         }
                     }
 
-                    // 3. Right-click selection and marquee selection box
+                    // 3. Right-click selection and marquee selection box.
+                    // Only when the right button is pressed alone — with the left
+                    // button already down this is a W/L drag, not a selection.
                     if let Some(pos) = pointer_pos
                         && secondary_pressed
+                        && !primary_down
                         && rect.contains(pos)
                     {
                         self.selection_start_pos = Some(pos);
@@ -836,22 +976,6 @@ impl eframe::App for ViewerApp {
                 ui.label("(no image loaded)");
             }
         });
-
-        // Status bar: "Slice X / N" (plus active preset name when applicable) at the bottom.
-        if let Some(stack) = &self.stack {
-            let current = stack.current() + 1;
-            let total = stack.len();
-            // map_or_else reads worse than the if-let here — two format! arms in one line is dense.
-            #[allow(clippy::option_if_let_else)]
-            let label = if let Some(name) = self.active_preset_name {
-                format!("Slice {current} / {total} — {name}")
-            } else {
-                format!("Slice {current} / {total}")
-            };
-            ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
-                ui.label(label);
-            });
-        }
 
         // Request continuous repaint while wheel scrolling or dragging — without this,
         // drags only register at events egui happens to repaint for.
@@ -1414,16 +1538,4 @@ fn draw_text_with_shadow(
         );
     }
     painter.text(pos, egui::Align2::LEFT_TOP, text, font_id, text_color);
-}
-
-/// Read the current slice's W/L from its DICOM tags. Returns None if the file
-/// can't be opened or metadata can't be read.
-fn current_file_window(stack: &crate::stack::ImageStack) -> Option<(f64, f64)> {
-    use crate::windowing::read_metadata;
-    use dicom_object::open_file;
-
-    let path = stack.current_path()?;
-    let obj = open_file(path).ok()?;
-    let (_dims, ws) = read_metadata(&obj).ok()?;
-    Some((ws.center, ws.width))
 }

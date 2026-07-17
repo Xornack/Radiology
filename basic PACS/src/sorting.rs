@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 use dicom_dictionary_std::tags;
-use dicom_object::open_file;
+use dicom_object::OpenFileOptions;
 
 /// Sort a mixed list of DICOM and non-DICOM paths.
 ///
@@ -39,7 +39,12 @@ fn is_dicom_extension(path: &std::path::Path) -> bool {
 }
 
 fn sort_key(path: &std::path::Path) -> f64 {
-    let Ok(obj) = open_file(path) else {
+    // Stop parsing before PixelData — the sort only needs header tags, and
+    // reading whole files makes opening a large series many times slower.
+    let Ok(obj) = OpenFileOptions::new()
+        .read_until(tags::PIXEL_DATA)
+        .open_file(path)
+    else {
         return f64::INFINITY;
     };
 

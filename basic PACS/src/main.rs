@@ -30,8 +30,11 @@ fn run() -> Result<()> {
     };
 
     let options = eframe::NativeOptions {
+        // Maximized — radiology images want all the screen they can get.
+        // The inner size is the fallback if the OS ignores maximize.
         viewport: eframe::egui::ViewportBuilder::default()
             .with_inner_size([800.0, 600.0])
+            .with_maximized(true)
             .with_title("RustRadStack"),
         ..Default::default()
     };
