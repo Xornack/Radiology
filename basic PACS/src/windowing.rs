@@ -32,6 +32,11 @@ impl Default for WindowSettings {
 /// Stored values are pre-rescale — call sites apply slope/intercept inside `apply_window`.
 type ExtractResult = (Vec<i32>, (u32, u32), WindowSettings);
 
+/// Largest accepted frame edge. Real modalities top out well below this;
+/// anything bigger is malformed metadata and would only trigger a giant
+/// allocation attempt in the decoder.
+pub const MAX_DIMENSION: u32 = 16_384;
+
 /// Read just the dims + W/L tags from an already-opened DICOM object.
 ///
 /// Cheap — does not touch pixel data. Use this when you only need metadata
@@ -39,9 +44,16 @@ type ExtractResult = (Vec<i32>, (u32, u32), WindowSettings);
 ///
 /// # Errors
 /// Returns `RrsError::MissingTag` if `Rows` or `Columns` tags are absent.
+/// Returns `RrsError::UnsupportedPixels` if either dimension is 0 or
+/// exceeds [`MAX_DIMENSION`].
 pub fn read_metadata(obj: &DefaultDicomObject) -> Result<((u32, u32), WindowSettings), RrsError> {
     let rows = read_u32(obj, tags::ROWS, "Rows")?;
     let cols = read_u32(obj, tags::COLUMNS, "Columns")?;
+    if rows == 0 || cols == 0 || rows > MAX_DIMENSION || cols > MAX_DIMENSION {
+        return Err(RrsError::UnsupportedPixels(format!(
+            "invalid dimensions {rows}x{cols} (accepted: 1..={MAX_DIMENSION})"
+        )));
+    }
     let center = read_f64_or_default(obj, tags::WINDOW_CENTER, 128.0);
     let width = read_f64_or_default(obj, tags::WINDOW_WIDTH, 256.0);
     let slope = read_f64_or_default(obj, tags::RESCALE_SLOPE, 1.0);

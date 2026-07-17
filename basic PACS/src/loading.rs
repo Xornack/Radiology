@@ -3,7 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::loader::scan_directory;
+use crate::loader::{scan_directory, scan_directory_flat};
 use crate::sorting::sort_files;
 
 /// Result of trying to build a stack from a path.
@@ -37,11 +37,21 @@ impl std::error::Error for LoadError {}
 /// Build a sorted Vec<PathBuf> from a file or folder path. Returns `LoadError`
 /// on missing path, scan failure, empty folder, or unsupported file type.
 ///
+/// A folder that directly contains images is treated as one series (no
+/// recursion) — otherwise sibling/nested series would interleave into a single
+/// stack sorted by `InstanceNumber`. Recursion only happens when the folder has
+/// no images of its own (e.g. a study root holding one folder per series).
+///
 /// # Errors
 /// See `LoadError` variants.
 pub fn paths_for(arg: &Path) -> Result<Vec<PathBuf>, LoadError> {
     if arg.is_dir() {
-        let scanned = scan_directory(arg).map_err(LoadError::ScanFailed)?;
+        let direct = scan_directory_flat(arg).map_err(LoadError::ScanFailed)?;
+        let scanned = if direct.is_empty() {
+            scan_directory(arg).map_err(LoadError::ScanFailed)?
+        } else {
+            direct
+        };
         let sorted = sort_files(scanned);
         if sorted.is_empty() {
             return Err(LoadError::Empty(arg.to_path_buf()));

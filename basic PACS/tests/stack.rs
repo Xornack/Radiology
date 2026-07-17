@@ -173,6 +173,39 @@ fn image_stack_applies_override_window_for_png() {
 }
 
 #[test]
+fn image_stack_lru_cache_serves_previously_viewed_slice_without_reopening_file() {
+    let dir = fresh_dir();
+    let p1 = write_synthetic(
+        dir.path(),
+        "a.dcm",
+        DicomFixture {
+            instance_number: Some(1),
+            ..Default::default()
+        },
+    );
+    let p2 = write_synthetic(
+        dir.path(),
+        "b.dcm",
+        DicomFixture {
+            instance_number: Some(2),
+            ..Default::default()
+        },
+    );
+    let mut stack = ImageStack::new(vec![p1.clone(), p2]);
+
+    stack.get_current_image().expect("render slice 0");
+    stack.next();
+    stack.get_current_image().expect("render slice 1");
+
+    // Delete slice 0's backing file: scrolling back must render from the cache.
+    std::fs::remove_file(&p1).expect("delete slice 0 file");
+    stack.prev();
+    stack
+        .get_current_image()
+        .expect("slice 0 should be served from cache, not re-decoded from disk");
+}
+
+#[test]
 fn image_stack_measurements_management() {
     let stack = ImageStack::new(vec![]);
     assert_eq!(stack.current_measurements().len(), 0);

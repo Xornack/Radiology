@@ -1,4 +1,4 @@
-//! Scrollable stack of DICOM slices with one-slot decoded-pixel cache.
+//! Scrollable stack of DICOM slices with an LRU decoded-pixel cache.
 
 use std::path::PathBuf;
 
@@ -39,9 +39,9 @@ pub struct RoiStats {
     pub count: usize,
 }
 
-/// One-slot cache of the most recently loaded slice's decoded payload.
+/// A cached slice's decoded payload.
 /// DICOM holds raw stored pixels so W/L drags re-window without re-decoding the file;
-/// non-DICOM holds the final 8-bit image (no W/L applies).
+/// non-DICOM holds the decoded 8-bit image (W/L override is applied at render time).
 enum Cached {
     Dicom {
         pixels: Vec<i32>,
@@ -52,15 +52,30 @@ enum Cached {
     NonDicom(GrayImage),
 }
 
-/// Sorted DICOM series with a current-slice cursor and one-slot pixel cache.
+/// Total elements cached across all slots before eviction kicks in.
+/// DICOM entries are i32 (4 bytes/element), so this is ~256 MB worst case —
+/// roughly 240 slices of 512×512 CT, or ~5 mammo-sized frames.
+const CACHE_ELEMENT_BUDGET: usize = 64_000_000;
+
+impl Cached {
+    /// Number of stored elements — the dominant memory cost of a cache entry.
+    fn element_count(&self) -> usize {
+        match self {
+            Self::Dicom { pixels, .. } => pixels.len(),
+            Self::NonDicom(img) => img.as_raw().len(),
+        }
+    }
+}
+
+/// Sorted DICOM series with a current-slice cursor and an LRU pixel cache.
 ///
-/// Slices are loaded on demand via `get_current_image`. The cache holds the most
-/// recently loaded slice's raw (pre-window) pixels so repeated calls — including
-/// W/L drags — don't re-decode the same file.
+/// Slices are loaded on demand via `get_current_image`. The cache holds raw
+/// (pre-window) pixels of recently viewed slices — most recent first — so
+/// W/L drags and back-and-forth scrubbing don't re-decode files.
 pub struct ImageStack {
     paths: Vec<PathBuf>,
     current: usize,
-    cache: std::cell::RefCell<Option<(usize, Cached)>>,
+    cache: std::cell::RefCell<Vec<(usize, Cached)>>,
     /// User-set W/L (center, width) overriding per-file DICOM tags.
     /// `None` means "use the file's tags" (default).
     override_window: Option<(f64, f64)>,
@@ -77,7 +92,7 @@ impl ImageStack {
         Self {
             paths,
             current: 0,
-            cache: std::cell::RefCell::new(None),
+            cache: std::cell::RefCell::new(Vec::new()),
             override_window: None,
             measurements: vec![vec![]; n],
         }
@@ -138,6 +153,53 @@ impl ImageStack {
         self.override_window = ws;
     }
 
+    /// The W/L in effect for the current slice: the user override if set,
+    /// otherwise the file's own tags (read from the cache, not from disk).
+    /// `None` for non-DICOM slices with no override, or if the slice can't load.
+    #[must_use]
+    pub fn effective_window(&self) -> Option<(f64, f64)> {
+        if self.override_window.is_some() {
+            return self.override_window;
+        }
+        self.ensure_cache().ok()?;
+        let cache = self.cache.borrow();
+        match cache.first() {
+            Some((_, Cached::Dicom { ws, .. })) => Some((ws.center, ws.width)),
+            _ => None,
+        }
+    }
+
+    /// Make sure the current slice's decoded payload is cached, without
+    /// rendering it. Cheap when already cached — callers that only need
+    /// metadata (spacing, ROI stats) use this to avoid a full W/L pass.
+    fn ensure_cache(&self) -> Result<(), RrsError> {
+        if self.paths.is_empty() {
+            return Err(RrsError::UnsupportedPixels("empty stack".into()));
+        }
+        {
+            let mut cache = self.cache.borrow_mut();
+            if let Some(pos) = cache.iter().position(|(idx, _)| *idx == self.current) {
+                // Move to front so eviction drops the least recently viewed slice.
+                if pos != 0 {
+                    let entry = cache.remove(pos);
+                    cache.insert(0, entry);
+                }
+                return Ok(());
+            }
+        }
+        let loaded = self.load_slice(self.current)?;
+        let mut cache = self.cache.borrow_mut();
+        cache.insert(0, (self.current, loaded));
+        // Evict least-recently-viewed entries once over budget (always keep one).
+        let mut total: usize = cache.iter().map(|(_, c)| c.element_count()).sum();
+        while cache.len() > 1 && total > CACHE_ELEMENT_BUDGET {
+            if let Some((_, evicted)) = cache.pop() {
+                total -= evicted.element_count();
+            }
+        }
+        Ok(())
+    }
+
     /// Load the current slice (using the cache when possible).
     ///
     /// # Errors
@@ -145,23 +207,9 @@ impl ImageStack {
     /// Returns an `RrsError::UnsupportedPixels` with the message "empty stack"
     /// if the stack contains no paths.
     pub fn get_current_image(&self) -> Result<GrayImage, RrsError> {
-        if self.paths.is_empty() {
-            return Err(RrsError::UnsupportedPixels("empty stack".into()));
-        }
-
-        // Reload cache only when the slice index changed.
-        let needs_load = self
-            .cache
-            .borrow()
-            .as_ref()
-            .is_none_or(|(idx, _)| *idx != self.current);
-        if needs_load {
-            let cached = self.load_slice(self.current)?;
-            *self.cache.borrow_mut() = Some((self.current, cached));
-        }
-
+        self.ensure_cache()?;
         let cache = self.cache.borrow();
-        let (_, cached) = cache.as_ref().expect("just filled");
+        let (_, cached) = cache.first().expect("ensure_cache put current at front");
         Ok(match cached {
             Cached::NonDicom(img) => {
                 if let Some((center, width)) = self.override_window {
@@ -237,27 +285,62 @@ impl ImageStack {
         }
     }
 
+    /// True when any slice has at least one measurement.
+    #[must_use]
+    pub fn has_measurements(&self) -> bool {
+        self.measurements.iter().any(|m| !m.is_empty())
+    }
+
     #[must_use]
     pub fn current_spacing(&self) -> Option<(f64, f64)> {
-        // Ensure cache is loaded
-        let _ = self.get_current_image().ok()?;
+        self.ensure_cache().ok()?;
         let cache = self.cache.borrow();
-        if let Some((_, cached)) = cache.as_ref() {
-            match cached {
-                Cached::Dicom { spacing, .. } => *spacing,
-                Cached::NonDicom(_) => None,
+        match cache.first() {
+            Some((_, Cached::Dicom { spacing, .. })) => *spacing,
+            _ => None,
+        }
+    }
+
+    /// Rescaled value (HU for CT) of the pixel at image coordinates, from the
+    /// cache. `None` when out of bounds or the slice can't load.
+    #[must_use]
+    // Casts are guarded: x/y are checked non-negative, then bounds-checked after truncation.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    pub fn value_at(&self, x: f64, y: f64) -> Option<f64> {
+        if x < 0.0 || y < 0.0 {
+            return None;
+        }
+        self.ensure_cache().ok()?;
+        let cache = self.cache.borrow();
+        let (_, cached) = cache.first()?;
+        match cached {
+            Cached::Dicom {
+                pixels, dims, ws, ..
+            } => {
+                let (rows, cols) = *dims;
+                let (xi, yi) = (x as u32, y as u32);
+                if xi >= cols || yi >= rows {
+                    return None;
+                }
+                let stored = pixels[yi as usize * cols as usize + xi as usize];
+                Some(f64::from(stored).mul_add(ws.slope, ws.intercept))
             }
-        } else {
-            None
+            Cached::NonDicom(img) => {
+                let (w, h) = img.dimensions();
+                let (xi, yi) = (x as u32, y as u32);
+                if xi >= w || yi >= h {
+                    return None;
+                }
+                Some(f64::from(img.get_pixel(xi, yi)[0]))
+            }
         }
     }
 
     #[must_use]
     pub fn get_roi_stats(&self, center: (f64, f64), radius: f64) -> Option<RoiStats> {
-        // Ensure cache is loaded
-        let _ = self.get_current_image().ok()?;
+        self.ensure_cache().ok()?;
         let cache = self.cache.borrow();
-        let (_, cached) = cache.as_ref()?;
+        let (_, cached) = cache.first()?;
 
         let (cx, cy) = center;
         let r2 = radius * radius;
@@ -275,6 +358,10 @@ impl ImageStack {
                 spacing,
             } => {
                 let (rows, cols) = *dims;
+                // Guards the `cols - 1` below from underflowing on a degenerate frame.
+                if rows == 0 || cols == 0 {
+                    return None;
+                }
 
                 // Determine bounding box
                 let min_x = (cx - radius).floor().max(0.0) as u32;
@@ -321,6 +408,10 @@ impl ImageStack {
             }
             Cached::NonDicom(img) => {
                 let (cols, rows) = img.dimensions(); // GrayImage uses (width, height) i.e. (cols, rows)
+                // Guards the `cols - 1` below from underflowing on a degenerate frame.
+                if rows == 0 || cols == 0 {
+                    return None;
+                }
 
                 // Determine bounding box
                 let min_x = (cx - radius).floor().max(0.0) as u32;
@@ -404,8 +495,18 @@ impl ImageStack {
                 spacing,
             })
         } else {
-            // JPG/PNG: image crate decode; override W/L is intentionally ignored — no HU values to map.
-            let img = image::open(path)
+            // JPG/PNG via the image crate. Explicit dimension limits so a malformed
+            // header can't trigger a giant allocation (the crate's defaults cap
+            // total allocation but not width/height). The W/L override is applied
+            // at render time in get_current_image, like a brightness/contrast knob.
+            let mut reader = image::ImageReader::open(path)
+                .map_err(|e| RrsError::Dicom(format!("open {}: {}", path.display(), e)))?;
+            let mut limits = image::Limits::default();
+            limits.max_image_width = Some(crate::windowing::MAX_DIMENSION);
+            limits.max_image_height = Some(crate::windowing::MAX_DIMENSION);
+            reader.limits(limits);
+            let img = reader
+                .decode()
                 .map_err(|e| RrsError::Dicom(format!("decode {}: {}", path.display(), e)))?
                 .into_luma8();
             Ok(Cached::NonDicom(img))

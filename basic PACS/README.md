@@ -1,7 +1,6 @@
 # RustRadStack
 
-A Rust port of [PyRadStack](../python_version/), a lightweight DICOM stack viewer.
-Slice 1 ships a CLI; the GUI viewer lands in slice 4.
+A lightweight DICOM stack viewer (originally a Rust port of PyRadStack).
 
 ## Build
 
@@ -9,25 +8,34 @@ Slice 1 ships a CLI; the GUI viewer lands in slice 4.
 cargo build --release
 ```
 
-## GUI usage
+## Usage
+
+Open the viewer with an empty window (load via File menu):
+
+```powershell
+cargo run
+```
 
 Open a single DICOM in a window:
 
 ```powershell
-cargo run --bin rustradstack -- path\to\file.dcm
+cargo run -- path\to\file.dcm
 ```
 
 Open a folder of DICOMs and scroll through the stack:
 
 ```powershell
-cargo run --bin rustradstack -- path\to\series\
+cargo run -- path\to\series\
 ```
+
+The window opens maximized, scales the image to fit (preserving aspect ratio), and
+shows the loaded folder name in the title bar.
 
 **Controls:**
 - **Mouse wheel** — navigate slices (~10 wheel units per slice)
 - **Left-click drag (vertical)** — navigate slices (~10 pixels per slice; drag down = next slice)
 - **Both-button drag** — adjust Window/Level (drag right/left = width, drag down/up = center)
-- **Number keys 1–6** — apply W/L preset:
+- **Number keys 1–6** (or the **W/L menu**) — apply W/L preset:
   - 1 = Soft Tissue (C 40 / W 400)
   - 2 = Lung (C −600 / W 1500)
   - 3 = Bone (C 400 / W 1800)
@@ -35,57 +43,26 @@ cargo run --bin rustradstack -- path\to\series\
   - 5 = Mediastinum (C 40 / W 350)
   - 6 = Liver (C 60 / W 160)
 - **0** — clear preset / revert W/L to per-file DICOM tags
-- Status bar shows "Slice X / N", appended with the active preset name (e.g. "— Lung").
-  A both-button W/L drag clears the preset name (you are now in custom W/L).
+- **Measurement tools** (toolbar or hotkey): Pan/Scroll (**P**), 1D Line (**L**),
+  2D Ortho (**O**), Circle ROI with HU stats (**C**). **Esc** cancels an in-progress
+  measurement. Measurement labels can be dragged to reposition them.
+- **Right-click** — select the nearest measurement (Shift adds to the selection);
+  right-click drag draws a marquee selection box
+- **Del / Backspace** — remove selected measurements ("Clear Slice" / "Clear All"
+  buttons clear without a selection)
+- Status bar shows "Slice X / N", the live W/L values (with the active preset name),
+  and the pixel value under the cursor (HU when pixel spacing is available).
 
-**Loading new series:** use **File → Open Folder…** or **File → Open File…** to switch series mid-session. Native OS picker. Window/Level resets to per-file defaults on each load.
+**Loading new series:** use **File → Open Folder…** or **File → Open File…** to switch
+series mid-session. Native OS picker. Window/Level resets to per-file defaults on each
+load. If the current series has measurements, loading a new one asks for confirmation
+first (measurements are not saved).
 
-**Supported file types:** DICOM (`.dcm`), plus JPG/JPEG/PNG (rendered as 8-bit grayscale,
-no Window/Level applied). Mixed folders are supported; DICOMs sort first by InstanceNumber,
-non-DICOMs alphabetically by filename.
-
-## CLI usage
-
-Print key tags from a DICOM file:
-
-```powershell
-cargo run --bin rrs-cli -- info path\to\file.dcm
-```
-
-Output:
-
-```
-File:             path\to\file.dcm
-PatientName:      Smith^John
-Modality:         CT
-InstanceNumber:   3
-Rows x Cols:      512 x 512
-WindowCenter:     40
-WindowWidth:      400
-RescaleSlope:     1
-RescaleIntercept: 0
-```
-
-Render a DICOM as an 8-bit grayscale PNG (W/L from file's tags):
-
-```powershell
-cargo run --bin rrs-cli -- render path\to\file.dcm out.png
-```
-
-List DICOM files in a folder, sorted by InstanceNumber:
-
-```powershell
-cargo run --bin rrs-cli -- list path\to\series\
-```
-
-Output:
-
-```
-24 DICOM(s) in path\to\series\:
-     1  image-000001.dcm
-     2  image-000002.dcm
-     ...
-```
+**Supported file types:** DICOM (`.dcm`), plus JPG/JPEG/PNG (rendered as 8-bit grayscale;
+the W/L override acts as a brightness/contrast adjustment). Mixed folders are supported;
+DICOMs sort first by InstanceNumber, non-DICOMs alphabetically by filename. A folder that
+directly contains images is loaded as one series — subfolders (sibling series) are only
+scanned when the folder has no images of its own.
 
 ## Tests
 
@@ -121,23 +98,26 @@ See [the design spec](../docs/superpowers/specs/2026-05-08-rust-port-design.md).
 - `src/stack.rs` — `ImageStack` data model
 - `src/viewer.rs` — `ViewerApp` (egui)
 - `src/windowing.rs` — `WindowSettings`, `read_metadata`, `extract_pixels`, `apply_window`
-- `src/bin/rrs-cli.rs` — CLI binary
-- `src/main.rs` — `rustradstack` GUI binary
+- `src/main.rs` — `rustradstack` GUI binary (the only binary — plain `cargo run` works)
 - `tests/common/mod.rs` — synthetic DICOM builder
 - `tests/*.rs` — integration tests
 
 ## Performance notes
 
-Release-build, Windows, median of 3 runs:
+Hot path on real files: `decode_pixel_data` (decoding) dominates; the W/L pass is
+negligible. (Historical slice-era numbers, measured through the since-removed
+`rrs-cli`: full open → decode → W/L → PNG pipeline ~39ms on a real 512×512 MR.)
 
-| Operation | Synthetic 8×8 | Real MR 512×512 |
-|---|---|---|
-| `rrs-cli render` (full pipeline: open → decode → W/L → encode → write PNG) | ~20ms | ~39ms |
-| `rrs-cli list` (24-file MR series, sort by InstanceNumber) | — | ~38ms |
-| `rustradstack` GUI cold-start to image visible (real 512×512 MR) | — | binary load: ~80ms (no-args exit, before window creation; headless environment — window-open time not measurable) |
-| `rustradstack` GUI scroll through 24-slice MR series | — | deferred to user manual test |
+Series-load sorting reads headers only (`read_until(PixelData)`): 200 synthetic
+256×256 slices sort in ~7ms vs ~19ms for full-file parses (larger real slices gain
+more). Re-check with:
 
-Hot path on real files: `decode_pixel_data` (decoding) and `image::save` (PNG encoding) dominate. The W/L pass is negligible. These numbers compare against later slices.
+```powershell
+cargo test --release --test perf -- --ignored --nocapture
+```
+
+Recently viewed slices are kept in an LRU decode cache (~256 MB budget), so
+scrubbing back and forth doesn't re-read files from disk.
 
 ## Real-DICOM validation
 
