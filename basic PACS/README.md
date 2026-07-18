@@ -28,8 +28,29 @@ Open a folder of DICOMs and scroll through the stack:
 cargo run -- path\to\series\
 ```
 
-The window opens maximized, scales the image to fit (preserving aspect ratio), and
+Open a study ("jacket") folder containing several series:
+
+```powershell
+cargo run -- path\to\study\
+```
+
+The window opens maximized, scales images to fit (preserving aspect ratio), and
 shows the loaded folder name in the title bar.
+
+**Studies, series strip, and viewports:** every load is treated as a study. Files
+are grouped into series by `SeriesInstanceUID` (falling back to their folder), and
+each series gets a thumbnail (its center slice) in the strip along the top, labelled
+with the series description and slice count. The first series are hung into the
+viewports automatically.
+
+- **Layout buttons (1, 1×2, 2×2)** in the toolbar switch between one, two, or four
+  viewports. Each viewport scrolls and windows independently.
+- **Double-click a thumbnail** to hang that series in the active viewport;
+  **drag a thumbnail onto any viewport** to hang it there (the target highlights).
+- **Click a viewport** to make it active (accent border). Keyboard actions —
+  presets, Esc, Del — go to the active viewport; the wheel scrolls whichever
+  viewport the pointer is over.
+- Tiles outlined in the strip are currently hung in a visible viewport.
 
 **Controls:**
 - **Mouse wheel** — navigate slices (~10 wheel units per slice)
@@ -53,16 +74,25 @@ shows the loaded folder name in the title bar.
 - Status bar shows "Slice X / N", the live W/L values (with the active preset name),
   and the pixel value under the cursor (HU when pixel spacing is available).
 
-**Loading new series:** use **File → Open Folder…** or **File → Open File…** to switch
-series mid-session. Native OS picker. Window/Level resets to per-file defaults on each
-load. If the current series has measurements, loading a new one asks for confirmation
-first (measurements are not saved).
+**Loading:** use **File → Open Study…** (folder picker — every series inside is
+loaded), **File → Open Folder…**, or **File → Open File…**. Window/Level resets to
+per-file defaults on each load. If existing measurements would be discarded — by a
+new study or by hanging a different series into a measured viewport — a confirmation
+is asked first (measurements are not saved).
 
 **Supported file types:** DICOM (`.dcm`), plus JPG/JPEG/PNG (rendered as 8-bit grayscale;
-the W/L override acts as a brightness/contrast adjustment). Mixed folders are supported;
-DICOMs sort first by InstanceNumber, non-DICOMs alphabetically by filename. A folder that
-directly contains images is loaded as one series — subfolders (sibling series) are only
-scanned when the folder has no images of its own.
+the W/L override acts as a brightness/contrast adjustment). Folders are scanned
+recursively; DICOMs group into series by `SeriesInstanceUID` and sort by InstanceNumber
+(falling back to `ImagePositionPatient` Z), non-DICOMs group per folder and sort
+alphabetically. Series order follows `SeriesNumber`.
+
+**Demo study:** generate a synthetic 4-series study for playing with the multi-viewport
+features:
+
+```powershell
+cargo test --test gen_demo -- --ignored --nocapture
+cargo run -- $env:TEMP\rrs_demo_study
+```
 
 ## Tests
 
@@ -83,24 +113,26 @@ See [the design spec](../docs/superpowers/specs/2026-05-08-rust-port-design.md).
 7. ✅ Slice 7 — both-button drag adjusts W/L
 8. ✅ Slice 8 — File menu + Open Folder/File dialogs
 9. ✅ Slice 9 — JPG/JPEG/PNG support in viewer + scan + sort
-10. ✅ Slice 10 (this slice) — W/L presets (number keys 1–6) + status bar shows active preset
+10. ✅ Slice 10 — W/L presets (number keys 1–6) + status bar shows active preset
+11. ✅ Measurement tools (line / ortho / circle ROI with HU stats) + review-fix hardening
+12. ✅ Studies: multi-series jackets, thumbnail strip with drag-and-drop, 1×2 and 2×2 viewport layouts
 
-**MVP+ in progress.** Future slices: Nuitka-equivalent build (cargo packaging), recent-files list.
+**MVP+ in progress.** Future ideas: measurement export/persistence, viewer linking
+(synchronized scroll), cargo packaging, recent-files list.
 
 ## Crate layout
 
 - `src/lib.rs` — library entry; re-exports `errors` and `windowing`
 - `src/errors.rs` — `RrsError`
 - `src/loader.rs` — `scan_directory`
-- `src/loading.rs` — `paths_for` (path → sorted Vec<PathBuf>)
+- `src/study.rs` — `Study`/`Series` + `load_study` (scan → group by SeriesInstanceUID → sort)
 - `src/presets.rs` — `WindowPreset` + `PRESETS` (canonical CT W/L list)
-- `src/sorting.rs` — `sort_files`
 - `src/stack.rs` — `ImageStack` data model
-- `src/viewer.rs` — `ViewerApp` (egui)
+- `src/viewer.rs` — `ViewerApp` (egui): viewports, layouts, thumbnail strip
 - `src/windowing.rs` — `WindowSettings`, `read_metadata`, `extract_pixels`, `apply_window`
 - `src/main.rs` — `rustradstack` GUI binary (the only binary — plain `cargo run` works)
 - `tests/common/mod.rs` — synthetic DICOM builder
-- `tests/*.rs` — integration tests
+- `tests/*.rs` — integration tests (`gen_demo` and `perf` are `--ignored` manual utilities)
 
 ## Performance notes
 
@@ -108,9 +140,9 @@ Hot path on real files: `decode_pixel_data` (decoding) dominates; the W/L pass i
 negligible. (Historical slice-era numbers, measured through the since-removed
 `rrs-cli`: full open → decode → W/L → PNG pipeline ~39ms on a real 512×512 MR.)
 
-Series-load sorting reads headers only (`read_until(PixelData)`): 200 synthetic
-256×256 slices sort in ~7ms vs ~19ms for full-file parses (larger real slices gain
-more). Re-check with:
+Study loading reads headers only (`read_until(PixelData)`), one pass per file for
+grouping + sorting: 200 synthetic 256×256 slices across 4 series load in ~10ms vs
+~20ms for full-file parses (larger real slices gain much more). Re-check with:
 
 ```powershell
 cargo test --release --test perf -- --ignored --nocapture

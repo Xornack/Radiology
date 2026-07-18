@@ -33,6 +33,12 @@ pub struct DicomFixture {
     pub imager_pixel_spacing: Option<(f64, f64)>,
     /// If true, omit the `InstanceNumber` tag entirely (for fallback-sort tests).
     pub skip_instance_number: bool,
+    /// If Some, write `SeriesInstanceUID` (omitted when None, for fallback-grouping tests).
+    pub series_instance_uid: Option<&'static str>,
+    /// If Some, write `SeriesDescription`.
+    pub series_description: Option<&'static str>,
+    /// If Some, write `SeriesNumber`.
+    pub series_number: Option<i32>,
 }
 
 /// Write a synthetic DICOM into the given temp dir; returns the resulting path.
@@ -67,6 +73,28 @@ pub fn write_synthetic(dir: &Path, name: &str, fx: DicomFixture) -> PathBuf {
             tags::INSTANCE_NUMBER,
             VR::IS,
             PrimitiveValue::from(fx.instance_number.unwrap_or(1).to_string()),
+        ));
+    }
+
+    if let Some(uid) = fx.series_instance_uid {
+        obj.put(DataElement::new(
+            tags::SERIES_INSTANCE_UID,
+            VR::UI,
+            PrimitiveValue::from(uid),
+        ));
+    }
+    if let Some(desc) = fx.series_description {
+        obj.put(DataElement::new(
+            tags::SERIES_DESCRIPTION,
+            VR::LO,
+            PrimitiveValue::from(desc),
+        ));
+    }
+    if let Some(num) = fx.series_number {
+        obj.put(DataElement::new(
+            tags::SERIES_NUMBER,
+            VR::IS,
+            PrimitiveValue::from(num.to_string()),
         ));
     }
 
@@ -189,6 +217,8 @@ pub fn write_synthetic(dir: &Path, name: &str, fx: DicomFixture) -> PathBuf {
 }
 
 /// Convenience: a fresh `TempDir` so individual tests don't have to manage it.
+// Each test binary compiles `common` separately; not all of them use this.
+#[allow(dead_code)]
 pub fn fresh_dir() -> TempDir {
     tempfile::tempdir().expect("create tempdir")
 }

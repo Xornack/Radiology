@@ -6,7 +6,6 @@ use std::process::ExitCode;
 
 use anyhow::{Result, anyhow};
 
-use rustradstack::stack::ImageStack;
 use rustradstack::viewer::ViewerApp;
 
 fn main() -> ExitCode {
@@ -22,9 +21,8 @@ fn main() -> ExitCode {
 fn run() -> Result<()> {
     let app = if let Some(arg_str) = env::args().nth(1) {
         let arg: PathBuf = arg_str.into();
-        let paths = rustradstack::loading::paths_for(&arg).map_err(|e| anyhow!("{e}"))?;
-        let stack = ImageStack::new(paths);
-        ViewerApp::new(stack)
+        let study = rustradstack::study::load_study(&arg).map_err(|e| anyhow!("{e}"))?;
+        ViewerApp::new(study, &arg)
     } else {
         ViewerApp::empty()
     };
