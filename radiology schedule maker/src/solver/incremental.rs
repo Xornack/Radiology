@@ -71,7 +71,7 @@ impl<'a> IncrementalScorer<'a> {
                     let compatible = service_map
                         .get(service_ids[i].as_str())
                         .and_then(|svc| svc.bundled_with.as_deref())
-                        .map_or(false, |b| b == service_ids[j]);
+                        .is_some_and(|b| b == service_ids[j]);
                     if !compatible {
                         total_violations += 1;
                     }
@@ -197,7 +197,7 @@ impl<'a> IncrementalScorer<'a> {
                 let compatible = self.service_map
                     .get(service_ids[i].as_str())
                     .and_then(|svc| svc.bundled_with.as_deref())
-                    .map_or(false, |b| b == service_ids[j]);
+                    .is_some_and(|b| b == service_ids[j]);
                 if !compatible {
                     v += 1;
                 }
