@@ -137,7 +137,8 @@ pub fn ScheduleGrid(
                             </div>
                         }.into_any()
                     } else {
-                        view! {}.into_any()
+                        let _: () = view! {};
+                        ().into_any()
                     }
                 }}
             </div>
@@ -184,7 +185,8 @@ pub fn ScheduleGrid(
                                                     {if let Some(ref b) = svc.bundled_with {
                                                         view! { <span style="font-size: 0.7rem; color: var(--secondary);">"🔗 Co-covers " {b.clone()}</span> }.into_any()
                                                     } else {
-                                                        view! {}.into_any()
+                                                        let _: () = view! {};
+                                                        ().into_any()
                                                     }}
                                                 </td>
                                                 { (1..=max_d).map(|day| {

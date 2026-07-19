@@ -66,11 +66,11 @@ pub fn App() -> impl IntoView {
 
     // LocalStorage persistence effects
     Effect::new(move |_| {
-        let _ = LocalStorage::set("radsched_radiologists", &radiologists.get());
+        let _ = LocalStorage::set("radsched_radiologists", radiologists.get());
     });
 
     Effect::new(move |_| {
-        let _ = LocalStorage::set("radsched_vacations", &vacations.get());
+        let _ = LocalStorage::set("radsched_vacations", vacations.get());
     });
 
     Effect::new(move |_| {

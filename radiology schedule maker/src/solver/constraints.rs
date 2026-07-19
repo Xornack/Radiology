@@ -44,11 +44,10 @@ impl<'a> HardConstraintChecker<'a> {
         if let Some(rad) = self.rad_map.get(rad_id) {
             if let Some(svc) = self.service_map.get(service_id) {
                 // If it's a call service, check call eligibility
-                if svc.is_night_call || svc.is_weekend {
-                    if !rad.can_cover_call {
+                if (svc.is_night_call || svc.is_weekend)
+                    && !rad.can_cover_call {
                         return false;
                     }
-                }
                 // Check service qualification
                 if !rad.covers_service(service_id) {
                     return false;
@@ -96,8 +95,7 @@ impl<'a> HardConstraintChecker<'a> {
                         let compatible = self
                             .service_map
                             .get(s1)
-                            .and_then(|svc| svc.bundled_with.as_deref())
-                            .map_or(false, |b| b == s2);
+                            .and_then(|svc| svc.bundled_with.as_deref()) == Some(s2);
 
                         if !compatible {
                             violations += 1; // Incompatible double coverage
