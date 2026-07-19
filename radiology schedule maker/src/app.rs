@@ -20,10 +20,17 @@ pub fn App() -> impl IntoView {
         LocalStorage::get("radsched_vacations").unwrap_or_else(|_| vec![])
     );
 
-    let (selected_year, set_selected_year) = signal(2026i32);
-    let (selected_month, set_selected_month) = signal(7u32); // July 2026
+    let (selected_year, set_selected_year) = signal(
+        LocalStorage::get("radsched_selected_year").unwrap_or(2026i32)
+    );
+    let (selected_month, set_selected_month) = signal(
+        LocalStorage::get("radsched_selected_month").unwrap_or(7u32)
+    );
 
-    let (schedule, set_schedule) = signal(MonthlySchedule::new(selected_year.get(), selected_month.get()));
+    let (schedule, set_schedule) = signal(
+        LocalStorage::get("radsched_schedule")
+            .unwrap_or_else(|_| MonthlySchedule::new(selected_year.get(), selected_month.get()))
+    );
 
     let (active_tab, set_active_tab) = signal(ActiveTab::ScheduleGrid);
     let (selected_slot, set_selected_slot) = signal(None::<ScheduleSlot>);
@@ -31,21 +38,30 @@ pub fn App() -> impl IntoView {
     let (is_sheets_open, set_is_sheets_open) = signal(false);
     let (webhook_url, set_webhook_url) = signal(String::new());
 
-    // 2. Initialize schedule slots when month changes or on start
-    let initialize_schedule = move || {
-        let rads = radiologists.get();
-        let svcs = services.get();
-        let vacs = vacations.get();
+    // 2. (Re)generate the schedule only when the viewed month/year actually
+    // changes, or there's no usable schedule yet for it. Reading
+    // radiologists/services/vacations with get_untracked() here is
+    // deliberate: editing the roster, service list, or vacations must NOT
+    // regenerate the schedule, or every lock/swap the scheduler made gets
+    // silently discarded (this was the app's most severe bug).
+    Effect::new(move |_| {
+        let y = selected_year.get();
+        let m = selected_month.get();
 
-        let total_days = days_in_month(selected_year.get(), selected_month.get());
+        let needs_new = schedule.with_untracked(|s| s.year != y || s.month != m || s.slots.is_empty());
+        if !needs_new {
+            return;
+        }
+
+        let rads = radiologists.get_untracked();
+        let svcs = services.get_untracked();
+        let vacs = vacations.get_untracked();
+
+        let total_days = days_in_month(y, m);
         let solver = ScheduleSolver::new(&rads, &svcs, &vacs);
-        let mut new_sched = solver.create_empty_schedule(selected_year.get(), selected_month.get(), total_days);
+        let mut new_sched = solver.create_empty_schedule(y, m, total_days);
         solver.initialize_greedy(&mut new_sched);
         set_schedule.set(new_sched);
-    };
-
-    Effect::new(move |_| {
-        initialize_schedule();
     });
 
     // LocalStorage persistence effects
@@ -55,6 +71,15 @@ pub fn App() -> impl IntoView {
 
     Effect::new(move |_| {
         let _ = LocalStorage::set("radsched_vacations", &vacations.get());
+    });
+
+    Effect::new(move |_| {
+        let _ = LocalStorage::set("radsched_schedule", &schedule.get());
+    });
+
+    Effect::new(move |_| {
+        let _ = LocalStorage::set("radsched_selected_year", &selected_year.get());
+        let _ = LocalStorage::set("radsched_selected_month", &selected_month.get());
     });
 
     // Solver Callback Trigger
