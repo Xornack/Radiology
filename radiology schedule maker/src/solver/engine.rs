@@ -1,6 +1,7 @@
 use crate::models::{MonthlySchedule, Radiologist, ScheduleSlot, Service, VacationRequest};
 use crate::solver::constraints::HardConstraintChecker;
 use crate::solver::cost::calculate_soft_cost;
+use crate::solver::incremental::IncrementalScorer;
 use rand::Rng;
 
 pub struct ScheduleSolver<'a> {
@@ -78,13 +79,12 @@ impl<'a> ScheduleSolver<'a> {
         }
 
         let mut current_slots = schedule.slots.clone();
-        let mut current_violations = checker.count_violations(&current_slots);
-        let current_cost = calculate_soft_cost(&current_slots, self.radiologists, self.services);
-        let mut current_total_score = (current_violations as f64) * 1000.0 + current_cost;
+        let mut scorer = IncrementalScorer::new(&current_slots, self.radiologists, self.services, &checker);
+        let mut current_total_score = (scorer.total_violations as f64) * 1000.0 + scorer.total_cost;
 
         let mut best_slots = current_slots.clone();
         let mut best_score = current_total_score;
-        let mut best_violations = current_violations;
+        let mut best_violations = scorer.total_violations;
 
         let mut temp = 100.0;
         let cooling_rate = 0.9992;
@@ -103,52 +103,45 @@ impl<'a> ScheduleSolver<'a> {
         for _iter in 0..iterations {
             temp *= cooling_rate;
 
-            // Pick a random unlocked slot to mutate
             let idx = unlocked_indices[rng.gen_range(0..unlocked_indices.len())];
+            let date = current_slots[idx].date.clone();
+            let service_id = current_slots[idx].service_id.clone();
             let old_assignment = current_slots[idx].assigned_radiologist_id.clone();
 
-            // Either swap with another slot or reassign candidate
             let mut candidate_rad_ids: Vec<Option<String>> = vec![None];
             for rad in self.radiologists {
-                if checker.can_assign(&rad.id, &current_slots[idx].service_id, &current_slots[idx].date) {
+                if checker.can_assign(&rad.id, &service_id, &date) {
                     candidate_rad_ids.push(Some(rad.id.clone()));
                 }
             }
 
-            if candidate_rad_ids.is_empty() {
-                continue;
-            }
+            let new_pick = candidate_rad_ids[rng.gen_range(0..candidate_rad_ids.len())].clone();
 
-            let new_pick = &candidate_rad_ids[rng.gen_range(0..candidate_rad_ids.len())];
+            scorer.apply_move(&checker, &date, &service_id, &old_assignment, &new_pick);
             current_slots[idx].assigned_radiologist_id = new_pick.clone();
 
-            // Evaluate new state
-            let new_violations = checker.count_violations(&current_slots);
-            let new_cost = calculate_soft_cost(&current_slots, self.radiologists, self.services);
-            let new_total_score = (new_violations as f64) * 1000.0 + new_cost;
-
+            let new_total_score = (scorer.total_violations as f64) * 1000.0 + scorer.total_cost;
             let delta = new_total_score - current_total_score;
 
             // Metropolis acceptance criterion
             if delta < 0.0 || ((-delta / temp).exp() > rng.gen::<f64>()) {
-                // Accept move
-                current_violations = new_violations;
                 current_total_score = new_total_score;
 
                 if current_total_score < best_score {
                     best_score = current_total_score;
                     best_slots = current_slots.clone();
-                    best_violations = current_violations;
+                    best_violations = scorer.total_violations;
                 }
             } else {
-                // Revert move
+                // Revert move, in both the slot array and the scorer's running stats.
+                scorer.apply_move(&checker, &date, &service_id, &new_pick, &old_assignment);
                 current_slots[idx].assigned_radiologist_id = old_assignment;
             }
         }
 
         // Apply best solution found
         schedule.slots = best_slots;
-        schedule.hard_violations = best_violations;
+        schedule.hard_violations = best_violations as u32;
         schedule.score = calculate_soft_cost(&schedule.slots, self.radiologists, self.services);
     }
 }

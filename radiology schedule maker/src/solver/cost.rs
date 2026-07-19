@@ -1,6 +1,10 @@
 use crate::models::{Radiologist, ScheduleSlot, Service};
 use std::collections::HashMap;
 
+pub const UNASSIGNED_PENALTY: f64 = 500.0;
+pub const TARGET_VARIANCE_WEIGHT: f64 = 15.0;
+pub const CALL_FAIRNESS_WEIGHT: f64 = 40.0;
+
 pub fn calculate_soft_cost(
     slots: &[ScheduleSlot],
     radiologists: &[Radiologist],
@@ -28,14 +32,14 @@ pub fn calculate_soft_cost(
     let mut total_cost = 0.0;
 
     // 1. Unassigned slots penalty (High priority soft constraint)
-    total_cost += (unassigned_count as f64) * 500.0;
+    total_cost += (unassigned_count as f64) * UNASSIGNED_PENALTY;
 
     // 2. Target shift variance penalty
     for rad in radiologists {
         let assigned = *shift_counts.get(rad.id.as_str()).unwrap_or(&0) as f64;
         let target = rad.target_monthly_shifts as f64;
         let diff = assigned - target;
-        total_cost += diff * diff * 15.0; // Quadratic penalty for target deviation
+        total_cost += diff * diff * TARGET_VARIANCE_WEIGHT; // Quadratic penalty for target deviation
     }
 
     // 3. Weekend / Call fairness equity penalty (Variance across call-eligible attendings)
@@ -49,7 +53,7 @@ pub fn calculate_soft_cost(
         let mean = call_counts.iter().sum::<f64>() / (call_counts.len() as f64);
         let variance: f64 = call_counts.iter().map(|c| (c - mean).powi(2)).sum::<f64>() / (call_counts.len() as f64);
         
-        total_cost += variance * 40.0; // Equity bonus for even weekend call distribution
+        total_cost += variance * CALL_FAIRNESS_WEIGHT; // Equity bonus for even weekend call distribution
     }
 
     total_cost
