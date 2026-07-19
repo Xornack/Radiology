@@ -74,12 +74,12 @@ pub fn App() -> impl IntoView {
     });
 
     Effect::new(move |_| {
-        let _ = LocalStorage::set("radsched_schedule", &schedule.get());
+        let _ = LocalStorage::set("radsched_schedule", schedule.get());
     });
 
     Effect::new(move |_| {
-        let _ = LocalStorage::set("radsched_selected_year", &selected_year.get());
-        let _ = LocalStorage::set("radsched_selected_month", &selected_month.get());
+        let _ = LocalStorage::set("radsched_selected_year", selected_year.get());
+        let _ = LocalStorage::set("radsched_selected_month", selected_month.get());
     });
 
     // Solver Callback Trigger
