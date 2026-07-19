@@ -1,4 +1,4 @@
-use crate::models::{derive_initials, Radiologist, Service};
+use crate::models::{derive_initials, next_radiologist_id, Radiologist, Service};
 use leptos::prelude::*;
 use std::collections::HashSet;
 
@@ -25,7 +25,7 @@ pub fn RadiologistsManager(
             new_initials.get().trim().to_uppercase()
         };
 
-        let new_id = format!("rad_{}", radiologists.get().len() + 1);
+        let new_id = next_radiologist_id(&radiologists.get());
         let mut allowed: HashSet<String> = HashSet::new();
         allowed.insert("ALL".to_string()); // Default generalist
 

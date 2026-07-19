@@ -18,3 +18,11 @@ impl VacationRequest {
         }
     }
 }
+
+/// Vacation id derived from radiologist + full date, not just day-of-month,
+/// so the same attending taking the same day off in two different months
+/// doesn't produce two entries sharing one id (which makes deleting either
+/// one delete both, since deletion filters by id).
+pub fn vacation_id(radiologist_id: &str, year: i32, month: u32, day: u32) -> String {
+    format!("v_{}_{:04}_{:02}_{:02}", radiologist_id, year, month, day)
+}

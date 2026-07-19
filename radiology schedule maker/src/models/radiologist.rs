@@ -55,6 +55,20 @@ pub fn derive_initials(name: &str) -> String {
         .to_uppercase()
 }
 
+/// A radiologist id guaranteed not to collide with any id already in
+/// `existing`. `existing.len() + 1` alone isn't safe once a radiologist has
+/// been removed and a new one added, since ids aren't reused sequentially.
+pub fn next_radiologist_id(existing: &[Radiologist]) -> String {
+    let mut n = existing.len() as u32 + 1;
+    loop {
+        let candidate = format!("rad_{}", n);
+        if !existing.iter().any(|r| r.id == candidate) {
+            return candidate;
+        }
+        n += 1;
+    }
+}
+
 pub fn default_radiologists() -> Vec<Radiologist> {
     vec![
         Radiologist {

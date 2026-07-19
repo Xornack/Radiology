@@ -32,3 +32,22 @@ fn display_badge_derives_from_non_ascii_name_without_panicking() {
     let rad = Radiologist::new("r1", "Émile Zola", "", vec!["ALL"], true);
     assert_eq!(rad.display_badge(), "ÉZ");
 }
+
+#[test]
+fn next_radiologist_id_skips_ids_already_in_use() {
+    let mut rads = default_radiologists();
+    rads.push(Radiologist::new("rad_19", "Dr. Nineteen", "N1", vec!["ALL"], true));
+    rads.push(Radiologist::new("rad_20", "Dr. Twenty", "T2", vec!["ALL"], true));
+    rads.retain(|r| r.id != "rad_19"); // simulate: added two, then removed the older one
+
+    let id = next_radiologist_id(&rads);
+    assert_ne!(id, "rad_20", "must not collide with the surviving rad_20");
+    assert!(!rads.iter().any(|r| r.id == id));
+}
+
+#[test]
+fn vacation_id_differs_across_months_for_the_same_day_and_radiologist() {
+    let july = vacation_id("rad_mh", 2026, 7, 5);
+    let august = vacation_id("rad_mh", 2026, 8, 5);
+    assert_ne!(july, august);
+}

@@ -1,4 +1,4 @@
-use crate::models::{Radiologist, VacationRequest};
+use crate::models::{vacation_id, Radiologist, VacationRequest};
 use leptos::prelude::*;
 use std::collections::HashMap;
 
@@ -21,7 +21,7 @@ pub fn VacationManager(
         }
 
         let date = format!("{:04}-{:02}-{:02}", selected_year.get(), selected_month.get(), selected_day.get());
-        let new_id = format!("v_{}_{}", rad_id, selected_day.get());
+        let new_id = vacation_id(&rad_id, selected_year.get(), selected_month.get(), selected_day.get());
 
         let new_req = VacationRequest::new(new_id, rad_id, date, note.get());
         set_vacations.update(|list| list.push(new_req));
