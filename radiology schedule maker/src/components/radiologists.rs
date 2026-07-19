@@ -1,4 +1,4 @@
-use crate::models::{Radiologist, Service};
+use crate::models::{derive_initials, Radiologist, Service};
 use leptos::prelude::*;
 use std::collections::HashSet;
 
@@ -20,7 +20,7 @@ pub fn RadiologistsManager(
         }
 
         let initials = if new_initials.get().trim().is_empty() {
-            name.split_whitespace().map(|w| &w[..1]).collect::<Vec<&str>>().join("").to_uppercase()
+            derive_initials(&name)
         } else {
             new_initials.get().trim().to_uppercase()
         };

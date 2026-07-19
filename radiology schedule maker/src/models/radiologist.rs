@@ -34,16 +34,25 @@ impl Radiologist {
 
     pub fn display_badge(&self) -> String {
         if !self.initials.is_empty() {
-            self.initials.clone()
+            return self.initials.clone();
+        }
+        if self.name.split_whitespace().count() >= 2 {
+            derive_initials(&self.name)
         } else {
-            let parts: Vec<&str> = self.name.split_whitespace().collect();
-            if parts.len() >= 2 {
-                format!("{}{}", &parts[0][..1], &parts[1][..1])
-            } else {
-                self.name.clone()
-            }
+            self.name.clone()
         }
     }
+}
+
+/// Up-to-2-letter initials from a full name's first two words. Uses
+/// `.chars()` rather than byte-slicing, which panics on any name whose
+/// first letter is more than one UTF-8 byte (e.g. "Émile").
+pub fn derive_initials(name: &str) -> String {
+    name.split_whitespace()
+        .filter_map(|w| w.chars().next())
+        .take(2)
+        .collect::<String>()
+        .to_uppercase()
 }
 
 pub fn default_radiologists() -> Vec<Radiologist> {
