@@ -1,4 +1,4 @@
-use crate::models::{derive_initials, next_radiologist_id, Radiologist, Service};
+use crate::models::{derive_initials, next_radiologist_id, MonthlySchedule, Radiologist, Service};
 use leptos::prelude::*;
 use std::collections::HashSet;
 
@@ -7,6 +7,7 @@ pub fn RadiologistsManager(
     radiologists: ReadSignal<Vec<Radiologist>>,
     set_radiologists: WriteSignal<Vec<Radiologist>>,
     services: ReadSignal<Vec<Service>>,
+    set_schedule: WriteSignal<MonthlySchedule>,
 ) -> impl IntoView {
     let (new_name, set_new_name) = signal(String::new());
     let (new_initials, set_new_initials) = signal(String::new());
@@ -98,7 +99,9 @@ pub fn RadiologistsManager(
                                         <button
                                             class="btn btn-secondary btn-sm"
                                             on:click=move |_| {
-                                                set_radiologists.update(|list| list.retain(|r| r.id != rad_id));
+                                                let id = rad_id.clone();
+                                                set_schedule.update(|sched| sched.clear_assignments_for(&id));
+                                                set_radiologists.update(|list| list.retain(|r| r.id != id));
                                             }
                                         >
                                             "Remove"

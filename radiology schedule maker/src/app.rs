@@ -141,6 +141,7 @@ pub fn App() -> impl IntoView {
                             radiologists=radiologists
                             set_radiologists=set_radiologists
                             services=services
+                            set_schedule=set_schedule
                         />
                     }.into_any(),
 

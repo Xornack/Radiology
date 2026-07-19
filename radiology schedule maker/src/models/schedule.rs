@@ -47,4 +47,15 @@ impl MonthlySchedule {
             hard_violations: 0,
         }
     }
+
+    /// Clears any slot assignment pointing at `radiologist_id`. Called when
+    /// a radiologist is removed from the roster, so a deleted attending
+    /// doesn't linger as a dangling, confusingly-styled grid assignment.
+    pub fn clear_assignments_for(&mut self, radiologist_id: &str) {
+        for slot in &mut self.slots {
+            if slot.assigned_radiologist_id.as_deref() == Some(radiologist_id) {
+                slot.assigned_radiologist_id = None;
+            }
+        }
+    }
 }

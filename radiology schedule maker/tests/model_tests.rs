@@ -51,3 +51,18 @@ fn vacation_id_differs_across_months_for_the_same_day_and_radiologist() {
     let august = vacation_id("rad_mh", 2026, 8, 5);
     assert_ne!(july, august);
 }
+
+#[test]
+fn clear_assignments_for_unassigns_only_the_matching_radiologist() {
+    let mut sched = MonthlySchedule::new(2026, 7);
+    let mut slot_a = ScheduleSlot::new("2026-07-01", 1, "msk");
+    slot_a.assigned_radiologist_id = Some("rad_mh".to_string());
+    let mut slot_b = ScheduleSlot::new("2026-07-01", 1, "abd");
+    slot_b.assigned_radiologist_id = Some("rad_sbo".to_string());
+    sched.slots = vec![slot_a, slot_b];
+
+    sched.clear_assignments_for("rad_mh");
+
+    assert_eq!(sched.slots[0].assigned_radiologist_id, None);
+    assert_eq!(sched.slots[1].assigned_radiologist_id, Some("rad_sbo".to_string()));
+}
