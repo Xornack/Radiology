@@ -1,5 +1,5 @@
 use crate::models::{MonthlySchedule, Radiologist, ScheduleSlot, Service};
-use crate::utils::calendar::{days_in_month, is_weekend_date, weekday_short_name};
+use crate::utils::calendar::{days_in_month, is_weekend_date, week_day_range, weekday_short_name};
 use leptos::prelude::*;
 use std::collections::HashMap;
 
@@ -54,17 +54,10 @@ pub fn ScheduleGrid(
 
     // Computes start & end day for selected week
     let week_days = move || {
-        let week = selected_week.get();
         let max_days = total_days();
-        let start = match week {
-            1 => 1,
-            2 => 8,
-            3 => 15,
-            4 => 22,
-            _ => 29,
-        };
-        let end = (start + 6).min(max_days);
-        (start..=end).collect::<Vec<u32>>()
+        week_day_range(selected_week.get(), max_days)
+            .map(|(start, end)| (start..=end).collect::<Vec<u32>>())
+            .unwrap_or_default()
     };
 
     let prev_month = move |_| {
@@ -130,7 +123,7 @@ pub fn ScheduleGrid(
                     if view_mode.get() == ViewMode::Weekly {
                         view! {
                             <div class="toggle-group">
-                                { (1..=5).map(|w| {
+                                { (1..=5).filter(|w| week_day_range(*w, total_days()).is_some()).map(|w| {
                                     let is_active = selected_week.get() == w;
                                     view! {
                                         <button

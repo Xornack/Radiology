@@ -41,3 +41,20 @@ pub fn is_weekend_date(year: i32, month: u32, day: u32) -> bool {
         false
     }
 }
+
+/// The (start, end) day-of-month range for a 1-indexed week number
+/// (1..=5), clamped to `max_days`. Returns `None` if that week doesn't
+/// exist in a month this short (e.g. week 5 in a 28-day February).
+pub fn week_day_range(week: u32, max_days: u32) -> Option<(u32, u32)> {
+    let start = match week {
+        1 => 1,
+        2 => 8,
+        3 => 15,
+        4 => 22,
+        _ => 29,
+    };
+    if start > max_days {
+        return None;
+    }
+    Some((start, (start + 6).min(max_days)))
+}
