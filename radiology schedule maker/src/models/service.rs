@@ -6,6 +6,13 @@ pub enum ServiceCategory {
     CallCoverage,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ServiceCadence {
+    AllDays,
+    Weekdays,
+    Weekends,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Service {
     pub id: String,
@@ -15,6 +22,13 @@ pub struct Service {
     pub is_night_call: bool,
     pub bundled_with: Option<String>,
     pub description: String,
+    /// Which days this rotation needs a schedule slot at all. Independent
+    /// of is_weekend/is_night_call, which govern call-eligibility and
+    /// call-fairness scoring, not slot generation.
+    pub cadence: ServiceCadence,
+    /// Whether an unfilled slot for this service counts against the
+    /// solver's penalty score (false for e.g. an optional weekend float).
+    pub required: bool,
 }
 
 pub fn default_services() -> Vec<Service> {
@@ -27,6 +41,8 @@ pub fn default_services() -> Vec<Service> {
             is_night_call: false,
             bundled_with: Some("msk".into()),
             description: "Morning checkout readout".into(),
+            cadence: ServiceCadence::Weekdays,
+            required: true,
         },
         Service {
             id: "abd".into(),
@@ -36,6 +52,8 @@ pub fn default_services() -> Vec<Service> {
             is_night_call: false,
             bundled_with: None,
             description: "Abdominal imaging".into(),
+            cadence: ServiceCadence::Weekdays,
+            required: true,
         },
         Service {
             id: "msk".into(),
@@ -45,6 +63,8 @@ pub fn default_services() -> Vec<Service> {
             is_night_call: false,
             bundled_with: Some("am_readout".into()),
             description: "Musculoskeletal reading room".into(),
+            cadence: ServiceCadence::Weekdays,
+            required: true,
         },
         Service {
             id: "us".into(),
@@ -54,6 +74,8 @@ pub fn default_services() -> Vec<Service> {
             is_night_call: false,
             bundled_with: None,
             description: "Ultrasound service".into(),
+            cadence: ServiceCadence::Weekdays,
+            required: true,
         },
         Service {
             id: "peds".into(),
@@ -63,6 +85,8 @@ pub fn default_services() -> Vec<Service> {
             is_night_call: false,
             bundled_with: None,
             description: "Pediatric radiology".into(),
+            cadence: ServiceCadence::Weekdays,
+            required: true,
         },
         Service {
             id: "nm".into(),
@@ -72,6 +96,8 @@ pub fn default_services() -> Vec<Service> {
             is_night_call: false,
             bundled_with: None,
             description: "Nuclear Medicine".into(),
+            cadence: ServiceCadence::Weekdays,
+            required: true,
         },
         Service {
             id: "chest".into(),
@@ -81,6 +107,8 @@ pub fn default_services() -> Vec<Service> {
             is_night_call: false,
             bundled_with: None,
             description: "Chest & Thoracic".into(),
+            cadence: ServiceCadence::Weekdays,
+            required: true,
         },
         Service {
             id: "er".into(),
@@ -90,6 +118,8 @@ pub fn default_services() -> Vec<Service> {
             is_night_call: false,
             bundled_with: None,
             description: "Emergency room coverage".into(),
+            cadence: ServiceCadence::Weekdays,
+            required: true,
         },
         Service {
             id: "mammo".into(),
@@ -99,6 +129,8 @@ pub fn default_services() -> Vec<Service> {
             is_night_call: false,
             bundled_with: None,
             description: "Mammography".into(),
+            cadence: ServiceCadence::Weekdays,
+            required: true,
         },
         Service {
             id: "lunch".into(),
@@ -108,6 +140,8 @@ pub fn default_services() -> Vec<Service> {
             is_night_call: false,
             bundled_with: None,
             description: "Midday relief cover".into(),
+            cadence: ServiceCadence::Weekdays,
+            required: true,
         },
         Service {
             id: "float".into(),
@@ -117,6 +151,8 @@ pub fn default_services() -> Vec<Service> {
             is_night_call: false,
             bundled_with: None,
             description: "Float attending".into(),
+            cadence: ServiceCadence::Weekdays,
+            required: true,
         },
         Service {
             id: "evening".into(),
@@ -126,6 +162,8 @@ pub fn default_services() -> Vec<Service> {
             is_night_call: false,
             bundled_with: None,
             description: "Evening checkout".into(),
+            cadence: ServiceCadence::Weekdays,
+            required: true,
         },
         Service {
             id: "general".into(),
@@ -135,6 +173,8 @@ pub fn default_services() -> Vec<Service> {
             is_night_call: false,
             bundled_with: None,
             description: "General radiology".into(),
+            cadence: ServiceCadence::Weekdays,
+            required: true,
         },
         // Call Services
         Service {
@@ -145,6 +185,8 @@ pub fn default_services() -> Vec<Service> {
             is_night_call: true,
             bundled_with: None,
             description: "Nuclear Med call".into(),
+            cadence: ServiceCadence::Weekends,
+            required: true,
         },
         Service {
             id: "peds_call".into(),
@@ -154,6 +196,8 @@ pub fn default_services() -> Vec<Service> {
             is_night_call: true,
             bundled_with: None,
             description: "Pediatric call".into(),
+            cadence: ServiceCadence::Weekends,
+            required: true,
         },
         Service {
             id: "cardiac_call".into(),
@@ -163,6 +207,8 @@ pub fn default_services() -> Vec<Service> {
             is_night_call: true,
             bundled_with: None,
             description: "Cardiac CT/MRI call".into(),
+            cadence: ServiceCadence::Weekends,
+            required: true,
         },
         Service {
             id: "msk_mri_call".into(),
@@ -172,6 +218,8 @@ pub fn default_services() -> Vec<Service> {
             is_night_call: true,
             bundled_with: None,
             description: "MSK MRI weekend call".into(),
+            cadence: ServiceCadence::Weekends,
+            required: true,
         },
         Service {
             id: "trauma_call".into(),
@@ -181,6 +229,8 @@ pub fn default_services() -> Vec<Service> {
             is_night_call: true,
             bundled_with: None,
             description: "Trauma emergency call".into(),
+            cadence: ServiceCadence::Weekends,
+            required: true,
         },
     ]
 }

@@ -66,3 +66,15 @@ fn clear_assignments_for_unassigns_only_the_matching_radiologist() {
     assert_eq!(sched.slots[0].assigned_radiologist_id, None);
     assert_eq!(sched.slots[1].assigned_radiologist_id, Some("rad_sbo".to_string()));
 }
+
+#[test]
+fn default_services_have_cadence_matching_shift_vs_call_category() {
+    let svcs = default_services();
+    let am_readout = svcs.iter().find(|s| s.id == "am_readout").unwrap();
+    assert_eq!(am_readout.cadence, ServiceCadence::Weekdays);
+    assert!(am_readout.required);
+
+    let trauma_call = svcs.iter().find(|s| s.id == "trauma_call").unwrap();
+    assert_eq!(trauma_call.cadence, ServiceCadence::Weekends);
+    assert!(trauma_call.required);
+}
