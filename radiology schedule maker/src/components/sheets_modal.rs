@@ -68,7 +68,6 @@ pub fn SheetsModal(
                     </div>
                 }.into_any()
             } else {
-                let _: () = view! {};
                 ().into_any()
             }
         }}

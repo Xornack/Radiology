@@ -157,7 +157,6 @@ pub fn SwapModal(
                     </div>
                 }.into_any()
             } else {
-                let _: () = view! {};
                 ().into_any()
             }
         }}

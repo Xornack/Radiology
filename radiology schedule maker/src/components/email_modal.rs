@@ -27,18 +27,29 @@ pub fn EmailModal(
         let svc_map: HashMap<String, String> = svcs.into_iter().map(|s| (s.id, s.name)).collect();
 
         let mut output = String::new();
-        output.push_str(&format!("Subject: Radiology Attending Coverage Schedule — Month {}/{}\n\n", sched.month, sched.year));
+        output.push_str(&format!(
+            "Subject: Radiology Attending Coverage Schedule — Month {}/{}\n\n",
+            sched.month, sched.year
+        ));
         output.push_str("Dear Attendings,\n\nHere is the published radiology coverage schedule for the upcoming month:\n\n");
 
         let mut current_day = 0;
         for slot in sched.slots {
             if slot.day_number != current_day {
                 current_day = slot.day_number;
-                output.push_str(&format!("\n📅 --- Day {} ({}) ---\n", current_day, slot.date));
+                output.push_str(&format!(
+                    "\n📅 --- Day {} ({}) ---\n",
+                    current_day, slot.date
+                ));
             }
 
-            let svc_name = svc_map.get(&slot.service_id).cloned().unwrap_or(slot.service_id);
-            let rad_name = slot.assigned_radiologist_id.as_ref()
+            let svc_name = svc_map
+                .get(&slot.service_id)
+                .cloned()
+                .unwrap_or(slot.service_id);
+            let rad_name = slot
+                .assigned_radiologist_id
+                .as_ref()
                 .and_then(|id| rad_map.get(id))
                 .cloned()
                 .unwrap_or_else(|| "UNASSIGNED".to_string());
@@ -85,7 +96,6 @@ pub fn EmailModal(
                     </div>
                 }.into_any()
             } else {
-                let _: () = view! {};
                 ().into_any()
             }
         }}

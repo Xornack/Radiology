@@ -30,7 +30,8 @@ pub fn ScheduleGrid(
     // Create lookup maps for fast rendering
     let rad_map = move || {
         let rads = radiologists.get();
-        let map: HashMap<String, Radiologist> = rads.into_iter().map(|r| (r.id.clone(), r)).collect();
+        let map: HashMap<String, Radiologist> =
+            rads.into_iter().map(|r| (r.id.clone(), r)).collect();
         map
     };
 
@@ -137,7 +138,6 @@ pub fn ScheduleGrid(
                             </div>
                         }.into_any()
                     } else {
-                        let _: () = view! {};
                         ().into_any()
                     }
                 }}
@@ -185,7 +185,6 @@ pub fn ScheduleGrid(
                                                     {if let Some(ref b) = svc.bundled_with {
                                                         view! { <span style="font-size: 0.7rem; color: var(--secondary);">"🔗 Co-covers " {b.clone()}</span> }.into_any()
                                                     } else {
-                                                        let _: () = view! {};
                                                         ().into_any()
                                                     }}
                                                 </td>

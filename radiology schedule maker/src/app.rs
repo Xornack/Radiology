@@ -9,27 +9,23 @@ use leptos::prelude::*;
 pub fn App() -> impl IntoView {
     // 1. Core State Signals
     let (radiologists, set_radiologists) = signal(
-        LocalStorage::get("radsched_radiologists").unwrap_or_else(|_| default_radiologists())
+        LocalStorage::get("radsched_radiologists").unwrap_or_else(|_| default_radiologists()),
     );
 
-    let (services, _set_services) = signal(
-        LocalStorage::get("radsched_services").unwrap_or_else(|_| default_services())
-    );
+    let (services, _set_services) =
+        signal(LocalStorage::get("radsched_services").unwrap_or_else(|_| default_services()));
 
-    let (vacations, set_vacations) = signal(
-        LocalStorage::get("radsched_vacations").unwrap_or_else(|_| vec![])
-    );
+    let (vacations, set_vacations) =
+        signal(LocalStorage::get("radsched_vacations").unwrap_or_else(|_| vec![]));
 
-    let (selected_year, set_selected_year) = signal(
-        LocalStorage::get("radsched_selected_year").unwrap_or(2026i32)
-    );
-    let (selected_month, set_selected_month) = signal(
-        LocalStorage::get("radsched_selected_month").unwrap_or(7u32)
-    );
+    let (selected_year, set_selected_year) =
+        signal(LocalStorage::get("radsched_selected_year").unwrap_or(2026i32));
+    let (selected_month, set_selected_month) =
+        signal(LocalStorage::get("radsched_selected_month").unwrap_or(7u32));
 
     let (schedule, set_schedule) = signal(
         LocalStorage::get("radsched_schedule")
-            .unwrap_or_else(|_| MonthlySchedule::new(selected_year.get(), selected_month.get()))
+            .unwrap_or_else(|_| MonthlySchedule::new(selected_year.get(), selected_month.get())),
     );
 
     let (active_tab, set_active_tab) = signal(ActiveTab::ScheduleGrid);
@@ -48,7 +44,8 @@ pub fn App() -> impl IntoView {
         let y = selected_year.get();
         let m = selected_month.get();
 
-        let needs_new = schedule.with_untracked(|s| s.year != y || s.month != m || s.slots.is_empty());
+        let needs_new =
+            schedule.with_untracked(|s| s.year != y || s.month != m || s.slots.is_empty());
         if !needs_new {
             return;
         }
