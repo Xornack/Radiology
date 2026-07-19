@@ -1,0 +1,6 @@
+[build]
+target = "index.html"
+dist = "dist"
+
+[html]
+title = "Radiology Attending Scheduling App"
