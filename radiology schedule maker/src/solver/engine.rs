@@ -4,6 +4,7 @@ use crate::solver::cost::calculate_soft_cost;
 use crate::solver::incremental::IncrementalScorer;
 use crate::utils::calendar::is_weekend_or_holiday;
 use rand::Rng;
+use std::collections::HashSet;
 
 pub struct ScheduleSolver<'a> {
     pub radiologists: &'a [Radiologist],
@@ -27,6 +28,19 @@ impl<'a> ScheduleSolver<'a> {
         }
     }
 
+    /// Whether `service`'s cadence calls for a slot on the given day
+    /// (holidays count as weekend days for this purpose -- see
+    /// is_weekend_or_holiday). Shared by create_empty_schedule and
+    /// reconcile_slots so the cadence match logic lives in one place.
+    fn is_slot_desired(&self, year: i32, month: u32, day: u32, service: &Service) -> bool {
+        let weekend_like = is_weekend_or_holiday(year, month, day, self.holidays);
+        match service.cadence {
+            ServiceCadence::AllDays => true,
+            ServiceCadence::Weekdays => !weekend_like,
+            ServiceCadence::Weekends => weekend_like,
+        }
+    }
+
     /// Initializes an empty month schedule, creating a slot for each
     /// service on each day its cadence calls for (holidays count as
     /// weekend days for this purpose -- see is_weekend_or_holiday).
@@ -35,21 +49,58 @@ impl<'a> ScheduleSolver<'a> {
 
         for day in 1..=days_in_month {
             let date = format!("{:04}-{:02}-{:02}", year, month, day);
-            let weekend_like = is_weekend_or_holiday(year, month, day, self.holidays);
-
             for svc in self.services {
-                let include = match svc.cadence {
-                    ServiceCadence::AllDays => true,
-                    ServiceCadence::Weekdays => !weekend_like,
-                    ServiceCadence::Weekends => weekend_like,
-                };
-                if include {
+                if self.is_slot_desired(year, month, day, svc) {
                     schedule.slots.push(ScheduleSlot::new(&date, day, &svc.id));
                 }
             }
         }
 
         schedule
+    }
+
+    /// Adds slots for (day, service) pairs the current cadence/holiday rules
+    /// now call for but the schedule doesn't have yet, and removes slots
+    /// whose service was deleted or whose cadence no longer includes that
+    /// day -- without touching any other existing slot's assignment or lock.
+    /// This is what lets adding/removing a rotation or holiday reach an
+    /// already-generated month without discarding manual work, unlike
+    /// create_empty_schedule which always starts from nothing.
+    pub fn reconcile_slots(&self, schedule: &mut MonthlySchedule) {
+        let year = schedule.year;
+        let month = schedule.month;
+        let total_days = crate::utils::calendar::days_in_month(year, month);
+
+        schedule.slots.retain(|s| {
+            self.services
+                .iter()
+                .find(|svc| svc.id == s.service_id)
+                .map(|svc| self.is_slot_desired(year, month, s.day_number, svc))
+                .unwrap_or(false)
+        });
+
+        let existing: HashSet<(String, u32)> = schedule
+            .slots
+            .iter()
+            .map(|s| (s.service_id.clone(), s.day_number))
+            .collect();
+
+        let mut to_add = Vec::new();
+        for day in 1..=total_days {
+            let date = format!("{:04}-{:02}-{:02}", year, month, day);
+            for svc in self.services {
+                if !existing.contains(&(svc.id.clone(), day)) && self.is_slot_desired(year, month, day, svc) {
+                    to_add.push(ScheduleSlot::new(&date, day, &svc.id));
+                }
+            }
+        }
+        schedule.slots.extend(to_add);
+
+        // Restore day-major order: EmailModal's digest generator assumes
+        // slots are grouped by day_number (it prints a new "Day X" header
+        // whenever day_number changes from the previous slot), and the
+        // retain+extend above can leave newly-added slots out of order.
+        schedule.slots.sort_by_key(|s| s.day_number);
     }
 
     /// Runs Greedy Constructive Initialization

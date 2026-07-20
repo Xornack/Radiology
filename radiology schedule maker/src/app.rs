@@ -66,6 +66,20 @@ pub fn App() -> impl IntoView {
         set_schedule.set(new_sched);
     });
 
+    // Reconciles the schedule's slots whenever rotations or holidays change,
+    // so adding/removing a rotation (or a holiday) reaches an already-
+    // generated month without wiping existing assignments/locks -- unlike
+    // the effect above, this one DOES track services/holidays on purpose.
+    Effect::new(move |_| {
+        let svcs = services.get();
+        let holis = holidays.get();
+        let rads = radiologists.get_untracked();
+        let vacs = vacations.get_untracked();
+
+        let solver = ScheduleSolver::new(&rads, &svcs, &vacs, &holis);
+        set_schedule.update(|s| solver.reconcile_slots(s));
+    });
+
     // LocalStorage persistence effects
     Effect::new(move |_| {
         let _ = LocalStorage::set("radsched_radiologists", radiologists.get());

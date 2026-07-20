@@ -33,6 +33,12 @@ pub fn RotationsManager(
         let year = selected_year.get();
         let month = selected_month.get();
         let day = new_holiday_day.get();
+
+        let max_day = crate::utils::calendar::days_in_month(year, month);
+        if day > max_day {
+            return; // day doesn't exist in the selected month (e.g. Feb 30)
+        }
+
         let id = holiday_id(year, month, day);
 
         if holidays.get().iter().any(|h| h.id == id) {
@@ -128,12 +134,20 @@ pub fn RotationsManager(
                 <div class="card">
                     <div class="card-header">
                         <span class="card-title">"📅 Department Holidays"</span>
-                        <span class="badge badge-warning">{move || format!("{} Holidays", holidays.get().len())}</span>
+                        <span class="badge badge-warning">{move || {
+                            let prefix = format!("{:04}-{:02}", selected_year.get(), selected_month.get());
+                            let count = holidays.get().iter().filter(|h| h.date.starts_with(&prefix)).count();
+                            format!("{} Holidays", count)
+                        }}</span>
                     </div>
 
                     <div style="display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1.25rem;">
                         {move || {
-                            let hs = holidays.get();
+                            let prefix = format!("{:04}-{:02}", selected_year.get(), selected_month.get());
+                            let hs: Vec<Holiday> = holidays.get()
+                                .into_iter()
+                                .filter(|h| h.date.starts_with(&prefix))
+                                .collect();
                             if hs.is_empty() {
                                 view! { <div style="color: var(--text-dim); font-style: italic;">"No holidays entered for this month."</div> }.into_any()
                             } else {
