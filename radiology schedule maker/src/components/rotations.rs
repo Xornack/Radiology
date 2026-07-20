@@ -1,4 +1,4 @@
-use crate::models::{Holiday, Service, ServiceCadence};
+use crate::models::{Holiday, Service, ServiceCadence, holiday_id};
 use leptos::prelude::*;
 
 fn cadence_label(cadence: ServiceCadence) -> &'static str {
@@ -22,6 +22,26 @@ pub fn RotationsManager(
     let (new_cadence, set_new_cadence) = signal(ServiceCadence::Weekdays);
     let (new_required, set_new_required) = signal(true);
     let (new_bundle_with, set_new_bundle_with) = signal(String::new());
+    let (new_holiday_day, set_new_holiday_day) = signal(1u32);
+    let (new_holiday_name, set_new_holiday_name) = signal(String::new());
+
+    let add_holiday = move |_| {
+        let name = new_holiday_name.get();
+        if name.trim().is_empty() {
+            return;
+        }
+        let year = selected_year.get();
+        let month = selected_month.get();
+        let day = new_holiday_day.get();
+
+        let holiday = Holiday {
+            id: holiday_id(year, month, day),
+            date: format!("{:04}-{:02}-{:02}", year, month, day),
+            name,
+        };
+        set_holidays.update(|list| list.push(holiday));
+        set_new_holiday_name.set(String::new());
+    };
 
     let add_rotation = move |_| {
         let name = new_name.get();
@@ -100,7 +120,70 @@ pub fn RotationsManager(
                     </div>
                 </div>
 
-                // Holidays section (filled in by the rotations-cadence-holidays plan, Task 7)
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">"📅 Department Holidays"</span>
+                        <span class="badge badge-warning">{move || format!("{} Holidays", holidays.get().len())}</span>
+                    </div>
+
+                    <div style="display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1.25rem;">
+                        {move || {
+                            let hs = holidays.get();
+                            if hs.is_empty() {
+                                view! { <div style="color: var(--text-dim); font-style: italic;">"No holidays entered for this month."</div> }.into_any()
+                            } else {
+                                hs.into_iter().map(|h| {
+                                    let h_id = h.id.clone();
+                                    view! {
+                                        <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 0.75rem 1rem; display: flex; align-items: center; justify-content: space-between;">
+                                            <div>
+                                                <div style="font-weight: 600; color: #fcd34d;">{h.name.clone()}</div>
+                                                <div style="font-size: 0.8rem; color: var(--text-muted); font-family: var(--font-mono);">{h.date.clone()}</div>
+                                            </div>
+                                            <button
+                                                class="btn btn-secondary btn-sm"
+                                                on:click=move |_| {
+                                                    set_holidays.update(|list| list.retain(|x| x.id != h_id));
+                                                }
+                                            >
+                                                "Delete"
+                                            </button>
+                                        </div>
+                                    }
+                                }).collect_view().into_any()
+                            }
+                        }}
+                    </div>
+
+                    <div style="display: flex; gap: 0.75rem; align-items: flex-end;">
+                        <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                            <label class="form-label">"Day of Month (in the currently viewed month)"</label>
+                            <input
+                                type="number"
+                                class="form-input"
+                                min="1"
+                                max="31"
+                                prop:value=move || new_holiday_day.get().to_string()
+                                on:input=move |e| {
+                                    if let Ok(val) = event_target_value(&e).parse::<u32>() {
+                                        set_new_holiday_day.set(val);
+                                    }
+                                }
+                            />
+                        </div>
+                        <div class="form-group" style="flex: 2; margin-bottom: 0;">
+                            <label class="form-label">"Holiday Name"</label>
+                            <input
+                                type="text"
+                                class="form-input"
+                                placeholder="e.g. 4th of July"
+                                prop:value=new_holiday_name
+                                on:input=move |e| set_new_holiday_name.set(event_target_value(&e))
+                            />
+                        </div>
+                        <button class="btn btn-primary" on:click=add_holiday>"Add"</button>
+                    </div>
+                </div>
             </div>
 
             <div class="card">
