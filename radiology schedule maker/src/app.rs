@@ -18,6 +18,8 @@ pub fn App() -> impl IntoView {
     let (vacations, set_vacations) =
         signal(LocalStorage::get("radsched_vacations").unwrap_or_else(|_| vec![]));
 
+    let (holidays, _set_holidays) = signal(Vec::<Holiday>::new());
+
     let (selected_year, set_selected_year) =
         signal(LocalStorage::get("radsched_selected_year").unwrap_or(2026i32));
     let (selected_month, set_selected_month) =
@@ -53,9 +55,10 @@ pub fn App() -> impl IntoView {
         let rads = radiologists.get_untracked();
         let svcs = services.get_untracked();
         let vacs = vacations.get_untracked();
+        let holis = holidays.get_untracked();
 
         let total_days = days_in_month(y, m);
-        let solver = ScheduleSolver::new(&rads, &svcs, &vacs);
+        let solver = ScheduleSolver::new(&rads, &svcs, &vacs, &holis);
         let mut new_sched = solver.create_empty_schedule(y, m, total_days);
         solver.initialize_greedy(&mut new_sched);
         set_schedule.set(new_sched);
@@ -84,8 +87,9 @@ pub fn App() -> impl IntoView {
         let rads = radiologists.get();
         let svcs = services.get();
         let vacs = vacations.get();
+        let holis = holidays.get();
 
-        let solver = ScheduleSolver::new(&rads, &svcs, &vacs);
+        let solver = ScheduleSolver::new(&rads, &svcs, &vacs, &holis);
         let mut current = schedule.get();
 
         // Run 6,000 iterations of Simulated Annealing

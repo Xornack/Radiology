@@ -11,7 +11,8 @@ fn incremental_scorer_matches_full_rescan_after_random_moves() {
     let svcs = default_services();
     let vacs: Vec<VacationRequest> = vec![VacationRequest::new("v1", "rad_mh", "2026-07-05", "Conference")];
 
-    let solver = ScheduleSolver::new(&rads, &svcs, &vacs);
+    let holidays: Vec<Holiday> = vec![];
+    let solver = ScheduleSolver::new(&rads, &svcs, &vacs, &holidays);
     let mut schedule = solver.create_empty_schedule(2026, 7, 31);
     solver.initialize_greedy(&mut schedule);
 

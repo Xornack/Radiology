@@ -1,13 +1,15 @@
-use crate::models::{MonthlySchedule, Radiologist, ScheduleSlot, Service, VacationRequest};
+use crate::models::{Holiday, MonthlySchedule, Radiologist, ScheduleSlot, Service, ServiceCadence, VacationRequest};
 use crate::solver::constraints::HardConstraintChecker;
 use crate::solver::cost::calculate_soft_cost;
 use crate::solver::incremental::IncrementalScorer;
+use crate::utils::calendar::is_weekend_or_holiday;
 use rand::Rng;
 
 pub struct ScheduleSolver<'a> {
     pub radiologists: &'a [Radiologist],
     pub services: &'a [Service],
     pub vacations: &'a [VacationRequest],
+    pub holidays: &'a [Holiday],
 }
 
 impl<'a> ScheduleSolver<'a> {
@@ -15,24 +17,35 @@ impl<'a> ScheduleSolver<'a> {
         radiologists: &'a [Radiologist],
         services: &'a [Service],
         vacations: &'a [VacationRequest],
+        holidays: &'a [Holiday],
     ) -> Self {
         Self {
             radiologists,
             services,
             vacations,
+            holidays,
         }
     }
 
-    /// Initializes a empty month schedule with all service slots
+    /// Initializes an empty month schedule, creating a slot for each
+    /// service on each day its cadence calls for (holidays count as
+    /// weekend days for this purpose -- see is_weekend_or_holiday).
     pub fn create_empty_schedule(&self, year: i32, month: u32, days_in_month: u32) -> MonthlySchedule {
         let mut schedule = MonthlySchedule::new(year, month);
 
         for day in 1..=days_in_month {
             let date = format!("{:04}-{:02}-{:02}", year, month, day);
+            let weekend_like = is_weekend_or_holiday(year, month, day, self.holidays);
+
             for svc in self.services {
-                // If it's a weekend service, only include on Saturday (6) / Sunday (7) or weekend tag
-                let slot = ScheduleSlot::new(&date, day, &svc.id);
-                schedule.slots.push(slot);
+                let include = match svc.cadence {
+                    ServiceCadence::AllDays => true,
+                    ServiceCadence::Weekdays => !weekend_like,
+                    ServiceCadence::Weekends => weekend_like,
+                };
+                if include {
+                    schedule.slots.push(ScheduleSlot::new(&date, day, &svc.id));
+                }
             }
         }
 
