@@ -1,4 +1,5 @@
 use chrono::{Datelike, NaiveDate, Weekday};
+use crate::models::Holiday;
 
 /// Returns the exact number of days in a given year and month (handles leap years)
 pub fn days_in_month(year: i32, month: u32) -> u32 {
@@ -57,4 +58,15 @@ pub fn week_day_range(week: u32, max_days: u32) -> Option<(u32, u32)> {
         return None;
     }
     Some((start, (start + 6).min(max_days)))
+}
+
+/// Treats a designated holiday exactly like a weekend for cadence
+/// purposes: Weekends-cadence rotations (e.g. AM/PM call) generate on it,
+/// Weekdays-cadence rotations don't.
+pub fn is_weekend_or_holiday(year: i32, month: u32, day: u32, holidays: &[Holiday]) -> bool {
+    if is_weekend_date(year, month, day) {
+        return true;
+    }
+    let date = format!("{:04}-{:02}-{:02}", year, month, day);
+    holidays.iter().any(|h| h.date == date)
 }
