@@ -12,13 +12,15 @@ pub fn App() -> impl IntoView {
         LocalStorage::get("radsched_radiologists").unwrap_or_else(|_| default_radiologists()),
     );
 
-    let (services, _set_services) =
+    let (services, set_services) =
         signal(LocalStorage::get("radsched_services").unwrap_or_else(|_| default_services()));
 
     let (vacations, set_vacations) =
         signal(LocalStorage::get("radsched_vacations").unwrap_or_else(|_| vec![]));
 
-    let (holidays, _set_holidays) = signal(Vec::<Holiday>::new());
+    let (holidays, set_holidays) = signal(
+        LocalStorage::get("radsched_holidays").unwrap_or_else(|_| vec![])
+    );
 
     let (selected_year, set_selected_year) =
         signal(LocalStorage::get("radsched_selected_year").unwrap_or(2026i32));
@@ -70,7 +72,15 @@ pub fn App() -> impl IntoView {
     });
 
     Effect::new(move |_| {
+        let _ = LocalStorage::set("radsched_services", &services.get());
+    });
+
+    Effect::new(move |_| {
         let _ = LocalStorage::set("radsched_vacations", vacations.get());
+    });
+
+    Effect::new(move |_| {
+        let _ = LocalStorage::set("radsched_holidays", &holidays.get());
     });
 
     Effect::new(move |_| {
