@@ -48,3 +48,33 @@ fn incremental_scorer_matches_full_rescan_after_random_moves() {
         );
     }
 }
+
+#[test]
+fn optional_service_unassigned_slot_does_not_incur_penalty() {
+    let mut svcs = default_services();
+    // Make FLOAT optional, so an unfilled float slot shouldn't cost anything.
+    if let Some(float) = svcs.iter_mut().find(|s| s.id == "float") {
+        float.required = false;
+    }
+    let rads = default_radiologists();
+    let vacs: Vec<VacationRequest> = vec![];
+    let holidays: Vec<Holiday> = vec![];
+
+    let solver = ScheduleSolver::new(&rads, &svcs, &vacs, &holidays);
+    let mut schedule = solver.create_empty_schedule(2026, 7, 31);
+    // Leave everything unassigned.
+    let checker = HardConstraintChecker::new(&rads, &svcs, &vacs);
+
+    let full_cost = calculate_soft_cost(&schedule.slots, &rads, &svcs);
+    let scorer = IncrementalScorer::new(&schedule.slots, &rads, &svcs, &checker);
+    assert!((scorer.total_cost - full_cost).abs() < 1e-6);
+
+    // A required service's unfilled slot must still cost UNASSIGNED_PENALTY;
+    // float's must not. Spot check by comparing against a schedule where
+    // float is required too.
+    if let Some(float) = svcs.iter_mut().find(|s| s.id == "float") {
+        float.required = true;
+    }
+    let cost_with_float_required = calculate_soft_cost(&schedule.slots, &rads, &svcs);
+    assert!(cost_with_float_required > full_cost, "marking float required should raise the cost");
+}

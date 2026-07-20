@@ -61,7 +61,12 @@ impl<'a> IncrementalScorer<'a> {
                         total_violations += 1;
                     }
                 }
-                None => unassigned_count += 1,
+                None => {
+                    let required = service_map.get(slot.service_id.as_str()).map(|s| s.required).unwrap_or(true);
+                    if required {
+                        unassigned_count += 1;
+                    }
+                }
             }
         }
 
@@ -218,6 +223,8 @@ impl<'a> IncrementalScorer<'a> {
         old_rad: &Option<String>,
         new_rad: &Option<String>,
     ) {
+        let required = self.service_map.get(service_id).map(|s| s.required).unwrap_or(true);
+
         if let Some(old_id) = old_rad {
             if !checker.can_assign(old_id, service_id, date) {
                 self.total_violations -= 1;
@@ -225,11 +232,15 @@ impl<'a> IncrementalScorer<'a> {
             self.total_violations -= self.bundle_violation_count(date, old_id);
             self.remove_assignment(date, service_id, old_id);
             self.total_violations += self.bundle_violation_count(date, old_id);
-            self.unassigned_count += 1;
+            if required {
+                self.unassigned_count += 1;
+            }
         }
 
         if let Some(new_id) = new_rad {
-            self.unassigned_count -= 1;
+            if required {
+                self.unassigned_count -= 1;
+            }
             self.total_violations -= self.bundle_violation_count(date, new_id);
             self.add_assignment(date, service_id, new_id);
             self.total_violations += self.bundle_violation_count(date, new_id);

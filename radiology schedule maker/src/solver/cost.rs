@@ -25,7 +25,10 @@ pub fn calculate_soft_cost(
                 }
             }
         } else {
-            unassigned_count += 1;
+            let required = service_map.get(slot.service_id.as_str()).map(|s| s.required).unwrap_or(true);
+            if required {
+                unassigned_count += 1;
+            }
         }
     }
 
