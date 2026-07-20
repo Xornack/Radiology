@@ -16,3 +16,4 @@ Cargo.lock
 # Temporary & Scratch files
 /scratch/
 *.log
+/docs/
