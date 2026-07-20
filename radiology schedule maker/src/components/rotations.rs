@@ -33,9 +33,14 @@ pub fn RotationsManager(
         let year = selected_year.get();
         let month = selected_month.get();
         let day = new_holiday_day.get();
+        let id = holiday_id(year, month, day);
+
+        if holidays.get().iter().any(|h| h.id == id) {
+            return; // a holiday for this day already exists
+        }
 
         let holiday = Holiday {
-            id: holiday_id(year, month, day),
+            id,
             date: format!("{:04}-{:02}-{:02}", year, month, day),
             name,
         };
