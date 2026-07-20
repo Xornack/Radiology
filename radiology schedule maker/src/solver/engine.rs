@@ -62,9 +62,13 @@ impl<'a> ScheduleSolver<'a> {
     /// Adds slots for (day, service) pairs the current cadence/holiday rules
     /// now call for but the schedule doesn't have yet, and removes slots
     /// whose service was deleted or whose cadence no longer includes that
-    /// day -- without touching any other existing slot's assignment or lock.
-    /// This is what lets adding/removing a rotation or holiday reach an
-    /// already-generated month without discarding manual work, unlike
+    /// day. Every surviving slot's assignment and lock are left byte-for-
+    /// byte untouched -- but a slot CAN be dropped entirely (assignment and
+    /// lock included) if a holiday or cadence change makes it no longer
+    /// desired, e.g. locking a weekday rotation then marking that day a
+    /// holiday will drop that lock along with the slot. This is what lets
+    /// adding/removing a rotation or holiday reach an already-generated
+    /// month without discarding UNRELATED manual work, unlike
     /// create_empty_schedule which always starts from nothing.
     pub fn reconcile_slots(&self, schedule: &mut MonthlySchedule) {
         let year = schedule.year;
