@@ -6,6 +6,7 @@ pub enum ActiveTab {
     Radiologists,
     VacationRequests,
     Ledger,
+    Rotations,
 }
 
 #[component]
@@ -52,6 +53,12 @@ pub fn Navbar(
                     on:click=move |_| set_active_tab.set(ActiveTab::VacationRequests)
                 >
                     "🏖️ Vacation / PTO"
+                </button>
+                <button
+                    class=move || if active_tab.get() == ActiveTab::Rotations { "nav-tab active" } else { "nav-tab" }
+                    on:click=move |_| set_active_tab.set(ActiveTab::Rotations)
+                >
+                    "🔁 Rotations"
                 </button>
             </div>
 

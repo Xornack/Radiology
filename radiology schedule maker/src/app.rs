@@ -165,6 +165,17 @@ pub fn App() -> impl IntoView {
                             selected_month=selected_month
                         />
                     }.into_any(),
+
+                    ActiveTab::Rotations => view! {
+                        <RotationsManager
+                            services=services
+                            set_services=set_services
+                            holidays=holidays
+                            set_holidays=set_holidays
+                            selected_year=selected_year
+                            selected_month=selected_month
+                        />
+                    }.into_any(),
                 }}
             </main>
 
