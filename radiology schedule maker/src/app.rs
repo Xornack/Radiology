@@ -72,7 +72,7 @@ pub fn App() -> impl IntoView {
     });
 
     Effect::new(move |_| {
-        let _ = LocalStorage::set("radsched_services", &services.get());
+        let _ = LocalStorage::set("radsched_services", services.get());
     });
 
     Effect::new(move |_| {
@@ -80,7 +80,7 @@ pub fn App() -> impl IntoView {
     });
 
     Effect::new(move |_| {
-        let _ = LocalStorage::set("radsched_holidays", &holidays.get());
+        let _ = LocalStorage::set("radsched_holidays", holidays.get());
     });
 
     Effect::new(move |_| {
